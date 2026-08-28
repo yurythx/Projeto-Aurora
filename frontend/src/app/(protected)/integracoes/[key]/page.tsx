@@ -1,0 +1,58 @@
+import { notFound } from "next/navigation";
+
+import { ErrorState } from "@/components/ui/ErrorState";
+import { IntegrationCard } from "@/components/integrations/IntegrationCard";
+import { RawApiFeedPanel } from "@/components/diario-oficial/RawApiFeedPanel";
+import { integrationRegistry } from "@/lib/integrations/registry";
+import { ApiError } from "@/lib/api/client";
+import { serverApiGet } from "@/lib/api/server";
+import type { Integration } from "@/types/api";
+
+export default async function IntegrationDetailPage({
+  params,
+}: {
+  params: Promise<{ key: string }>;
+}) {
+  const { key } = await params;
+
+  let integration: Integration | undefined;
+  let errorMessage: string | null = null;
+  try {
+    const { data } = await serverApiGet<Integration[]>("v1/integrations");
+    integration = data.find((i) => i.key === key);
+  } catch (err) {
+    errorMessage = err instanceof ApiError ? err.message : "Falha ao carregar";
+  }
+
+  if (!errorMessage && !integration) {
+    notFound();
+  }
+
+  const registryEntry = integrationRegistry[key];
+
+  return (
+    <div className="flex flex-col gap-6">
+      {errorMessage && <ErrorState message={errorMessage} />}
+
+      {integration && (
+        <>
+          <div>
+            <h1 className="text-xl font-semibold">{integration.name}</h1>
+            <p className="text-sm text-muted">
+              {registryEntry?.description ?? "Configuração e teste de conectividade desta integração."}
+            </p>
+          </div>
+
+          <IntegrationCard integration={integration} testPath={registryEntry?.testPath} />
+
+          {(key === "diario-oficial" || key === "rondonopolis") && (
+            <div className="mt-4 flex flex-col gap-4">
+              <h2 className="text-lg font-semibold">Retorno em Tempo Real da API do Diário Oficial</h2>
+              <RawApiFeedPanel />
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

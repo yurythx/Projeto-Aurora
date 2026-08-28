@@ -1,0 +1,53 @@
+# syntax=docker/dockerfile:1
+
+# ---- builder ----
+FROM golang:1.27-alpine AS builder
+WORKDIR /src
+
+RUN apk add --no-cache ca-certificates
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker
+
+# ---- runtime ----
+FROM alpine:3.20 AS runtime
+
+# git continua precisando estar na imagem do worker — TrivyScanner.Execute/
+# GitleaksScanner.Execute/SemgrepScanner.Execute/SonarScanner.Execute (o
+# caminho HTTP, produção) clonam o alvo aqui e só depois mandam o PATH
+# pro sidecar correspondente (ver cmd/trivy-sidecar, cmd/gitleaks-sidecar,
+# cmd/semgrep-sidecar, cmd/sonar-sidecar); os binários/runtimes
+# `trivy`/`gitleaks`/`semgrep`/`sonar-scanner`+JRE em si SAÍRAM desta
+# imagem — decisão do usuário de isolar cada scanner no próprio
+# container, como o GitGuard faz (ver
+# docs/roadmap-secops-orchestrator.md, seção "Containerização"). O
+# checksum do binário trivy, a instalação via pip do semgrep e a extração
+# do sonar-scanner-cli continuam verificados — só que agora nos
+# Dockerfiles dos sidecars, não aqui. Esta imagem não carrega mais nenhum
+# runtime de scanner — só git + o binário Go do próprio worker.
+RUN apk add --no-cache ca-certificates git poppler-utils
+
+# UID/GID FIXOS (10001), não o que "adduser -S" alocaria implicitamente
+# (o próximo UID de sistema livre — não garantido igual entre duas
+# imagens construídas separadamente): TrivyScanner.Execute clona pro
+# volume compartilhado scanning_workspace (docker-compose.yml, montado
+# em /workspace aqui E na imagem de cada sidecar de scanning) — os
+# processos escrevendo/lendo o MESMO caminho precisam do MESMO UID dono,
+# senão um sidecar que só lê até funcionaria com permissão "outros"
+# liberada, mas o worker (que ESCREVE o clone) precisa mesmo ser dono.
+# mkdir+chown aqui, ANTES do volume ser montado: Docker copia a
+# ownership/conteúdo que já existe nesse caminho dentro da imagem pro
+# volume nomeado vazio na primeira vez que ele é criado — sem isso, um
+# volume nomeado novo nasce root:root, e o processo do worker (que roda
+# como "nix", não root) não conseguiria escrever nele.
+RUN addgroup -g 10001 -S nix && adduser -u 10001 -S nix -G nix && \
+    mkdir -p /workspace && chown nix:nix /workspace
+
+USER nix
+WORKDIR /app
+COPY --from=builder --chown=nix:nix /out/worker ./worker
+
+ENTRYPOINT ["./worker"]

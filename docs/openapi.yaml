@@ -1,0 +1,1785 @@
+openapi: 3.0.3
+info:
+  title: NIX Platform API
+  description: |
+    API REST do NIX Platform — um monólito modular que centraliza
+    integrações, automação e notificações. Todo endpoint autenticado espera
+    um access token OIDC emitido pelo Keycloak como Bearer JWT; o backend o
+    valida localmente contra um JWKS em cache (nunca com uma chamada por
+    requisição ao Keycloak — ver §29 do documento de arquitetura).
+
+    Toda resposta usa o mesmo envelope:
+    `{"data": <payload|null>, "error": {"code","message"}|null, "meta": {...}|omitido}`.
+    Erros nunca incluem stack trace ou outro detalhe interno.
+
+    **Idempotência**: qualquer endpoint de escrita (POST/PUT/PATCH) aceita
+    opcionalmente o header `Idempotency-Key` (ver
+    `#/components/parameters/IdempotencyKey`). Reenviar a mesma requisição
+    (mesmo método, caminho e corpo) com a mesma chave nunca executa o
+    handler duas vezes — a segunda chamada em diante recebe de volta a
+    resposta já produzida pela primeira (`Idempotent-Replay: true` no
+    header da resposta), em vez de criar um segundo job/efeito colateral.
+    Reusar a mesma chave com um corpo diferente é rejeitado com 409
+    (`IDEMPOTENCY_KEY_REUSED`); uma segunda chamada enquanto a primeira
+    ainda está em andamento recebe 409 (`IDEMPOTENCY_KEY_IN_PROGRESS`). Ver
+    ADR [002](adr/002-enterprise-resilience-and-governance.md).
+
+    **Resiliência e disponibilidade condicional**: chamadas que dependem
+    de um provedor externo (ex.: Diário Oficial) podem retornar 503
+    por dois motivos distintos, diferenciados pelo `error.code`:
+    `CIRCUIT_OPEN` (o circuit breaker interno detectou falhas consecutivas
+    e está poupando o provedor — tentativas vão voltar a funcionar
+    sozinhas depois de um curto intervalo) ou `FEATURE_DISABLED` (um
+    administrador desligou a integração via feature flag — ver
+    `/api/v1/admin/feature-flags`, não se resolve sozinho).
+  version: "1.0.0"
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Desenvolvimento local (docker compose)
+  - url: /
+    description: Mesma origem (produção, atrás de um reverse proxy)
+
+tags:
+  - name: system
+    description: Health, readiness e métricas — sem autenticação.
+  - name: auth
+    description: >
+      Login local por usuário/senha — um caminho ADICIONAL ao Keycloak,
+      nunca um substituto (ver ADR
+      003-local-auth-rsa-hardening.md). Sem autenticação prévia, por
+      definição.
+  - name: users
+    description: O chamador autenticado e o diretório de usuários.
+  - name: integrations
+    description: Status de cada integração externa configurada.
+  - name: diario-oficial
+    description: Verificação de conectividade com o Diário Oficial (job assíncrono).
+  - name: scanning
+    description: >
+      SecOps Orchestrator (ver docs/roadmap-secops-orchestrator.md): dispara
+      scanners de segurança registrados (hoje: trivy) contra um alvo e
+      consulta os achados. Job assíncrono, mesmo padrão de diario-oficial.
+  - name: websocket
+    description: Emissão de ticket para notificações em tempo real.
+  - name: admin
+    description: "Operações administrativas restritas ao papel nix-admin, ex.: feature flags."
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [system]
+      summary: Liveness probe
+      operationId: getHealth
+      description: Indica que o processo está de pé. Nunca verifica dependências externas.
+      security: []
+      responses:
+        "200":
+          description: O processo está vivo.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+              example:
+                data: { status: "ok" }
+                error: null
+
+  /ready:
+    get:
+      tags: [system]
+      summary: Readiness probe
+      operationId: getReady
+      description: Verifica a conectividade com PostgreSQL e RabbitMQ.
+      security: []
+      responses:
+        "200":
+          description: Todas as dependências estão alcançáveis.
+          content:
+            application/json:
+              example:
+                data: { postgres: "ok", rabbitmq: "ok" }
+                error: null
+        "503":
+          description: Pelo menos uma dependência está indisponível.
+          content:
+            application/json:
+              example:
+                data: { postgres: "ok", rabbitmq: "unavailable" }
+                error: null
+
+  /metrics:
+    get:
+      tags: [system]
+      summary: Métricas Prometheus
+      operationId: getMetrics
+      security: []
+      responses:
+        "200":
+          description: Formato de exposição em texto do Prometheus.
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      summary: Login local por usuário/senha
+      operationId: localLogin
+      security: []
+      description: >
+        Rota pública — o chamador ainda não está autenticado. Responde 404
+        se LOCAL_AUTH_ENABLED estiver desligado no backend. O token
+        emitido é assinado RS256 com uma chave RSA própria deste
+        subsistema (nunca compartilhada com o Keycloak — ver ADR
+        003-local-auth-rsa-hardening.md) e pode ser usado como Bearer nos
+        mesmos endpoints autenticados que aceitam um token do Keycloak.
+
+
+        Toda falha (usuário inexistente, conta só-Keycloak, conta
+        inativa, conta temporariamente bloqueada por excesso de
+        tentativas, ou senha errada) retorna exatamente a mesma resposta
+        401 genérica — nunca dá para descobrir, por tentativa e erro, qual
+        delas ocorreu. Uma conta é bloqueada por 15 minutos depois de 5
+        tentativas seguidas de senha errada.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string, format: password }
+            example:
+              username: admin
+              password: Admin123!
+      responses:
+        "200":
+          description: Credenciais válidas — token emitido.
+          headers:
+            Cache-Control:
+              schema: { type: string, example: "no-store" }
+              description: O corpo carrega um bearer token; nunca deve ser cacheado.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          access_token: { type: string }
+                          token_type: { type: string, example: "Bearer" }
+                          expires_at: { type: string, format: date-time }
+                          user:
+                            type: object
+                            properties:
+                              id: { type: string, format: uuid }
+                              username: { type: string }
+                              email: { type: string, format: email }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Login local está desligado (LOCAL_AUTH_ENABLED=false).
+          content:
+            application/json:
+              example:
+                data: null
+                error: { code: "NOT_FOUND", message: "local login is not enabled" }
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/v1/me:
+    get:
+      tags: [users]
+      summary: Obtém o usuário autenticado atual
+      operationId: getCurrentUser
+      description: >
+        Faz upsert da linha de usuário do chamador a partir do token
+        verificado a cada chamada (criando-a no primeiro acesso) e a
+        retorna.
+      responses:
+        "200":
+          description: O usuário atual.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/users:
+    get:
+      tags: [users]
+      summary: Lista usuários
+      operationId: listUsers
+      security:
+        - bearerAuth: [users:read]
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Uma página de usuários.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/User"
+                      meta:
+                        $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/users/{id}:
+    get:
+      tags: [users]
+      summary: Obtém um usuário pelo id
+      operationId: getUser
+      security:
+        - bearerAuth: [users:read]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: O usuário.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/integrations:
+    get:
+      tags: [integrations]
+      summary: Lista todas as integrações configuradas
+      operationId: listIntegrations
+      responses:
+        "200":
+          description: Todas as integrações.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Integration"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/integrations/{id}/status:
+    get:
+      tags: [integrations]
+      summary: Obtém o status atual de uma integração
+      operationId: getIntegrationStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: A integração.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Integration"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/integrations/diario-oficial/test:
+    post:
+      tags: [diario-oficial]
+      summary: Dispara uma verificação assíncrona de conectividade com o Diário Oficial
+      operationId: testDiarioOficial
+      description: >
+        Não executa a verificação em si. Cria um job, o persiste junto com
+        um evento de outbox em uma única transação, e retorna
+        imediatamente — o worker o processa, e o frontend é notificado via
+        WebSocket quando ele concluir ou falhar (§34/§72). Sujeito a rate
+        limiting por chamador. Aceita `Idempotency-Key` — recomendado para
+        evitar criar jobs duplicados num duplo clique ou retry automático
+        do cliente.
+      security:
+        - bearerAuth: [integrations:test]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "202":
+          $ref: "#/components/responses/TestJobAccepted"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/IntegrationUnavailable"
+
+  /api/v1/diario-oficial/monitored-terms:
+    post:
+      tags: [diario-oficial]
+      summary: Cadastra um termo pra monitorar no Diário Oficial (MVP real via DJEN)
+      operationId: createMonitoredTerm
+      description: >
+        Pelo menos um critério de busca é obrigatório: `oab_number`+`oab_uf` (sempre juntos),
+        `process_number`, ou `free_text`. O worker sincroniza todo termo ATIVO contra o DJEN
+        (Diário de Justiça Eletrônico Nacional, CNJ) a cada 6h — este endpoint só cadastra, nunca
+        busca no DJEN diretamente.
+      security:
+        - bearerAuth: [diario_oficial:manage]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: { type: string, example: "Dr. Fulano — OAB/MG 419" }
+                oab_number: { type: string, example: "419" }
+                oab_uf: { type: string, example: "MG" }
+                process_number: { type: string, example: "50015349420258130351" }
+                free_text: { type: string }
+              required: [label]
+      responses:
+        "201":
+          description: Termo cadastrado.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/MonitoredTerm" }
+        "400":
+          description: Corpo inválido (JSON malformado).
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          description: >
+            Nenhum critério de busca preenchido, ou `oab_number` sem `oab_uf` (ou vice-versa).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+    get:
+      tags: [diario-oficial]
+      summary: Lista todo termo monitorado, mais recente primeiro
+      operationId: listMonitoredTerms
+      security:
+        - bearerAuth: [diario_oficial:read]
+      responses:
+        "200":
+          description: Lista de termos monitorados.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/MonitoredTerm" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/diario-oficial/monitored-terms/{termID}:
+    delete:
+      tags: [diario-oficial]
+      summary: Remove um termo monitorado
+      operationId: deleteMonitoredTerm
+      description: >
+        Publicações/matches já encontrados pra este termo são removidos em cascata — o histórico de
+        um termo apagado não continua aparecendo no feed de publicações recentes. Responde 200 com
+        um envelope vazio (nunca 204 sem corpo — o proxy BFF/cliente desta plataforma sempre espera
+        um Envelope JSON na resposta).
+      security:
+        - bearerAuth: [diario_oficial:manage]
+      parameters:
+        - name: termID
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Termo removido.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "400":
+          description: termID não é um UUID válido.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Termo não encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+
+  /api/v1/diario-oficial/monitored-terms/{termID}/publications:
+    get:
+      tags: [diario-oficial]
+      summary: Lista as publicações que casaram com um termo, mais recentes primeiro
+      operationId: listPublicationsForTerm
+      security:
+        - bearerAuth: [diario_oficial:read]
+      parameters:
+        - name: termID
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: >
+            Página de publicações casadas — um termID inexistente devolve uma página vazia, não 404
+            (a mesma escolha que o resto desta API já faz pra listagens escopadas por id).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/MatchedPublication" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/diario-oficial/publications:
+    get:
+      tags: [diario-oficial]
+      summary: Feed agregado de publicações casadas entre TODO termo monitorado
+      operationId: listRecentPublications
+      security:
+        - bearerAuth: [diario_oficial:read]
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Página de publicações casadas, mais recentes primeiro.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/MatchedPublication" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/diario-oficial/health:
+    get:
+      tags: [diario-oficial]
+      summary: Checagem síncrona da saúde da fonte de dados configurada (DJEN)
+      operationId: getDiarioOficialHealth
+      description: >
+        Nunca cria job, nunca grava nada — uma leitura direta (timeout de 5s) pra uma tela mostrar
+        "a fonte está respondendo?" antes do usuário estranhar por que nenhuma publicação nova
+        apareceu. Equivalente diario_oficial de GET /api/v1/scanning/scanners/health.
+      security:
+        - bearerAuth: [diario_oficial:read]
+      responses:
+        "200":
+          description: Resultado da checagem — sempre 200, mesmo com a fonte fora do ar (isso é dado do payload, não erro HTTP).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/SourceHealth" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/scanning/scans:
+    post:
+      tags: [scanning]
+      summary: Dispara um scan assíncrono contra um alvo
+      operationId: createScan
+      description: >
+        Não executa o(s) scanner(s) em si. Cria um job, o persiste junto com
+        um evento de outbox em uma única transação, e retorna imediatamente
+        — o worker o processa (clona o alvo via git e roda cada scanner
+        pedido), e o frontend é notificado via WebSocket quando ele
+        concluir ou falhar. `job_id` retornado é o mesmo `scan_id` usado em
+        `GET /api/v1/scanning/scans/{scanID}/findings`. Sujeito a rate
+        limiting por chamador. Aceita `Idempotency-Key`.
+
+        `scanners` aceita mais de um nome — todos rodam em PARALELO contra
+        o mesmo alvo, sob o mesmo job/`scan_id` (Fase 7 — Orquestração
+        concorrente). Um scanner que falha não afeta os demais: o job é
+        marcado concluído se PELO MENOS UM tiver sucesso (achados só dos
+        que tiveram sucesso; os que falharam ficam registrados no
+        resultado do job e na auditoria) — só falha por completo, sujeito
+        a retry, se TODOS falharem.
+      security:
+        - bearerAuth: [scanning:manage]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scanners, target]
+              properties:
+                scanners:
+                  type: array
+                  minItems: 1
+                  description: Um ou mais nomes de CodeScanner registrado — todos rodam em paralelo.
+                  items:
+                    type: string
+                    enum: ["trivy", "semgrep", "sonarqube", "zap"]
+                  example: ["trivy", "semgrep"]
+                target:
+                  type: string
+                  description: >
+                    Para "trivy" (dependências, Dockerfiles), "semgrep"
+                    (SAST) e "sonarqube" (qualidade de código/bugs) — os
+                    três clonam o alvo via git antes de escanear: uma URL
+                    git https://, com um branch/tag opcional após "#"
+                    (ex.: "https://github.com/org/repo.git#main"). Só
+                    https:// é aceito; o host é resolvido e rejeitado se
+                    apontar para um IP privado/loopback/link-local (defesa
+                    de SSRF, ver docs/roadmap-secops-orchestrator.md). O
+                    scanner "sonarqube" exige SCANNING_SONARQUBE_URL
+                    configurada no worker (503 DEPENDENCY_UNAVAILABLE caso
+                    contrário) e leva mais tempo — além do scan em si, o
+                    worker espera a Compute Engine do servidor terminar de
+                    processar o relatório enviado.
+
+                    Para "zap" (DAST) — completamente diferente: o alvo é
+                    uma URL http(s) de um serviço RODANDO DE VERDADE (não
+                    um repositório git), que o ZAP ativamente ataca
+                    (spider + scan ativo — injeção, XSS, etc.). Exige que
+                    o host do alvo esteja na allowlist configurada em
+                    SCANNING_ZAP_ALLOWED_HOSTS — vazia por padrão, recusa
+                    TODO alvo até um host de staging/homologação ser
+                    explicitamente autorizado (400 VALIDATION_ERROR caso
+                    contrário). Nunca aponte para produção.
+                  example: "https://github.com/org/repo.git#main"
+      responses:
+        "202":
+          $ref: "#/components/responses/TestJobAccepted"
+        "400":
+          description: Corpo inválido (target vazio, JSON malformado).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Um ou mais nomes em `scanners` não estão registrados — nenhum job é criado nesse caso, nem para os nomes válidos.
+          content:
+            application/json:
+              example:
+                data: null
+                error: { code: "NOT_FOUND", message: "scanner(s) not registered: does-not-exist" }
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/v1/scanning/scanners/health:
+    get:
+      tags: [scanning]
+      summary: Checa a saúde de cada scanner registrado (reestruturação de /seguranca)
+      operationId: getScannersHealth
+      description: >
+        Checa, em paralelo, se a dependência externa de cada scanner (sidecar containerizado, ou —
+        pro ZAP — o daemon em si) está viva, sem rodar um scan de verdade — pensado pra uma tela que
+        o usuário olha ANTES de disparar um scan novo. Timeout curto (5s) por scanner: um sidecar
+        travado nunca faz esta consulta demorar mais que isso. Um scanner registrado que não
+        implementa a checagem (não deveria acontecer — os 6 de hoje implementam todos) simplesmente
+        não aparece na resposta.
+      security:
+        - bearerAuth: [scanning:read]
+      responses:
+        "200":
+          description: Um item por scanner que sabe se auto-checar.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ScannerHealth"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/scanning/scans/{scanID}/findings:
+    get:
+      tags: [scanning]
+      summary: Lista os achados de uma execução de scan
+      operationId: listScanFindings
+      security:
+        - bearerAuth: [scanning:read]
+      parameters:
+        - name: scanID
+          in: path
+          required: true
+          description: O mesmo `job_id` recebido de `POST /api/v1/scanning/scans`.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Todo achado do scan (lista vazia se ainda não concluiu, ou se não encontrou nada).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Finding"
+        "400":
+          description: scanID não é um UUID válido.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/scanning/findings:
+    get:
+      tags: [scanning]
+      summary: Lista os achados mais graves/recentes entre TODAS as execuções de scan
+      operationId: listRecentFindings
+      description: >
+        Diferente de `GET /api/v1/scanning/scans/{scanID}/findings` (escopado a um scan_id já
+        conhecido), este endpoint não exige saber um scan_id de antemão — o feed usado pela UI
+        (Fase 9 do roadmap de segurança) pra listar achados recentes por severidade.
+      security:
+        - bearerAuth: [scanning:read]
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - name: limit
+          in: query
+          required: false
+          description: >
+            Alias de page_size, aceito por compatibilidade com chamador anterior à Fase 14
+            (Maturidade de AppSec) — só usado quando page_size não vem explícito. Prefira page_size
+            em código novo.
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: >
+            Uma PÁGINA de achados, mais graves/recentes primeiro (lista vazia se nenhum scan rodou
+            ainda). Antes da Fase 14, este endpoint tinha um `limit` sem `OFFSET` (teto fixo de 200)
+            — qualquer achado além disso nunca aparecia; agora é paginação de verdade, mesmo
+            contrato que GET /api/v1/users já usa.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Finding"
+                      meta:
+                        $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/scanning/scans/{scanID}/findings.csv:
+    get:
+      tags: [scanning]
+      summary: Exporta os achados de uma execução de scan em CSV (Fase 14 — Maturidade de AppSec)
+      operationId: exportScanFindingsCSV
+      description: >
+        Equivalente em CSV de GET /api/v1/scanning/scans/{scanID}/findings — uma linha por achado,
+        sem deduplicação (é UM scan). A primeira exportação desta plataforma; até a Fase 14, tirar
+        um achado da NIX significava copiar da tela na mão ou consumir a API JSON.
+      security:
+        - bearerAuth: [scanning:read]
+      parameters:
+        - name: scanID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Arquivo CSV, com Content-Disposition attachment (download, não exibição inline).
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          description: scanID não é um UUID válido.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/scanning/scans/{scanID}/findings.sarif:
+    get:
+      tags: [scanning]
+      summary: Exporta os achados de uma execução de scan em SARIF 2.1.0 (shift-left)
+      operationId: exportScanFindingsSarif
+      description: >
+        O formato que GitHub Code Scanning/Azure DevOps consomem nativamente — um upload vira
+        anotação direto no diff do PR e na aba Security, sem esta plataforma construir UI de
+        comentário em PR própria. Um run por scanner que participou do scan (RequestedScanners que
+        tiveram sucesso), inclusive um scanner que rodou e não achou nada (results: []) — um
+        consumidor de SARIF usa a AUSÊNCIA de um run pra inferir "essa ferramenta nunca rodou", o que
+        seria enganoso pra um scanner limpo. Uma rule por Finding.ID distinto dentro de cada run
+        (achado repetido em arquivos diferentes vira 1 rule + N results). Severidade CRITICAL/HIGH
+        vira level "error" (o único nível que barra um gate de CI por padrão no GitHub Code Scanning),
+        MEDIUM vira "warning", LOW vira "note"; cada rule carrega também
+        properties["security-severity"] (convenção do GitHub, score 0.0–10.0 em texto) pra colorir a
+        severidade na aba Security. O documento raiz é o SARIF cru (nunca o envelope {data, error,
+        meta} padrão desta API) — validado com ajv-cli contra o schema oficial 2.1.0 antes deste
+        endpoint ser publicado.
+      security:
+        - bearerAuth: [scanning:read]
+      parameters:
+        - name: scanID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: >
+            Documento SARIF 2.1.0, com Content-Disposition attachment (download, não exibição
+            inline).
+          content:
+            application/sarif+json:
+              schema:
+                type: object
+        "400":
+          description: scanID não é um UUID válido.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/scanning/posture:
+    get:
+      tags: [scanning]
+      summary: Resumo agregado de achados abertos entre todo projeto (Fase 14 — Maturidade de AppSec)
+      operationId: getSecurityPosture
+      description: >
+        Achados ABERTOS = ainda presentes no scan mais recente de cada projeto E não triados — nunca
+        um COUNT(*) direto em scan_findings, que contaria o mesmo achado uma vez por re-scan. Escopado
+        a projetos persistentes (Fase 10); um scan avulso sem projeto não entra nesta contagem, pelo
+        mesmo motivo que não entra em GET /api/v1/scanning/projects/{projectID}/findings-history.
+        Alimenta o card "Postura de segurança" do dashboard.
+      security:
+        - bearerAuth: [scanning:read]
+      responses:
+        "200":
+          description: O resumo agregado.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/SecurityPosture"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/scanning/posture/history:
+    get:
+      tags: [scanning]
+      summary: Série temporal de SecurityPosture (Fase 14, continuação — tendência histórica)
+      operationId: getSecurityPostureHistory
+      description: >
+        Um ponto por dia, gravado periodicamente pelo worker (nunca por esta requisição — GET aqui só
+        lê o que já foi gravado). Alimenta o gráfico de tendência do dashboard — "estamos melhorando
+        ou piorando?", a pergunta que GET /api/v1/scanning/posture sozinho (só o AGORA) não respondia.
+      security:
+        - bearerAuth: [scanning:read]
+      parameters:
+        - name: days
+          in: query
+          required: false
+          description: Quantos dias de histórico. <= 0 ou ausente usa o default (30); acima de 366 é reduzido a 366.
+          schema:
+            type: integer
+            default: 30
+      responses:
+        "200":
+          description: Snapshots, data mais antiga primeiro (lista vazia se o worker ainda não gravou nenhum).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/PostureSnapshot"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/scanning/projects/{projectID}/findings-history:
+    get:
+      tags: [scanning]
+      summary: Histórico de achados deduplicado de um projeto (Fase 12)
+      operationId: listProjectFindingsHistory
+      description: >
+        Um achado por fingerprint, não por linha de scan_findings — "apareceu pela primeira vez no
+        scan de 12/08, ainda presente no scan de 20/08" em vez de listar a mesma vulnerabilidade uma
+        vez por re-scan. Nunca documentado antes desta revisão (Fase 14), apesar de existir desde a
+        Fase 12 — lacuna da documentação, não do endpoint em si.
+      security:
+        - bearerAuth: [scanning:read]
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Histórico deduplicado, achado aberto e não triado primeiro (lista vazia se o projeto nunca rodou um scan).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ProjectFindingHistory"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/scanning/projects/{projectID}/findings-history.csv:
+    get:
+      tags: [scanning]
+      summary: Exporta o histórico deduplicado de um projeto em CSV (Fase 14 — Maturidade de AppSec)
+      operationId: exportProjectFindingsHistoryCSV
+      description: >
+        Equivalente em CSV de GET /api/v1/scanning/projects/{projectID}/findings-history, com a
+        triagem incluída — a exportação que faz sentido levar pra uma reunião de status ou um ticket
+        de compliance, ao contrário do CSV por scan (uma execução isolada, sem dedup).
+      security:
+        - bearerAuth: [scanning:read]
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Arquivo CSV, com Content-Disposition attachment.
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          description: projectID não é um UUID válido.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/scanning/projects/{projectID}/findings/{fingerprint}/triage:
+    put:
+      tags: [scanning]
+      summary: Tria um achado deduplicado (Fase 14 — Maturidade de AppSec)
+      operationId: triageFinding
+      description: >
+        Marca o fingerprint como false_positive/wont_fix/risk_accepted dentro do projeto — chamar de
+        novo no MESMO fingerprint substitui a decisão anterior, não acumula histórico. reason é
+        obrigatório: uma supressão sem justificativa registrada é o tipo de decisão que uma auditoria
+        de segurança depois cobra explicação. Gravado em audit_logs (finding.triaged).
+      security:
+        - bearerAuth: [scanning:manage]
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: fingerprint
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, reason]
+              properties:
+                status:
+                  type: string
+                  enum: [false_positive, wont_fix, risk_accepted]
+                reason:
+                  type: string
+                  description: Obrigatório — motivo da triagem, no máximo 2000 caracteres.
+                expires_at:
+                  type: string
+                  format: date-time
+                  description: >
+                    Opcional (Fase 14, continuação — expiração de triagem). Precisa estar no futuro.
+                    Quando o prazo passa, o achado volta a contar como aberto em
+                    SecurityPosture/ListProjectFindingsHistory (mas a decisão em si nunca é apagada
+                    automaticamente — ver GET .../findings-history's triage_expired).
+      responses:
+        "200":
+          description: Triagem gravada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "400":
+          description: projectID/fingerprint inválido, status desconhecido, reason vazio/longo demais, ou expires_at no passado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Projeto não encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+    delete:
+      tags: [scanning]
+      summary: Reabre um achado já triado (Fase 14 — Maturidade de AppSec)
+      operationId: untriageFinding
+      description: >
+        Apaga a decisão de triagem — idempotente, chamar num fingerprint nunca triado (ou já
+        reaberto) não é erro. Gravado em audit_logs (finding.untriaged).
+      security:
+        - bearerAuth: [scanning:manage]
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: fingerprint
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Achado reaberto (ou já estava aberto).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "400":
+          description: projectID/fingerprint inválido.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/ws/ticket:
+    post:
+      tags: [websocket]
+      summary: Emite um ticket de WebSocket de curta duração
+      operationId: createWebSocketTicket
+      description: >
+        Retorna um ticket de uso único, válido por 30 segundos, que
+        autoriza exatamente um upgrade `GET /ws?ticket=...` (§38) —
+        navegadores não conseguem anexar um header Authorization ao
+        handshake de WebSocket, então este ticket é a credencial da conexão
+        em seu lugar. Sujeito a rate limiting por chamador.
+      responses:
+        "201":
+          description: Um ticket recém-emitido.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          ticket:
+                            type: string
+                          expires_at:
+                            type: string
+                            format: date-time
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /ws:
+    get:
+      tags: [websocket]
+      summary: Upgrade de WebSocket (não é um endpoint HTTP comum)
+      operationId: websocketUpgrade
+      description: >
+        Não modelado como uma operação REST — incluído aqui apenas para
+        descoberta. Exige `?ticket=<valor>` obtido em
+        `POST /api/v1/ws/ticket`. Ao conectar, o cliente recebe todo
+        envelope de evento da plataforma
+        (`{id,type,version,source,occurred_at,correlation_id,payload}`)
+        como um frame de texto JSON — ver `EventEnvelope` abaixo.
+      security: []
+      parameters:
+        - name: ticket
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "101":
+          description: Switching Protocols — WebSocket estabelecido.
+        "401":
+          description: Ticket ausente, inválido, expirado ou já utilizado.
+
+  /api/v1/admin/feature-flags:
+    get:
+      tags: [admin]
+      summary: Lista toda feature flag registrada
+      operationId: listFeatureFlags
+      description: >
+        Restrito ao papel nix-admin. Inclui as flags semeadas por migration
+        (`diario_oficial_scraping_enabled`) e qualquer outra já criada via
+        PATCH.
+      security:
+        - bearerAuth: [feature_flags:manage]
+      responses:
+        "200":
+          description: Toda feature flag registrada.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/FeatureFlag"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/admin/feature-flags/{key}:
+    patch:
+      tags: [admin]
+      summary: Habilita ou desabilita uma feature flag
+      operationId: setFeatureFlag
+      description: >
+        Restrito ao papel nix-admin. Efeito imediato em toda réplica da
+        API/worker — não há cache em memória, cada checagem de flag
+        consulta o Postgres diretamente (§ Feature Flags & Configuração
+        Dinâmica). Se `key` ainda não existir, é criada nesta chamada
+        (upsert).
+      security:
+        - bearerAuth: [feature_flags:manage]
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "diario_oficial_scraping_enabled"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+            example:
+              enabled: false
+      responses:
+        "200":
+          description: A flag após a alteração.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/FeatureFlag"
+        "400":
+          description: Corpo inválido ou chave da flag ausente.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Um access token OIDC emitido pelo Keycloak. Validado localmente
+        (assinatura, emissor, audiência, expiração, algoritmo) contra um
+        JWKS em cache.
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 20
+
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: >
+        Chave única por operação lógica (recomenda-se um UUID gerado no
+        cliente), escopada ao usuário autenticado. Reenviar a mesma
+        requisição com a mesma chave reproduz a resposta original em vez
+        de reexecutar a operação — ver a nota de Idempotência na descrição
+        geral da API.
+      schema:
+        type: string
+      example: "3f2b9e0a-6d34-4e77-9c3e-2b6f8e6b6a3d"
+
+  responses:
+    TestJobAccepted:
+      description: >
+        O teste foi enfileirado. Se a requisição carregou um
+        `Idempotency-Key` já usado com sucesso antes (mesmo corpo), esta é
+        uma resposta reproduzida (replay) da chamada original — o header
+        `Idempotent-Replay: true` distingue esse caso, e nenhum job novo
+        foi criado.
+      headers:
+        Idempotent-Replay:
+          description: Presente e "true" somente quando esta resposta é um replay de uma chamada anterior com a mesma Idempotency-Key.
+          schema:
+            type: string
+            enum: ["true"]
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      job_id:
+                        type: string
+                        format: uuid
+                      status:
+                        type: string
+                        enum: [queued]
+          example:
+            data: { job_id: "3c1f1e2a-...", status: "queued" }
+            error: null
+
+    IdempotencyConflict:
+      description: >
+        Conflito relacionado à Idempotency-Key: `IDEMPOTENCY_KEY_IN_PROGRESS`
+        se uma requisição com a mesma chave ainda está sendo processada, ou
+        `IDEMPOTENCY_KEY_REUSED` se a chave já foi usada com um corpo de
+        requisição diferente.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Envelope"
+          examples:
+            in_progress:
+              summary: Requisição original ainda em andamento
+              value:
+                data: null
+                error: { code: "IDEMPOTENCY_KEY_IN_PROGRESS", message: "a request with this Idempotency-Key is already being processed" }
+            reused:
+              summary: Mesma chave usada com um corpo diferente
+              value:
+                data: null
+                error: { code: "IDEMPOTENCY_KEY_REUSED", message: "Idempotency-Key was already used with a different request" }
+
+    IntegrationUnavailable:
+      description: >
+        A integração externa está temporariamente indisponível.
+        `CIRCUIT_OPEN` (o circuit breaker interno abriu depois de falhas
+        consecutivas — tende a se resolver sozinho) e `FEATURE_DISABLED`
+        (um nix-admin desligou a integração via feature flag — só volta
+        quando religada) usam o mesmo status 503, diferenciados pelo
+        `error.code`.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Envelope"
+          examples:
+            circuit_open:
+              summary: Circuit breaker aberto
+              value:
+                data: null
+                error: { code: "CIRCUIT_OPEN", message: "diario-oficial: temporarily unavailable (circuit breaker open)" }
+            feature_disabled:
+              summary: Feature flag desabilitada por um administrador
+              value:
+                data: null
+                error: { code: "FEATURE_DISABLED", message: "the \"diario_oficial_scraping_enabled\" feature is currently disabled" }
+
+    Unauthorized:
+      description: Access token ausente, inválido ou expirado.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Envelope"
+          example:
+            data: null
+            error: { code: "UNAUTHORIZED", message: "invalid or expired access token" }
+
+    Forbidden:
+      description: Autenticado, mas sem o role/permissão necessário.
+      content:
+        application/json:
+          example:
+            data: null
+            error: { code: "FORBIDDEN", message: "insufficient permission" }
+
+    NotFound:
+      description: O recurso não existe.
+      content:
+        application/json:
+          example:
+            data: null
+            error: { code: "NOT_FOUND", message: "resource not found" }
+
+    TooManyRequests:
+      description: Limite de requisições excedido.
+      content:
+        application/json:
+          example:
+            data: null
+            error: { code: "RATE_LIMITED", message: "too many requests, please try again later" }
+
+  schemas:
+    Envelope:
+      type: object
+      description: >
+        O formato base de toda resposta. Operações bem-sucedidas restringem
+        `data` a um tipo concreto via `allOf` no próprio schema da resposta;
+        esta forma base documenta o contrato genérico {data, error, meta}.
+      properties:
+        data:
+          type: object
+          nullable: true
+        error:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/ErrorBody"
+        meta:
+          type: object
+          nullable: true
+      required: [data, error]
+
+    ErrorBody:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "VALIDATION_ERROR"
+        message:
+          type: string
+          example: "email: failed on \"required\""
+      required: [code, message]
+
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total_items:
+          type: integer
+        total_pages:
+          type: integer
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    Integration:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          example: "diario-oficial"
+        name:
+          type: string
+        type:
+          type: string
+        enabled:
+          type: boolean
+        status:
+          type: string
+          enum: [unknown, online, offline, degraded, disabled]
+        last_check_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_success_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_error:
+          type: string
+          nullable: true
+
+    Finding:
+      type: object
+      description: Um achado persistido de uma execução de scan (ver `/api/v1/scanning/scans/{scanID}/findings`).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID da própria linha (não confundir com finding_id).
+        scan_id:
+          type: string
+          format: uuid
+        scanner:
+          type: string
+          example: "trivy"
+        target:
+          type: string
+        finding_id:
+          type: string
+          description: O identificador do achado em si — um CVE, ou uma regra do scanner.
+          example: "CVE-2026-12345"
+        owasp_category:
+          type: string
+          example: "A06:2021-Vulnerable and Outdated Components"
+        severity:
+          type: string
+          enum: [CRITICAL, HIGH, MEDIUM, LOW]
+        description:
+          type: string
+        file:
+          type: string
+        line:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    ProjectFindingHistory:
+      type: object
+      description: >
+        Um achado deduplicado por fingerprint ENTRE os re-scans de um projeto (Fase 12), decorado
+        com sua triagem se alguma (Fase 14 — Maturidade de AppSec). Ver
+        `/api/v1/scanning/projects/{projectID}/findings-history`.
+      properties:
+        fingerprint:
+          type: string
+        scanner:
+          type: string
+          example: "trivy"
+        owasp_category:
+          type: string
+        severity:
+          type: string
+          enum: [CRITICAL, HIGH, MEDIUM, LOW]
+        description:
+          type: string
+        file:
+          type: string
+        line:
+          type: integer
+        first_seen_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        scan_count:
+          type: integer
+          description: Quantos scans DISTINTOS deste projeto incluíram este fingerprint.
+        still_present:
+          type: boolean
+          description: Se este fingerprint aparece no scan MAIS RECENTE do projeto.
+        triage_status:
+          type: string
+          enum: ["", false_positive, wont_fix, risk_accepted]
+          description: "\"\" (vazio) é o estado implícito \"aberto, nunca triado\" — nunca omitido do JSON."
+        triage_reason:
+          type: string
+          description: Ausente quando triage_status é vazio.
+        triage_expires_at:
+          type: string
+          format: date-time
+          description: Fase 14, continuação — expiração de triagem. Ausente sem prazo, ou sem triagem.
+        triage_expired:
+          type: boolean
+          description: >
+            true quando triage_expires_at já passou — o achado continua carregando
+            triage_status/triage_reason (a decisão fica registrada), mas conta como ABERTO em
+            SecurityPosture, não como triado.
+
+    PostureSnapshot:
+      type: object
+      description: >
+        Um ponto da série temporal de SecurityPosture (Fase 14, continuação — tendência histórica),
+        gravado uma vez por dia pelo worker. Ver GET /api/v1/scanning/posture/history.
+      properties:
+        date:
+          type: string
+          format: date
+          description: "YYYY-MM-DD — só a data, não um timestamp."
+        open_critical:
+          type: integer
+        open_high:
+          type: integer
+        open_medium:
+          type: integer
+        open_low:
+          type: integer
+        triaged_count:
+          type: integer
+        projects_scanned:
+          type: integer
+
+    ProjectPosture:
+      type: object
+      description: Contribuição de UM projeto pro SecurityPosture agregado — ver `top_vulnerable`.
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        project_name:
+          type: string
+        open_critical:
+          type: integer
+        open_high:
+          type: integer
+
+    SecurityPosture:
+      type: object
+      description: >
+        Resumo agregado de achados ABERTOS (ainda presentes + não triados) entre todo projeto
+        persistente (Fase 14 — Maturidade de AppSec). Ver `/api/v1/scanning/posture`.
+      properties:
+        open_critical:
+          type: integer
+        open_high:
+          type: integer
+        open_medium:
+          type: integer
+        open_low:
+          type: integer
+        triaged_count:
+          type: integer
+          description: Achados ainda presentes mas já triados — não contam em open_*.
+        projects_scanned:
+          type: integer
+        top_vulnerable:
+          type: array
+          description: Até 5 projetos, os com mais crítico/alto aberto primeiro.
+          items:
+            $ref: "#/components/schemas/ProjectPosture"
+
+    ScannerHealth:
+      type: object
+      description: >
+        Resultado da checagem de saúde de UM scanner (reestruturação de /seguranca — "saúde das
+        ferramentas antes de iniciá-las"). Ver GET /api/v1/scanning/scanners/health.
+      properties:
+        scanner:
+          type: string
+          example: "trivy"
+        healthy:
+          type: boolean
+        message:
+          type: string
+          description: Ausente quando healthy=true; o motivo (não configurado, inalcançável, status inesperado) caso contrário.
+        checked_at:
+          type: string
+          format: date-time
+
+    SourceHealth:
+      type: object
+      description: >
+        Resultado da checagem de saúde da fonte de dados do Diário Oficial (DJEN hoje). Mesmo shape
+        de ScannerHealth (source no lugar de scanner). Ver GET /api/v1/diario-oficial/health.
+      properties:
+        source:
+          type: string
+          example: "djen"
+        healthy:
+          type: boolean
+        message:
+          type: string
+          description: Ausente quando healthy=true; o motivo (não configurado, inalcançável, erro de rede) caso contrário.
+        checked_at:
+          type: string
+          format: date-time
+
+    MonitoredTerm:
+      type: object
+      description: >
+        MVP de monitoramento real do Diário Oficial via DJEN — o que o usuário quer acompanhar.
+        Pelo menos um critério é preenchido: oab_number+oab_uf, process_number, ou free_text.
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string, example: "Dr. Fulano — OAB/MG 419" }
+        oab_number: { type: string }
+        oab_uf: { type: string }
+        process_number: { type: string }
+        free_text: { type: string }
+        active: { type: boolean }
+        last_synced_at:
+          type: string
+          format: date-time
+          description: Ausente se este termo ainda nunca foi sincronizado pelo worker.
+        created_at: { type: string, format: date-time }
+      required: [id, label, active, created_at]
+
+    MatchedPublication:
+      type: object
+      description: >
+        Uma publicação do DJEN que casou com um MonitoredTerm — persistida pelo worker
+        (nunca buscada sob demanda), com o resultado do casamento junto.
+      properties:
+        id: { type: string, format: uuid }
+        tribunal: { type: string, example: "TJMG" }
+        orgao: { type: string }
+        tipo_comunicacao: { type: string, example: "Intimação" }
+        texto: { type: string }
+        process_number: { type: string }
+        process_number_masked: { type: string, example: "5001534-94.2025.8.13.0351" }
+        availability_date: { type: string, format: date }
+        link: { type: string, description: "URL da publicação original no sistema do tribunal." }
+        monitored_term_id: { type: string, format: uuid }
+        monitored_term_label: { type: string }
+        matched_at: { type: string, format: date-time }
+      required: [id, tribunal, orgao, tipo_comunicacao, texto, process_number, process_number_masked, availability_date, monitored_term_id, monitored_term_label, matched_at]
+
+    FeatureFlag:
+      type: object
+      description: Uma feature flag alterável em tempo de execução (§ Feature Flags & Configuração Dinâmica).
+      properties:
+        key:
+          type: string
+          example: "diario_oficial_scraping_enabled"
+        enabled:
+          type: boolean
+        description:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+        updated_by:
+          type: string
+          description: Subject (Keycloak) do administrador que fez a última alteração; ausente se a flag nunca foi alterada manualmente.
+      required: [key, enabled, description, updated_at]
+
+    EventEnvelope:
+      type: object
+      description: O formato de toda mensagem entregue via WebSocket (§17/§43).
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          example: "diario_oficial.job.completed"
+        version:
+          type: integer
+        source:
+          type: string
+          example: "nix.diario_oficial"
+        occurred_at:
+          type: string
+          format: date-time
+        correlation_id:
+          type: string
+          format: uuid
+        payload:
+          type: object
+      required: [id, type, version, source, occurred_at, correlation_id, payload]

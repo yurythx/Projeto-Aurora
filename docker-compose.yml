@@ -1,0 +1,190 @@
+name: projeto-nova
+networks:
+  nix_internal:
+    driver: bridge
+volumes:
+  postgres_data: null
+  rabbitmq_data: null
+  sonarqube_db_data: null
+  sonarqube_data: null
+  sonarqube_extensions: null
+  sonarqube_logs: null
+  scanning_workspace: null
+  minio_data: null
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-nix}
+      POSTGRES_USER: ${DB_USER:-nix}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+    volumes:
+    - postgres_data:/var/lib/postgresql/data
+    networks:
+    - nix_internal
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U ${DB_USER:-nix} -d ${DB_NAME:-nix}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-nix}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?RABBITMQ_DEFAULT_PASS must be
+        set}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_DEFAULT_VHOST:-nix}
+    volumes:
+    - rabbitmq_data:/var/lib/rabbitmq
+    - ./deploy/rabbitmq.conf:/etc/rabbitmq/conf.d/consumer_timeout.conf:ro
+    networks:
+    - nix_internal
+    healthcheck:
+      test:
+      - CMD
+      - rabbitmq-diagnostics
+      - -q
+      - ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+    volumes:
+      - minio_data:/data
+    networks:
+      - nix_internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  backend-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    env_file:
+    - .env
+    environment:
+      DB_HOST: postgres
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-nix}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/${RABBITMQ_DEFAULT_VHOST:-nix}
+      SCANNING_TRIVY_SERVICE_URL: http://trivy-scanner:8080
+      SCANNING_GITLEAKS_SERVICE_URL: http://gitleaks-scanner:8080
+      SCANNING_SYFT_SERVICE_URL: http://syft-scanner:8080
+      SCANNING_SEMGREP_SERVICE_URL: http://semgrep-scanner:8080
+      SCANNING_SONAR_SCANNER_SERVICE_URL: http://sonar-scanner-cli:8080
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+      MINIO_BUCKET: ${MINIO_BUCKET:-demands}
+      MINIO_USE_SSL: "false"
+    volumes:
+    - ./secrets:/run/secrets:ro
+    networks:
+    - nix_internal
+    ports:
+    - ${HTTP_PORT:-8000}:${HTTP_PORT:-8000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - wget
+      - --spider
+      - -q
+      - http://127.0.0.1:${HTTP_PORT:-8000}/health
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    extra_hosts:
+    - host.docker.internal:host-gateway
+  backend-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    env_file:
+    - .env
+    environment:
+      DB_HOST: postgres
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-nix}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/${RABBITMQ_DEFAULT_VHOST:-nix}
+      SCANNING_TRIVY_SERVICE_URL: http://trivy-scanner:8080
+      SCANNING_GITLEAKS_SERVICE_URL: http://gitleaks-scanner:8080
+      SCANNING_SYFT_SERVICE_URL: http://syft-scanner:8080
+      SCANNING_SEMGREP_SERVICE_URL: http://semgrep-scanner:8080
+      SCANNING_SONAR_SCANNER_SERVICE_URL: http://sonar-scanner-cli:8080
+      SCANNING_WORKSPACE_DIR: /workspace
+    volumes:
+    - ./secrets:/run/secrets:ro
+    - scanning_workspace:/workspace
+    networks:
+    - nix_internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - wget
+      - --spider
+      - -q
+      - http://127.0.0.1:${WORKER_METRICS_PORT:-9100}/health
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    extra_hosts:
+    - host.docker.internal:host-gateway
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${API_PUBLIC_URL:-http://localhost:8000}
+        NEXT_PUBLIC_WS_URL: ${WEBSOCKET_PUBLIC_URL:-ws://localhost:8000/ws}
+    restart: unless-stopped
+    env_file:
+    - .env
+    environment:
+      NEXT_PUBLIC_API_URL: ${API_PUBLIC_URL:-http://localhost:8000}
+      NEXT_PUBLIC_WS_URL: ${WEBSOCKET_PUBLIC_URL:-ws://localhost:8000/ws}
+      BACKEND_INTERNAL_URL: http://backend-api:8000
+    networks:
+    - nix_internal
+    ports:
+    - 3000:3000
+    depends_on:
+      backend-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - wget
+      - --spider
+      - -q
+      - http://127.0.0.1:3000
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    extra_hosts:
+    - host.docker.internal:host-gateway

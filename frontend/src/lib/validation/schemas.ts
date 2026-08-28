@@ -1,0 +1,80 @@
+import { z } from "zod";
+
+// Espelha o envelope de evento padrão do backend (§17). Toda mensagem
+// recebida via WebSocket é validada contra este schema antes de o
+// frontend agir sobre ela (§43) — um formato inesperado é descartado e
+// logado, nunca confiado às cegas (o servidor pode evoluir o payload de
+// um jeito que o frontend ainda não conhece, ou a mensagem pode vir
+// corrompida).
+export const eventEnvelopeSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  version: z.number(),
+  source: z.string(),
+  occurred_at: z.string(),
+  correlation_id: z.string(),
+  payload: z.unknown(),
+});
+
+export type EventEnvelope = z.infer<typeof eventEnvelopeSchema>;
+
+// Payload dos eventos do ciclo de vida de um job (diario_oficial.job.*,
+// integration.test.completed) — só o id do job, usado para montar a
+// mensagem do toast (ver NotificationCenter).
+export const jobEventPayloadSchema = z.object({
+  job_id: z.string(),
+});
+
+// Payload do evento integration.status.changed — a chave da integração e
+// seu novo status, usado para o toast "Integração X agora está Y".
+export const integrationStatusPayloadSchema = z.object({
+  key: z.string(),
+  status: z.enum(["unknown", "online", "offline", "degraded", "disabled"]),
+});
+
+// Payload do evento demand.etapa_changed — notifica os usuários
+// quando uma demanda avança no Kanban.
+export const demandEtapaChangedPayloadSchema = z.object({
+  demand_id: z.string(),
+  contrato_id: z.string(),
+  old_etapa: z.number(),
+  new_etapa: z.number(),
+  occurred_at: z.string(),
+});
+
+// Payload do evento scanning.scan.completed — espelha
+// application.scanCompletedPayload no backend. Não usa
+// jobEventPayloadSchema (job_id): este evento carrega scan_id, não
+// job_id (scanning.scan.failed, esse sim, carrega job_id — ver
+// jobRefPayload no backend — e por isso continua usando o schema
+// genérico de job).
+// critical_count/high_count (Fase 14 — Maturidade de AppSec, backend
+// scanCompletedPayload): opcionais no schema — .default(0), não
+// .optional() puro — porque um payload de ANTES desta fase (já
+// publicado no outbox, esperando ser entregue quando o backend foi
+// atualizado) não tem essas chaves, e o parser precisa continuar aceitando
+// isso como "0 achados graves", nunca rejeitar a notificação inteira só
+// por faltar um campo novo.
+export const scanCompletedPayloadSchema = z.object({
+  scan_id: z.string(),
+  scanners: z.array(z.string()),
+  target: z.string(),
+  findings_count: z.number(),
+  critical_count: z.number().default(0),
+  high_count: z.number().default(0),
+});
+
+/** Faz o parse e valida uma mensagem bruta de WebSocket; retorna null para
+ * qualquer entrada malformada em vez de lançar exceção, para que uma
+ * mensagem ruim nunca derrube o pipeline de notificações inteiro. */
+export function parseEventEnvelope(raw: string): EventEnvelope | null {
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  const result = eventEnvelopeSchema.safeParse(json);
+  return result.success ? result.data : null;
+}

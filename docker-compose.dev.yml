@@ -1,0 +1,22 @@
+services:
+  postgres:
+    ports:
+    - 5432:5432
+  rabbitmq:
+    ports:
+    - 5672:5672
+    - 15672:15672
+  minio:
+    ports:
+    - 9000:9000
+    - 9001:9001
+  backend-api:
+    environment:
+      APP_ENV: development
+      APP_LOG_LEVEL: debug
+      LOG_FORMAT: text
+  backend-worker:
+    environment:
+      APP_ENV: development
+      APP_LOG_LEVEL: debug
+      LOG_FORMAT: text

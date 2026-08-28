@@ -1,0 +1,34 @@
+# Configurações e Segredos Locais
+.env
+.env.local
+.env.*.local
+secrets/*.pem
+secrets/*.key
+
+# Node / Frontend
+node_modules/
+.next/
+out/
+build/
+dist/
+.env.production
+
+# Go / Backend
+bin/
+*.exe
+*.exe;
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# IDEs e Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
