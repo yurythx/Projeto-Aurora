@@ -64,7 +64,9 @@ describe("MatchedPublicationsFeed", () => {
     });
     renderFeed();
 
-    expect(await screen.findByText("Secretaria Municipal de Administração")).toBeInTheDocument();
+    // O texto aparece tanto no badge do card quanto numa <option> do filtro
+    // de secretaria — basta que pelo menos um exista.
+    expect((await screen.findAllByText("Secretaria Municipal de Administração"))[0]).toBeInTheDocument();
     expect(screen.getByText("PORTARIA Nº 42.100 - Nomeação de servidor")).toBeInTheDocument();
     expect(screen.getAllByText("Nomeações")[0]).toBeInTheDocument();
     expect(screen.getByText("Abrir Diário Oficial (PDF) →")).toBeInTheDocument();
