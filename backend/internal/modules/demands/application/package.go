@@ -86,6 +86,17 @@ type blobGetter interface {
 	Get(ctx context.Context, bucketName, objectName string) (io.ReadCloser, error)
 }
 
+// readObject lê um objeto inteiro para memória, fechando o reader. Retorna
+// erro tanto na abertura quanto na leitura (o cliente MinIO só falha no Read).
+func readObject(ctx context.Context, getter blobGetter, bucket, key string) ([]byte, error) {
+	rc, err := getter.Get(ctx, bucket, key)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	return io.ReadAll(rc)
+}
+
 // WriteDemandPackage baixa do storage todos os anexos da demanda `d` e os
 // escreve num único .zip em `out`, nomeados com prefixo numérico na ordem
 // das etapas (ex.: "01 - Ordem-de-Fornecimento...pdf") e precedidos de um
@@ -153,7 +164,13 @@ func writePackageZip(ctx context.Context, getter blobGetter, bucket string, d do
 		}
 		seen[base+ext]++
 
-		rc, err := getter.Get(ctx, bucket, doc.FilePath)
+		// O cliente MinIO faz GetObject preguiçoso: o erro (objeto ausente
+		// no bucket, ex. um upload presigned que falhou no navegador) só
+		// aparece no primeiro Read. Por isso lemos TUDO para um buffer
+		// antes de criar a entrada no zip — assim um anexo ilegível vira
+		// uma linha em 99 - ARQUIVOS-COM-ERRO.txt em vez de abortar (e
+		// corromper) o pacote inteiro. Anexos são PDFs/imagens pequenos.
+		content, err := readObject(ctx, getter, bucket, doc.FilePath)
 		if err != nil {
 			failed = append(failed, fmt.Sprintf("%s — %s (%s): %v", name, doc.DocType.Label(), doc.FilePath, err))
 			fmt.Fprintf(&index, "  [FALHOU] %s\r\n", name)
@@ -168,16 +185,13 @@ func writePackageZip(ctx context.Context, getter blobGetter, bucket string, d do
 
 		w, err := zw.Create(name)
 		if err != nil {
-			rc.Close()
 			_ = zw.Close()
 			return fmt.Errorf("demands package: criar entrada zip %q: %w", name, err)
 		}
-		if _, err := io.Copy(w, rc); err != nil {
-			rc.Close()
+		if _, err := w.Write(content); err != nil {
 			_ = zw.Close()
-			return fmt.Errorf("demands package: copiar %q: %w", doc.FilePath, err)
+			return fmt.Errorf("demands package: escrever %q: %w", name, err)
 		}
-		rc.Close()
 	}
 
 	// Documentos oficiais gerados (Ofício / OS / Anexo I) — prefixo alto

@@ -64,6 +64,11 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
     volumes:
       - minio_data:/data
+    # 9000 = API S3 (o navegador faz o PUT/GET direto via URL pré-assinada,
+    # assinada para MINIO_PUBLIC_URL); 9001 = console web.
+    ports:
+      - "9000:9000"
+      - "9001:9001"
     networks:
       - nix_internal
     healthcheck:
@@ -120,6 +125,10 @@ services:
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+      # Host do MinIO alcançável pelo NAVEGADOR — as URLs pré-assinadas de
+      # upload/download são assinadas para este endereço (o container fala
+      # "minio:9000", o navegador não resolve esse nome).
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000}
       MINIO_BUCKET: ${MINIO_BUCKET:-demands}
       MINIO_USE_SSL: "false"
       TYPESENSE_URL: http://typesense:8108
@@ -170,6 +179,14 @@ services:
       # indexação falhava em silêncio (coleções ficavam vazias).
       TYPESENSE_URL: http://typesense:8108
       TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:-xyz123secret}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+      MINIO_BUCKET: ${MINIO_BUCKET:-demands}
+      MINIO_USE_SSL: "false"
+      # Mesmo host público do backend-api — o worker também assina URLs
+      # pré-assinadas (pacote .zip / geração de documentos da demanda).
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000}
     volumes:
     - ./secrets:/run/secrets:ro
     - scanning_workspace:/workspace
@@ -201,6 +218,7 @@ services:
         NEXT_PUBLIC_API_URL: ${API_PUBLIC_URL:-http://localhost:8000}
         NEXT_PUBLIC_WS_URL: ${WEBSOCKET_PUBLIC_URL:-ws://localhost:8000/ws}
         NEXT_PUBLIC_TYPESENSE_URL: ${TYPESENSE_PUBLIC_URL:-http://localhost:8108}
+        NEXT_PUBLIC_MINIO_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000}
     restart: unless-stopped
     env_file:
     - .env
@@ -208,6 +226,7 @@ services:
       NEXT_PUBLIC_API_URL: ${API_PUBLIC_URL:-http://localhost:8000}
       NEXT_PUBLIC_WS_URL: ${WEBSOCKET_PUBLIC_URL:-ws://localhost:8000/ws}
       NEXT_PUBLIC_TYPESENSE_URL: ${TYPESENSE_PUBLIC_URL:-http://localhost:8108}
+      NEXT_PUBLIC_MINIO_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000}
       BACKEND_INTERNAL_URL: http://backend-api:8000
     networks:
     - nix_internal

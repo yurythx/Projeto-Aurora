@@ -50,7 +50,13 @@ type DashboardData struct {
 // Dashboard monta o painel: funil por etapa, demandas fora do SLA,
 // pendências abertas e certidões vencidas / a vencer em 30 dias.
 func (s *Service) Dashboard(ctx context.Context, now time.Time) (DashboardData, error) {
-	var out DashboardData
+	// Slices sempre serializam como [] (nunca null) — o frontend faz
+	// `.length`/`.map` direto sem null-guard.
+	out := DashboardData{
+		Funnel:           []FunnelStage{},
+		SLABreachedItems: []SLABreachRow{},
+		CertidoesItems:   []CertidaoRow{},
+	}
 
 	counts, err := s.repo.CountByEtapa(ctx)
 	if err != nil {

@@ -149,7 +149,10 @@ func NewDependencies(ctx context.Context, component string) (*Dependencies, erro
 
 	publisher := messaging.NewPublisher(mqConn)
 
-	minioProvider, err := storage.NewMinioProvider(cfg.MinIO.Endpoint, cfg.MinIO.AccessKey, cfg.MinIO.SecretKey, cfg.MinIO.UseSSL)
+	minioProvider, err := storage.NewMinioProviderWithPresign(
+		cfg.MinIO.Endpoint, cfg.MinIO.PublicEndpoint,
+		cfg.MinIO.AccessKey, cfg.MinIO.SecretKey,
+		cfg.MinIO.UseSSL, cfg.MinIO.PublicUseSSL)
 	if err != nil {
 		pool.Close()
 		_ = mqConn.Close()

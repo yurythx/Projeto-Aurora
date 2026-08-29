@@ -73,7 +73,7 @@ export default async function DashboardOverviewPage() {
   }
 
   const funnelMax = demandsDash
-    ? Math.max(1, ...demandsDash.funnel.map((f) => f.total))
+    ? Math.max(1, ...(demandsDash.funnel ?? []).map((f) => f.total))
     : 1;
 
   return (
@@ -219,7 +219,7 @@ export default async function DashboardOverviewPage() {
                 <CardTitle className="text-sm">Funil por etapa</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col gap-2">
-                {demandsDash.funnel.map((f) => (
+                {(demandsDash.funnel ?? []).map((f) => (
                   <div key={f.etapa} className="flex items-center gap-2 text-xs">
                     <span className="w-6 shrink-0 font-mono text-muted-foreground">{f.etapa}</span>
                     <div className="flex-1">
@@ -246,11 +246,11 @@ export default async function DashboardOverviewPage() {
               <CardContent className="flex flex-col gap-3 text-xs">
                 <div>
                   <p className="font-semibold text-muted-foreground mb-1">SLA estourado</p>
-                  {demandsDash.sla_breached_items.length === 0 ? (
+                  {(demandsDash.sla_breached_items ?? []).length === 0 ? (
                     <p className="text-muted-foreground">Nenhuma demanda fora do prazo.</p>
                   ) : (
                     <ul className="flex flex-col gap-1">
-                      {demandsDash.sla_breached_items.map((it) => (
+                      {(demandsDash.sla_breached_items ?? []).map((it) => (
                         <li key={it.demanda_id} className="flex justify-between gap-2">
                           <span>
                             Contrato {it.contrato_numero || "—"} · Etapa {it.etapa}
@@ -265,11 +265,11 @@ export default async function DashboardOverviewPage() {
                 </div>
                 <div>
                   <p className="font-semibold text-muted-foreground mb-1">Certidões vencidas / a vencer</p>
-                  {demandsDash.certidoes_items.length === 0 ? (
+                  {(demandsDash.certidoes_items ?? []).length === 0 ? (
                     <p className="text-muted-foreground">Nenhuma certidão vencida ou a vencer em 30 dias.</p>
                   ) : (
                     <ul className="flex flex-col gap-1">
-                      {demandsDash.certidoes_items.slice(0, 12).map((it) => (
+                      {(demandsDash.certidoes_items ?? []).slice(0, 12).map((it) => (
                         <li key={`${it.demanda_id}-${it.doc_type}`} className="flex justify-between gap-2">
                           <span className="truncate">
                             {it.contrato_numero || "—"} · {it.label}

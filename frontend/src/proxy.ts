@@ -41,6 +41,12 @@ export async function proxy(request: NextRequest) {
   const wsOrigin = wsOriginFromPublicUrl(process.env.NEXT_PUBLIC_WS_URL);
   const typesenseUrl = process.env.NEXT_PUBLIC_TYPESENSE_URL || "http://localhost:8108";
   const typesenseOrigin = wsOriginFromPublicUrl(typesenseUrl);
+  // O navegador faz PUT/GET direto no MinIO usando as URLs pré-assinadas
+  // que o backend devolve (upload/download de anexos das demandas). Essa
+  // origem precisa estar em connect-src — em dev connectSrcDev já abre
+  // http: inteiro, mas em produção só esta entrada libera o storage.
+  const minioUrl = process.env.NEXT_PUBLIC_MINIO_URL || "http://localhost:9000";
+  const minioOrigin = wsOriginFromPublicUrl(minioUrl);
 
   // unsafe-eval só em desenvolvimento: o React usa eval para reconstruir
   // stack traces do servidor no navegador durante o dev; não é usado em
@@ -52,7 +58,7 @@ export async function proxy(request: NextRequest) {
     style-src 'self' 'nonce-${nonce}' 'unsafe-inline';
     img-src 'self' blob: data:;
     font-src 'self';
-    connect-src 'self' http://localhost:8108 http://127.0.0.1:8108 ws://localhost:8000 ws://127.0.0.1:8000 http://localhost:3000 http://127.0.0.1:3000${connectSrcDev}${wsOrigin ? ` ${wsOrigin}` : ""}${typesenseOrigin ? ` ${typesenseOrigin}` : ""};
+    connect-src 'self' http://localhost:8108 http://127.0.0.1:8108 ws://localhost:8000 ws://127.0.0.1:8000 http://localhost:3000 http://127.0.0.1:3000${connectSrcDev}${wsOrigin ? ` ${wsOrigin}` : ""}${typesenseOrigin ? ` ${typesenseOrigin}` : ""}${minioOrigin ? ` ${minioOrigin}` : ""};
     object-src 'none';
     base-uri 'self';
     form-action 'self';

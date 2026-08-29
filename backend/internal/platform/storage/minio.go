@@ -12,20 +12,44 @@ import (
 
 // MinioProvider implementa a interface Provider para interagir com o MinIO (ou AWS S3).
 type MinioProvider struct {
-	client *minio.Client
+	client        *minio.Client // ops server-side (rede interna)
+	presignClient *minio.Client // assina URLs para o host alcançável pelo navegador
 }
 
-// NewMinioProvider constrói e conecta um cliente ao servidor MinIO.
+// NewMinioProvider constrói o cliente do servidor MinIO. As URLs
+// pré-assinadas são assinadas para o MESMO host — use
+// NewMinioProviderWithPresign quando o navegador acessa o MinIO por outro
+// endereço (o caso do Docker: backend fala com "minio:9000", navegador com
+// "localhost:9000").
 func NewMinioProvider(endpoint, accessKey, secretKey string, useSSL bool) (*MinioProvider, error) {
-	client, err := minio.New(endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
-		Secure: useSSL,
-	})
+	return NewMinioProviderWithPresign(endpoint, endpoint, accessKey, secretKey, useSSL, useSSL)
+}
+
+// minioRegion fixa a região usada na assinatura V4. O MinIO responde como
+// "us-east-1" por padrão. Passar Region explicitamente é essencial no
+// presignClient: sem ela, o minio-go dispara um GetBucketLocation ao vivo
+// contra o publicEndpoint na hora de assinar a URL — e esse host
+// (ex.: localhost:9000) não é alcançável de DENTRO do container, então a
+// assinatura falhava com "connection refused". Com a região conhecida o
+// minio-go assina offline, sem nenhuma chamada de rede.
+const minioRegion = "us-east-1"
+
+// NewMinioProviderWithPresign separa o endpoint interno (Get/Put/Delete) do
+// endpoint público usado só para PresignedPutURL/PresignedGetURL.
+func NewMinioProviderWithPresign(endpoint, publicEndpoint, accessKey, secretKey string, useSSL, publicUseSSL bool) (*MinioProvider, error) {
+	creds := credentials.NewStaticV4(accessKey, secretKey, "")
+	client, err := minio.New(endpoint, &minio.Options{Creds: creds, Secure: useSSL, Region: minioRegion})
 	if err != nil {
 		return nil, fmt.Errorf("storage: failed to initialize minio client: %w", err)
 	}
-
-	return &MinioProvider{client: client}, nil
+	presignClient := client
+	if publicEndpoint != "" && publicEndpoint != endpoint {
+		presignClient, err = minio.New(publicEndpoint, &minio.Options{Creds: creds, Secure: publicUseSSL, Region: minioRegion})
+		if err != nil {
+			return nil, fmt.Errorf("storage: failed to initialize minio presign client: %w", err)
+		}
+	}
+	return &MinioProvider{client: client, presignClient: presignClient}, nil
 }
 
 // EnsureBucket verifica se um bucket existe e cria caso não exista.
@@ -74,7 +98,7 @@ func (p *MinioProvider) Delete(ctx context.Context, bucketName, objectName strin
 
 // PresignedPutURL gera uma URL segura temporária para que o cliente consiga fazer o upload via PUT sem passar pelo backend.
 func (p *MinioProvider) PresignedPutURL(ctx context.Context, bucketName, objectName string, expiry time.Duration) (string, error) {
-	url, err := p.client.PresignedPutObject(ctx, bucketName, objectName, expiry)
+	url, err := p.presignClient.PresignedPutObject(ctx, bucketName, objectName, expiry)
 	if err != nil {
 		return "", fmt.Errorf("storage: generate presigned put: %w", err)
 	}
@@ -83,7 +107,7 @@ func (p *MinioProvider) PresignedPutURL(ctx context.Context, bucketName, objectN
 
 // PresignedGetURL gera uma URL temporária para leitura.
 func (p *MinioProvider) PresignedGetURL(ctx context.Context, bucketName, objectName string, expiry time.Duration) (string, error) {
-	url, err := p.client.PresignedGetObject(ctx, bucketName, objectName, expiry, nil)
+	url, err := p.presignClient.PresignedGetObject(ctx, bucketName, objectName, expiry, nil)
 	if err != nil {
 		return "", fmt.Errorf("storage: generate presigned get: %w", err)
 	}

@@ -8,6 +8,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -146,11 +147,17 @@ const DefaultRondonopolisToken = "375d81a3db63187fc30967e367895581b35113e72a4689
 
 // MinIOConfig guarda as credenciais para storage de PDFs de contratos e certidões.
 type MinIOConfig struct {
-	Endpoint  string
+	Endpoint  string // host:porta alcançável pelo backend (rede interna) — usado em Get/Put/Delete
 	AccessKey string
 	SecretKey string
 	Bucket    string
 	UseSSL    bool
+	// PublicEndpoint / PublicUseSSL: host alcançável pelo NAVEGADOR — as
+	// URLs pré-assinadas (upload/download direto do cliente) precisam ser
+	// assinadas para ESTE host, senão o navegador tenta resolver o nome
+	// interno do Docker ("minio:9000") e o upload falha. Default = Endpoint.
+	PublicEndpoint string
+	PublicUseSSL   bool
 }
 
 // TypesenseConfig guarda as credenciais do motor de busca Typesense.
@@ -353,13 +360,7 @@ func Load() (*Config, error) {
 			RondonopolisBaseURL: l.str("RONDONOPOLIS_DIARY_BASE_URL", false, DefaultRondonopolisBaseURL),
 			RondonopolisToken:   l.secret("RONDONOPOLIS_DIARY_TOKEN", false, DefaultRondonopolisToken),
 		},
-		MinIO: MinIOConfig{
-			Endpoint:  l.str("MINIO_ENDPOINT", false, "minio:9000"),
-			AccessKey: l.str("MINIO_ACCESS_KEY", false, insecureMinioAccessKey),
-			SecretKey: l.secret("MINIO_SECRET_KEY", false, insecureMinioSecretKey),
-			Bucket:    l.str("MINIO_BUCKET", false, "demands"),
-			UseSSL:    l.boolVal("MINIO_USE_SSL", false),
-		},
+		MinIO: minioConfig(l),
 		Typesense: TypesenseConfig{
 			URL:    l.str("TYPESENSE_URL", false, "http://localhost:8108"),
 			APIKey: l.secret("TYPESENSE_API_KEY", false, insecureTypesenseKey),
@@ -424,6 +425,30 @@ const (
 	insecureMinioAccessKey = "admin"
 	insecureMinioSecretKey = "password123"
 )
+
+// minioConfig monta MinIOConfig, derivando o endpoint público (para URLs
+// pré-assinadas — alcançável pelo navegador) de MINIO_PUBLIC_URL. Sem essa
+// variável, usa o mesmo host interno (comportamento antigo).
+func minioConfig(l *loader) MinIOConfig {
+	c := MinIOConfig{
+		Endpoint:  l.str("MINIO_ENDPOINT", false, "minio:9000"),
+		AccessKey: l.str("MINIO_ACCESS_KEY", false, insecureMinioAccessKey),
+		SecretKey: l.secret("MINIO_SECRET_KEY", false, insecureMinioSecretKey),
+		Bucket:    l.str("MINIO_BUCKET", false, "demands"),
+		UseSSL:    l.boolVal("MINIO_USE_SSL", false),
+	}
+	c.PublicEndpoint = c.Endpoint
+	c.PublicUseSSL = c.UseSSL
+	if raw := strings.TrimSpace(os.Getenv("MINIO_PUBLIC_URL")); raw != "" {
+		if u, err := url.Parse(raw); err == nil && u.Host != "" {
+			c.PublicEndpoint = u.Host
+			c.PublicUseSSL = u.Scheme == "https"
+		} else {
+			l.errs = append(l.errs, fmt.Sprintf("MINIO_PUBLIC_URL (URL inválida: %q)", raw))
+		}
+	}
+	return c
+}
 
 // LoadDatabase lê só as variáveis DB_* — usado por ferramentas standalone
 // (ex.: cmd/seedadmin) que precisam de uma conexão Postgres mas não do
