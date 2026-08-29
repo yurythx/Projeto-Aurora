@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { useToast } from "@/components/notifications/ToastProvider";
 import { apiClient } from "@/lib/api/client";
+import { fetchContratos } from "@/lib/api/contratos";
 import type { Contrato, KanbanResponse } from "@/types/api";
 
 export interface ContractOfficial {
@@ -52,7 +53,10 @@ export function ContractMonitoringDashboard() {
     setLoading(true);
     try {
       const [resContratos, resKanban] = await Promise.all([
-        apiClient.get<Contrato[]>("v1/contratos").catch(() => ({ data: [] as Contrato[] })),
+        // fetchContratos desembrulha o envelope paginado ({ data, total, ... }) —
+        // usar apiClient direto aqui deixava contractsList sempre vazio (o
+        // painel não mostrava nenhum contrato).
+        fetchContratos(1, 500).catch(() => ({ data: [] as Contrato[] })),
         apiClient.get<KanbanResponse>("v1/demands/kanban").catch(() => ({ data: null })),
       ]);
 

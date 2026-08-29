@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { X, Calendar, FileText, Building2 } from "lucide-react";
 import { createDemand } from "@/lib/api/demands";
-import { apiClient } from "@/lib/api/client";
+import { fetchContratos } from "@/lib/api/contratos";
 import type { Contrato } from "@/types/api";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/notifications/ToastProvider";
@@ -25,10 +25,15 @@ export function NewDemandModal({ onClose, onCreated }: Props) {
   useEffect(() => {
     async function loadContratos() {
       try {
-        const { data } = await apiClient.get<Contrato[]>("v1/contratos");
-        setContratos(data || []);
-        if (data && data.length > 0 && data[0]) {
-          setSelectedContratoId(data[0].id);
+        // O endpoint de listagem devolve um envelope paginado
+        // ({ data, total, page, pages }); fetchContratos já o desembrulha.
+        // Chamar apiClient direto aqui deixava `contratos` como objeto e
+        // quebrava o .map do <select> ("contratos.map is not a function").
+        const { data } = await fetchContratos(1, 200);
+        const list = Array.isArray(data) ? data : [];
+        setContratos(list);
+        if (list.length > 0 && list[0]) {
+          setSelectedContratoId(list[0].id);
         }
       } catch (err) {
         showToast({
