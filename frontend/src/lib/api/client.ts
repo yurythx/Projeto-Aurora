@@ -47,6 +47,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<{ data: T; 
     },
   });
 
+  // 401 do proxy BFF = sessão morta/expirada (ver lib/auth/tokenState.ts).
+  // Sem isto, uma tela com polling SWR só acumulava erros silenciosos e o
+  // usuário nunca era levado de volta ao login. RBAC negado usa 403, não
+  // 401, então redirecionar aqui é seguro.
+  if (res.status === 401 && typeof window !== "undefined") {
+    const { pathname, search } = window.location;
+    if (pathname !== "/login") {
+      const callbackUrl = encodeURIComponent(pathname + search);
+      window.location.assign(`/login?callbackUrl=${callbackUrl}`);
+    }
+  }
+
   let json: Envelope<T>;
   try {
     json = await res.json();

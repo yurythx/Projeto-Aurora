@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { accessTokenUsable } from "@/lib/auth/tokenState";
 
 // O Next.js 16 renomeou a convenção middleware.ts para proxy.ts (mesmo
 // mecanismo, só o nome do arquivo/export mudou). Esta função tem duas
@@ -76,7 +77,10 @@ export async function proxy(request: NextRequest) {
   );
   if (isProtectedRoute) {
     const token = await getToken({ req: request });
-    if (!token || token.error) {
+    // accessTokenUsable cobre também o token VENCIDO (o login local não
+    // renova e o callback jwt não roda em toda navegação) — sem isso o
+    // usuário ficava "logado" numa tela que só recebe 401 do backend.
+    if (!accessTokenUsable(token)) {
       const loginUrl = new URL("/login", request.url);
       loginUrl.searchParams.set("callbackUrl", request.nextUrl.pathname);
       return NextResponse.redirect(loginUrl);

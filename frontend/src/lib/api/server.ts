@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getServerToken } from "@/lib/auth/serverToken";
+import { accessTokenUsable } from "@/lib/auth/tokenState";
 import { ApiError } from "@/lib/api/client";
 import { BACKEND_INTERNAL_URL } from "@/lib/api/backendUrl";
 
@@ -29,8 +30,11 @@ interface Envelope<T> {
 
 export async function serverApiGet<T>(path: string): Promise<{ data: T; meta?: unknown }> {
   const token = await getServerToken();
-  if (!token || !token.accessToken || token.error) {
-    throw new ApiError(401, "UNAUTHORIZED", "autenticação necessária");
+  // Inclui a checagem de vencimento (ver lib/auth/tokenState.ts) — um
+  // token local expirado ainda não carimbado com `error` no cookie não
+  // pode ser repassado ao backend.
+  if (!accessTokenUsable(token)) {
+    throw new ApiError(401, "UNAUTHORIZED", "sessão expirada — faça login novamente");
   }
 
   const targetUrl = new URL(`/api/${path}`, BACKEND_INTERNAL_URL);

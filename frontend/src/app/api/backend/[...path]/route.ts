@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 import { BACKEND_INTERNAL_URL as BACKEND_URL } from "@/lib/api/backendUrl";
+import { accessTokenUsable } from "@/lib/auth/tokenState";
 
 // Proxy BFF (Backend For Frontend): toda chamada de Client Component à
 // API Go passa por aqui, em vez de carregar um bearer token no JavaScript
@@ -25,9 +26,13 @@ import { BACKEND_INTERNAL_URL as BACKEND_URL } from "@/lib/api/backendUrl";
 // duplicado).
 async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
   const token = await getToken({ req });
-  if (!token || !token.accessToken || token.error) {
+  // accessTokenUsable também rejeita um token VENCIDO (não só um marcado
+  // com erro) — ver lib/auth/tokenState.ts: sem isso, uma sessão local
+  // expirada continuava repassando o bearer morto e o backend respondia
+  // 401 em looping.
+  if (!accessTokenUsable(token)) {
     return NextResponse.json(
-      { data: null, error: { code: "UNAUTHORIZED", message: "autenticação necessária" } },
+      { data: null, error: { code: "UNAUTHORIZED", message: "sessão expirada — faça login novamente" } },
       { status: 401 },
     );
   }
