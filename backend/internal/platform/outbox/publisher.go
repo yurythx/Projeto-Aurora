@@ -30,36 +30,114 @@ type Publisher struct {
 	maxAttempts  int
 }
 
-// NewPublisher constrói um Publisher de outbox com padrões razoáveis:
-// faz polling a cada 2s, até 20 linhas por lote, desistindo (marcando uma
-// linha como "failed" em vez de tentar para sempre) depois de 10
-// tentativas de publicação falhas.
+// NewPublisher constrói um Publisher de outbox com padrões razoáveis: é
+// dirigido por LISTEN/NOTIFY no canal outbox.Channel (latência ~zero) com
+// um polling de segurança a cada 15s como rede contra um NOTIFY perdido
+// (ex.: janela de reconexão do listener). Até 20 linhas por lote,
+// desistindo (marcando "failed" em vez de tentar para sempre) depois de
+// 10 tentativas de publicação falhas.
 func NewPublisher(pool *pgxpool.Pool, eventPublisher events.EventPublisher, logger *slog.Logger) *Publisher {
 	return &Publisher{
 		pool:           pool,
 		eventPublisher: eventPublisher,
 		logger:         logger,
-		pollInterval:   2 * time.Second,
+		pollInterval:   15 * time.Second,
 		batchSize:      20,
 		maxAttempts:    10,
 	}
 }
 
-// Run faz polling até ctx ser cancelado. Pensado para ser registrado como
-// um dos processadores em segundo plano do cmd/worker.
+// Run despacha o outbox até ctx ser cancelado. Três gatilhos alimentam um
+// único loop de despacho: (1) um poll imediato no start, para drenar o que
+// já estava pendente; (2) NOTIFY no canal outbox.Channel, entregue no
+// commit da transação que gravou o evento; (3) um ticker de segurança.
+// Registrado como um dos processadores de segundo plano do cmd/worker.
 func (p *Publisher) Run(ctx context.Context) error {
+	wake := make(chan struct{}, 1)
+	signal := func() {
+		select {
+		case wake <- struct{}{}:
+		default: // já há um wake pendente — coalesce
+		}
+	}
+
+	go p.listenLoop(ctx, signal)
+
 	ticker := time.NewTicker(p.pollInterval)
 	defer ticker.Stop()
+
+	signal() // drena o backlog no boot
 
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
+			signal()
+		case <-wake:
 			if err := p.publishPendingBatch(ctx); err != nil {
 				p.logger.Error("outbox: publish pending batch failed", slog.Any("error", err))
 			}
 		}
+	}
+}
+
+// listenLoop mantém um LISTEN outbox.Channel numa conexão dedicada,
+// reconectando com backoff se a conexão cair. Cada notificação chama
+// signal() para o loop de Run() despachar. Retorna só quando ctx é
+// cancelado.
+func (p *Publisher) listenLoop(ctx context.Context, signal func()) {
+	backoff := time.Second
+	const maxBackoff = 30 * time.Second
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		err := p.listenOnce(ctx, signal)
+		if ctx.Err() != nil {
+			return
+		}
+		p.logger.Warn("outbox: LISTEN encerrou, reconectando",
+			slog.Any("error", err), slog.Duration("retry_in", backoff))
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		if backoff < maxBackoff {
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		}
+	}
+}
+
+func (p *Publisher) listenOnce(ctx context.Context, signal func()) error {
+	poolConn, err := p.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire listen conn: %w", err)
+	}
+	// Hijack: tira a conexão do pool em definitivo — uma conexão com LISTEN
+	// pendente não pode voltar ao pool para servir queries comuns. Nós
+	// gerenciamos o Close.
+	conn := poolConn.Hijack()
+	defer conn.Close(context.Background())
+
+	if _, err := conn.Exec(ctx, "LISTEN "+Channel); err != nil {
+		return fmt.Errorf("LISTEN %s: %w", Channel, err)
+	}
+	p.logger.Info("outbox: publisher escutando LISTEN/NOTIFY", slog.String("channel", Channel))
+
+	// Após (re)conectar, força um poll — um NOTIFY pode ter ocorrido
+	// enquanto não havia listener.
+	signal()
+
+	for {
+		if _, err := conn.WaitForNotification(ctx); err != nil {
+			return err
+		}
+		signal()
 	}
 }
 

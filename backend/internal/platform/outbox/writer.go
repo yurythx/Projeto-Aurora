@@ -32,6 +32,13 @@ func NewWriter(source string) *Writer {
 	return &Writer{source: source}
 }
 
+// Channel é o canal LISTEN/NOTIFY do PostgreSQL que o Writer sinaliza a
+// cada evento gravado e que o Publisher escuta para despachar sem esperar
+// o próximo tick do polling (latência ~zero, §16). O NOTIFY roda DENTRO da
+// mesma transação do INSERT, então só dispara quando o evento de fato
+// commita — nunca acorda o Publisher para uma linha que sofreu rollback.
+const Channel = "nova_outbox_channel"
+
 // Write monta o envelope de evento padrão (§17), o valida contra o JSON
 // Schema do contrato de evento (§ Schema Validator para Eventos do
 // Outbox — ver schema.go) e o insere em outbox_events dentro de tx.
@@ -64,6 +71,16 @@ func (w *Writer) Write(ctx context.Context, tx pgx.Tx, eventType, aggregateType,
 	`
 	if _, err := tx.Exec(ctx, q, event.ID, eventType, aggregateType, aggregateID, envelope, event.OccurredAt); err != nil {
 		return fmt.Errorf("outbox: insert event %s: %w", eventType, err)
+	}
+
+	// Acorda o Publisher assim que esta transação commitar (o NOTIFY do
+	// PostgreSQL é entregue no commit, não no Exec). Falha aqui não é
+	// fatal — o polling de segurança do Publisher pega a linha de qualquer
+	// forma —, mas logar seria no nível do chamador; propagamos o erro
+	// para manter a transação consistente (se o NOTIFY falhou, algo mais
+	// grave está acontecendo na conexão).
+	if _, err := tx.Exec(ctx, "SELECT pg_notify($1, '')", Channel); err != nil {
+		return fmt.Errorf("outbox: notify %s: %w", Channel, err)
 	}
 	return nil
 }
