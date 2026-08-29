@@ -355,14 +355,14 @@ func Load() (*Config, error) {
 		},
 		MinIO: MinIOConfig{
 			Endpoint:  l.str("MINIO_ENDPOINT", false, "minio:9000"),
-			AccessKey: l.str("MINIO_ACCESS_KEY", false, "admin"),
-			SecretKey: l.str("MINIO_SECRET_KEY", false, "password123"),
+			AccessKey: l.str("MINIO_ACCESS_KEY", false, insecureMinioAccessKey),
+			SecretKey: l.secret("MINIO_SECRET_KEY", false, insecureMinioSecretKey),
 			Bucket:    l.str("MINIO_BUCKET", false, "demands"),
 			UseSSL:    l.boolVal("MINIO_USE_SSL", false),
 		},
 		Typesense: TypesenseConfig{
 			URL:    l.str("TYPESENSE_URL", false, "http://localhost:8108"),
-			APIKey: l.secret("TYPESENSE_API_KEY", false, "xyz123secret"),
+			APIKey: l.secret("TYPESENSE_API_KEY", false, insecureTypesenseKey),
 		},
 		FrontendURL:         l.str("FRONTEND_URL", false, "http://localhost:3000"),
 		APIPublicURL:        l.str("API_PUBLIC_URL", false, "http://localhost:8000"),
@@ -391,8 +391,39 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: LOCAL_AUTH_PRIVATE_KEY is required when LOCAL_AUTH_ENABLED=true")
 	}
 
+	// Segredos com default de conveniência para dev/test que NUNCA podem ir
+	// para produção com esse valor. Em APP_ENV=production o startup falha se
+	// qualquer um ainda estiver no default inseguro — defesa contra deploy
+	// que esqueceu de sobrescrever a env (ex.: subir o docker-compose.yml
+	// como está, cujo default `:-` não força nada).
+	if cfg.App.Env == "production" {
+		var weak []string
+		if cfg.Typesense.APIKey == insecureTypesenseKey {
+			weak = append(weak, "TYPESENSE_API_KEY")
+		}
+		if cfg.MinIO.AccessKey == insecureMinioAccessKey {
+			weak = append(weak, "MINIO_ACCESS_KEY")
+		}
+		if cfg.MinIO.SecretKey == insecureMinioSecretKey {
+			weak = append(weak, "MINIO_SECRET_KEY")
+		}
+		if len(weak) > 0 {
+			return nil, fmt.Errorf(
+				"config: recusando iniciar em produção com segredo(s) no valor default inseguro: %s — defina uma env var forte para cada um",
+				strings.Join(weak, ", "))
+		}
+	}
+
 	return cfg, nil
 }
+
+// Defaults inseguros: só existem para o fluxo dev/test funcionar sem
+// configuração. Ver a validação de produção em Load().
+const (
+	insecureTypesenseKey   = "xyz123secret"
+	insecureMinioAccessKey = "admin"
+	insecureMinioSecretKey = "password123"
+)
 
 // LoadDatabase lê só as variáveis DB_* — usado por ferramentas standalone
 // (ex.: cmd/seedadmin) que precisam de uma conexão Postgres mas não do

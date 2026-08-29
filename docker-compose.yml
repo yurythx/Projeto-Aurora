@@ -75,7 +75,15 @@ services:
   typesense:
     image: typesense/typesense:27.1
     restart: unless-stopped
-    command: --data-dir /data --api-key=${TYPESENSE_API_KEY:-xyz123secret} --enable-cors
+    # CORS restrito à origem do frontend (a busca client-side vai direto ao
+    # Typesense com uma chave RESTRITA a documents:search). Sobrescreva
+    # TYPESENSE_CORS_DOMAINS por deploy. --api-key é a chave ADMIN: em
+    # produção o backend recusa iniciar se ainda for o default 'xyz123secret'.
+    command: >
+      --data-dir /data
+      --api-key=${TYPESENSE_API_KEY:-xyz123secret}
+      --enable-cors
+      --cors-domains=${TYPESENSE_CORS_DOMAINS:-http://localhost:3000,http://127.0.0.1:3000}
     environment:
       TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:-xyz123secret}
       TYPESENSE_DATA_DIR: /data

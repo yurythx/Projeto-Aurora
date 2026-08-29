@@ -139,12 +139,7 @@ func (s *Service) MoveKanbanCard(ctx context.Context, demandID uuid.UUID, target
 	}
 
 	if s.audit != nil {
-		var actorID *uuid.UUID
-		if identity, ok := auth.IdentityFromContext(ctx); ok {
-			if parsed, err := uuid.Parse(identity.Subject); err == nil {
-				actorID = &parsed
-			}
-		}
+		actorID := s.actorID(ctx)
 		_ = s.audit.Record(ctx, audit.Entry{
 			UserID:        actorID,
 			Action:        "demand.etapa_changed",
@@ -327,15 +322,21 @@ type CreateDemandInput struct {
 	Observacoes string
 }
 
+// actorID resolve o autor autenticado da chamada para colunas *_by /
+// auditoria. Loga alto (uma vez por chamada) se o subject do token não for
+// UUID — a autoria não pode se perder em silêncio numa ação de compliance.
+func (s *Service) actorID(ctx context.Context) *uuid.UUID {
+	id, subject, ok := auth.ActorUUID(ctx)
+	if !ok && subject != "" {
+		s.logger.Warn("demands: subject do token não é UUID — autoria não registrada", slog.String("subject", subject))
+	}
+	return id
+}
+
 // CreateDemand cria uma nova demanda mensal para o contrato indicado.
 func (s *Service) CreateDemand(ctx context.Context, input CreateDemandInput) (domain.MonthlyDemand, error) {
 	now := time.Now()
-	var createdBy *uuid.UUID
-	if identity, ok := auth.IdentityFromContext(ctx); ok {
-		if parsed, err := uuid.Parse(identity.Subject); err == nil {
-			createdBy = &parsed
-		}
-	}
+	createdBy := s.actorID(ctx)
 
 	demand := domain.MonthlyDemand{
 		ID:             uuid.New(),

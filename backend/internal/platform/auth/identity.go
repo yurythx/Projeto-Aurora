@@ -4,7 +4,11 @@
 // autenticação e autorização baseada em roles/permissões (§31).
 package auth
 
-import "context"
+import (
+	"context"
+
+	"github.com/google/uuid"
+)
 
 // Source identifica qual verificador aceitou o token que produziu uma
 // Identity — o §32/GetCurrentUser precisa disso para saber COMO buscar o
@@ -54,4 +58,26 @@ func WithIdentity(ctx context.Context, id Identity) context.Context {
 func IdentityFromContext(ctx context.Context) (Identity, bool) {
 	id, ok := ctx.Value(identityCtxKey).(Identity)
 	return id, ok
+}
+
+// ActorUUID resolve o autor de uma ação para gravar em auditoria/colunas
+// `*_by`. Retorna:
+//   - id != nil quando há identidade E o subject é um UUID (Keycloak com sub
+//     UUID, ou conta local — cujo subject já É o id interno);
+//   - subject = o claim "sub" bruto (para logar quando não converte);
+//   - ok = true só quando id != nil.
+//
+// Um único ponto de conversão: os módulos não devem reimplementar
+// uuid.Parse(identity.Subject) — que descartava a autoria em silêncio
+// quando o IdP usava prefixo/URN no sub.
+func ActorUUID(ctx context.Context) (id *uuid.UUID, subject string, ok bool) {
+	identity, found := IdentityFromContext(ctx)
+	if !found {
+		return nil, "", false
+	}
+	parsed, err := uuid.Parse(identity.Subject)
+	if err != nil {
+		return nil, identity.Subject, false
+	}
+	return &parsed, identity.Subject, true
 }

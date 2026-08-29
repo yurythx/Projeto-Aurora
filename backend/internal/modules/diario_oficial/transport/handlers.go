@@ -41,12 +41,7 @@ type testJobResponse struct {
 func (h *Handlers) TestDiarioOficial(w http.ResponseWriter, r *http.Request) {
 	correlationID := correlationIDFromRequest(r)
 
-	var requestedBy *uuid.UUID
-	if identity, ok := auth.IdentityFromContext(r.Context()); ok {
-		if id, err := uuid.Parse(identity.Subject); err == nil {
-			requestedBy = &id
-		}
-	}
+	requestedBy := h.reviewerFromRequest(r)
 
 	job, err := h.service.CreateTestJob(r.Context(), correlationID, requestedBy)
 	if err != nil {
@@ -94,12 +89,7 @@ func (h *Handlers) CreateMonitoredTerm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var requestedBy *uuid.UUID
-	if identity, ok := auth.IdentityFromContext(r.Context()); ok {
-		if id, err := uuid.Parse(identity.Subject); err == nil {
-			requestedBy = &id
-		}
-	}
+	requestedBy := h.reviewerFromRequest(r)
 
 	term := domain.MonitoredTerm{
 		Label:         req.Label,
@@ -136,12 +126,7 @@ func (h *Handlers) DeleteMonitoredTerm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var requestedBy *uuid.UUID
-	if identity, ok := auth.IdentityFromContext(r.Context()); ok {
-		if id, err := uuid.Parse(identity.Subject); err == nil {
-			requestedBy = &id
-		}
-	}
+	requestedBy := h.reviewerFromRequest(r)
 
 	if err := h.service.DeleteMonitoredTerm(r.Context(), termID, requestedBy); err != nil {
 		httputil.WriteError(w, r, h.logger, err)
@@ -266,13 +251,24 @@ func (h *Handlers) ListReviewQueue(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteOK(w, items)
 }
 
-func reviewerFromRequest(r *http.Request) *uuid.UUID {
-	if identity, ok := auth.IdentityFromContext(r.Context()); ok {
-		if id, err := uuid.Parse(identity.Subject); err == nil {
-			return &id
-		}
+// reviewerFromRequest extrai o UUID do ator autenticado para a trilha de
+// auditoria (quem promoveu/descartou um finding, cadastrou um termo, etc.).
+// Se o subject do token não for um UUID (alguns IdPs usam prefixo/URN em
+// `sub`), a atribuição de autoria se perde — lacuna de compliance —, então
+// logamos alto em vez de falhar silenciosamente.
+func (h *Handlers) reviewerFromRequest(r *http.Request) *uuid.UUID {
+	identity, ok := auth.IdentityFromContext(r.Context())
+	if !ok {
+		h.logger.Error("ação autenticada sem identidade no contexto (não deveria ocorrer atrás do middleware de auth)")
+		return nil
 	}
-	return nil
+	id, err := uuid.Parse(identity.Subject)
+	if err != nil {
+		h.logger.Warn("subject do token não é UUID — autoria não será registrada na auditoria",
+			"subject", identity.Subject)
+		return nil
+	}
+	return &id
 }
 
 // PromoteReviewFinding trata PATCH /diario-oficial/rondonopolis/review-queue/{id}
@@ -288,7 +284,7 @@ func (h *Handlers) PromoteReviewFinding(w http.ResponseWriter, r *http.Request) 
 		httputil.WriteError(w, r, h.logger, err)
 		return
 	}
-	updated, err := h.service.PromoteFinding(r.Context(), id, in, reviewerFromRequest(r))
+	updated, err := h.service.PromoteFinding(r.Context(), id, in, h.reviewerFromRequest(r))
 	if err != nil {
 		httputil.WriteError(w, r, h.logger, err)
 		return
@@ -307,8 +303,15 @@ func (h *Handlers) AckReviewFinding(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ReviewNote string `json:"review_note"`
 	}
-	_ = httputil.DecodeJSON(w, r, &body)
-	if err := h.service.AcknowledgeFinding(r.Context(), id, body.ReviewNote, reviewerFromRequest(r)); err != nil {
+	// Corpo é opcional (nota de revisão). Corpo ausente = nota vazia; corpo
+	// presente e malformado = 400 explícito, em vez de virar nota vazia.
+	if r.ContentLength != 0 {
+		if err := httputil.DecodeJSON(w, r, &body); err != nil {
+			httputil.WriteError(w, r, h.logger, err)
+			return
+		}
+	}
+	if err := h.service.AcknowledgeFinding(r.Context(), id, body.ReviewNote, h.reviewerFromRequest(r)); err != nil {
 		httputil.WriteError(w, r, h.logger, err)
 		return
 	}
@@ -323,7 +326,7 @@ func (h *Handlers) DiscardReviewFinding(w http.ResponseWriter, r *http.Request) 
 		httputil.WriteError(w, r, h.logger, apperrors.BadRequest("id do finding inválido"))
 		return
 	}
-	if err := h.service.DiscardFinding(r.Context(), id, reviewerFromRequest(r)); err != nil {
+	if err := h.service.DiscardFinding(r.Context(), id, h.reviewerFromRequest(r)); err != nil {
 		httputil.WriteError(w, r, h.logger, err)
 		return
 	}

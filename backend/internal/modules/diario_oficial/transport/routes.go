@@ -2,6 +2,7 @@ package transport
 
 import (
 	"log/slog"
+	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
@@ -57,17 +58,17 @@ func RegisterRoutes(r chi.Router, h *Handlers, logger *slog.Logger, limiter http
 	r.With(
 		auth.RequirePermission(logger, auth.PermDiarioOficialRead),
 	).Get("/diario-oficial/rondonopolis/review-queue", h.ListReviewQueue)
-	// Ações da fila de revisão (escrita) — promover corrige+indexa, ack tira
-	// da fila, delete descarta. Mesma permissão de gestão dos termos monitorados.
-	r.With(
+	// Ações da fila de revisão (escrita) — promover corrige+indexa (dispara
+	// reindex da edição no Typesense), ack tira da fila, delete descarta.
+	// PermDiarioOficialManage + rate limit por usuário (promover é caro:
+	// reindexa a edição inteira).
+	reviewWrite := []func(http.Handler) http.Handler{
 		auth.RequirePermission(logger, auth.PermDiarioOficialManage),
-	).Patch("/diario-oficial/rondonopolis/review-queue/{id}", h.PromoteReviewFinding)
-	r.With(
-		auth.RequirePermission(logger, auth.PermDiarioOficialManage),
-	).Post("/diario-oficial/rondonopolis/review-queue/{id}/ack", h.AckReviewFinding)
-	r.With(
-		auth.RequirePermission(logger, auth.PermDiarioOficialManage),
-	).Delete("/diario-oficial/rondonopolis/review-queue/{id}", h.DiscardReviewFinding)
+		httpserver.RateLimit(logger, limiter, RateLimitKey),
+	}
+	r.With(reviewWrite...).Patch("/diario-oficial/rondonopolis/review-queue/{id}", h.PromoteReviewFinding)
+	r.With(reviewWrite...).Post("/diario-oficial/rondonopolis/review-queue/{id}/ack", h.AckReviewFinding)
+	r.With(reviewWrite...).Delete("/diario-oficial/rondonopolis/review-queue/{id}", h.DiscardReviewFinding)
 	r.With(
 		auth.RequirePermission(logger, auth.PermDiarioOficialRead),
 	).Get("/diario-oficial/search-config", h.GetSearchConfig)

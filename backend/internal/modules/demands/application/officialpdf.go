@@ -73,6 +73,12 @@ func (p *officialPDF) contractBox(d domain.MonthlyDemand) {
 	pdf.SetFillColor(246, 246, 246)
 	pdf.SetDrawColor(200, 200, 200)
 	pdf.SetLineWidth(0.2)
+	// Se a caixa não couber inteira na página atual, quebra ANTES de
+	// começar — senão o MultiCell interno dispara auto page-break no meio e
+	// endY-startY vira negativo (Rect malformado).
+	if _, pageH := pdf.GetPageSize(); pdf.GetY()+30 > pageH-20 {
+		pdf.AddPage()
+	}
 	startY := pdf.GetY()
 	pdf.SetFont("Helvetica", "", 8.5)
 	pdf.SetTextColor(40, 40, 40)
@@ -92,8 +98,9 @@ func (p *officialPDF) contractBox(d domain.MonthlyDemand) {
 		line("Valor / Teto Mensal:", fmt.Sprintf("R$ %s", brl(*d.ContratoValor)))
 	}
 	pdf.Ln(1)
-	endY := pdf.GetY()
-	pdf.Rect(20, startY, pdfContentWidth, endY-startY, "D")
+	if endY := pdf.GetY(); endY > startY {
+		pdf.Rect(20, startY, pdfContentWidth, endY-startY, "D")
+	}
 	pdf.Ln(3)
 }
 

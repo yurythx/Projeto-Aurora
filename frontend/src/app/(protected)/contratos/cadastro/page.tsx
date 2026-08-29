@@ -11,6 +11,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { fetchContratos, getContratoDetail } from "@/lib/api/contratos";
+import { safeHttpUrl } from "@/lib/search-tools";
 import type { Contrato, DiarioRef, PaginationMeta } from "@/types/api";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -71,9 +72,9 @@ function DiarioRefsPanel({ refs }: { refs: DiarioRef[] }) {
               {ref.contexto}
             </p>
           )}
-          {ref.doc_url && (
+          {safeHttpUrl(ref.doc_url) && (
             <a
-              href={ref.doc_url}
+              href={safeHttpUrl(ref.doc_url)}
               target="_blank"
               rel="noreferrer"
               className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"

@@ -230,9 +230,11 @@ export default function DiarioSearchPage() {
                     </div>
                   )}
 
-                  {/* Trecho com highlight */}
+                  {/* Trecho com highlight — renderizado com segurança (o snippet
+                      do Typesense ecoa texto de PDF ingerido; NÃO usar
+                      dangerouslySetInnerHTML). */}
                   <div className="rounded-md bg-surface-hover/50 p-3 text-xs text-foreground/90 font-sans border-l-2 border-primary leading-relaxed">
-                    <div dangerouslySetInnerHTML={{ __html: highlightSnippet }} />
+                    <SafeHighlight snippet={highlightSnippet} />
                   </div>
 
                   {doc.pdf_storage_url && (
@@ -256,5 +258,37 @@ export default function DiarioSearchPage() {
         )}
       </div>
     </div>
+  );
+}
+
+/** Renderiza um snippet de destaque do Typesense sem `dangerouslySetInnerHTML`:
+ *  o snippet ecoa o `content` indexado (texto bruto de PDFs) apenas envolvendo
+ *  o trecho casado em <mark> — o resto NÃO é escapado. Aqui todo o texto é
+ *  tratado como texto puro (React escapa) e só o realce <mark> é reintroduzido
+ *  como elemento real. */
+function SafeHighlight({ snippet }: { snippet: string }) {
+  const parts = snippet.split(/(<mark>|<\/mark>)/g);
+  let marked = false;
+  return (
+    <p className="line-clamp-4">
+      {parts.map((part, i) => {
+        if (part === "<mark>") {
+          marked = true;
+          return null;
+        }
+        if (part === "</mark>") {
+          marked = false;
+          return null;
+        }
+        if (!part) return null;
+        return marked ? (
+          <mark key={i} className="rounded bg-primary/20 px-0.5 text-foreground">
+            {part}
+          </mark>
+        ) : (
+          <span key={i}>{part}</span>
+        );
+      })}
+    </p>
   );
 }

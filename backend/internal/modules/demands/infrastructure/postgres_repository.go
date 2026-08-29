@@ -2,6 +2,7 @@ package infrastructure
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
 	"github.com/yurythx/projeto-nova/internal/modules/demands/domain"
 )
 
@@ -64,6 +66,9 @@ func (r *PostgresRepository) GetByID(ctx context.Context, id uuid.UUID) (domain.
 		&d.ContractType, &d.ContratoNumero, &d.ContratoObjeto, &d.Contratado, &d.ContratoValor,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.MonthlyDemand{}, apperrors.NotFound("demanda não encontrada")
+		}
 		return domain.MonthlyDemand{}, fmt.Errorf("postgres_repository: get demand by id: %w", err)
 	}
 

@@ -85,3 +85,17 @@ export function unixToISODate(unixSeconds: number | undefined): string {
   if (!unixSeconds) return "";
   return new Date(unixSeconds * 1000).toISOString().slice(0, 10);
 }
+
+/** Devolve `raw` só se for uma URL http(s) válida; caso contrário undefined.
+ *  Impede que uma URL vinda de dado ingerido (portal DIORONDON, contexto de
+ *  finding) com esquema `javascript:` / `data:` chegue a um href. */
+export function safeHttpUrl(raw: string | undefined | null): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const base = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const u = new URL(raw, base);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}

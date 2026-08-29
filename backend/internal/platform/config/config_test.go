@@ -169,3 +169,47 @@ func TestSplitAndTrim(t *testing.T) {
 		}
 	}
 }
+
+func TestLoad_ProductionRejectsInsecureDefaultSecrets(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("APP_ENV", "production")
+	// Não define TYPESENSE_API_KEY / MINIO_* -> ficam no default inseguro.
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() deveria recusar produção com segredos no default inseguro")
+	}
+	for _, want := range []string{"TYPESENSE_API_KEY", "MINIO_ACCESS_KEY", "MINIO_SECRET_KEY"} {
+		if !contains(err.Error(), want) {
+			t.Errorf("erro deveria citar %s: %v", want, err)
+		}
+	}
+}
+
+func TestLoad_ProductionAcceptsStrongSecrets(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("TYPESENSE_API_KEY", "b8f1c2d3e4f5a6b7c8d9e0f1a2b3c4d5")
+	t.Setenv("MINIO_ACCESS_KEY", "nova-prod-access")
+	t.Setenv("MINIO_SECRET_KEY", "nova-prod-secret-strong-value")
+
+	if _, err := Load(); err != nil {
+		t.Fatalf("Load() com segredos fortes em produção não deveria falhar: %v", err)
+	}
+}
+
+func TestLoad_DevelopmentAllowsDefaultSecrets(t *testing.T) {
+	setRequiredEnv(t) // APP_ENV=development
+	if _, err := Load(); err != nil {
+		t.Fatalf("Load() em development com defaults deveria passar: %v", err)
+	}
+}
+
+func contains(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}

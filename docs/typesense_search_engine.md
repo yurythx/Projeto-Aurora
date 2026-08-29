@@ -211,3 +211,31 @@ const resultados = await searchPersonnelActs({
 1. **Sub-segundo:** Resultados entregues em **< 15 milissegundos**.
 2. **Search-as-you-type:** Atualizações instantâneas à medida que o usuário digita na interface.
 3. **Auditoria de Transparência Municipal:** Permite que gestores e o Tribunal de Contas monitorem nomeações, salários comissionados e empresas contratadas no município de Rondonópolis com clareza absoluta.
+
+---
+
+## 7. Segurança da busca client-side (aceitação de risco)
+
+O frontend consulta o Typesense **diretamente do navegador** (`lib/typesense-client.ts`),
+para ganhar o "search-as-you-type" sem um hop extra pelo backend. Isso implica:
+
+- **Chave exposta, mas escopada.** O navegador nunca recebe a chave admin.
+  O backend (`TypesenseSearchKeyManager`) cria uma *scoped search-only key*
+  (`actions: ["documents:search"]`, restrita a `diorondon_personnel_acts` e
+  `diorondon_articles`) e a serve via `GET /api/v1/diario-oficial/search-config`
+  (autenticado). Mesmo totalmente vazada, ela só permite buscar nessas duas
+  coleções — não recria, não apaga, não escreve.
+- **CORS restrito.** O container Typesense sobe com
+  `--cors-domains=${TYPESENSE_CORS_DOMAINS}` (default: origem do frontend em
+  dev). Ajuste por deploy — não deixe CORS aberto.
+- **Sanitização de snippet.** Os trechos de destaque retornados pelo Typesense
+  são texto de PDF ingerido com `<mark>` inserido; a UI **não** os renderiza
+  com `dangerouslySetInnerHTML` — o componente `SafeHighlight` escapa tudo e
+  só reintroduz o realce `<mark>` como elemento real.
+- **`--api-key` é a chave ADMIN.** Em `APP_ENV=production` o backend **recusa
+  iniciar** se `TYPESENSE_API_KEY` (ou `MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY`)
+  ainda estiver no valor default de dev.
+
+**Evolução possível:** rotear a busca por um endpoint proxy no backend Go
+(rate limit por usuário, nenhuma chave no cliente) se o modelo de ameaça
+apertar. Hoje o custo/benefício favorece a busca direta com chave escopada.

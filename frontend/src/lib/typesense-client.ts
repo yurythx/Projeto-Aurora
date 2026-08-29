@@ -1,5 +1,5 @@
 import { apiClient } from "@/lib/api/client";
-import { publicationDateFilter } from "@/lib/search-tools";
+import { publicationDateFilter, safeHttpUrl } from "@/lib/search-tools";
 
 export interface PersonnelAct {
   id: string;
@@ -91,10 +91,13 @@ function emptyTypesenseResponse<T>(): TypesenseSearchResponse<T> {
  * mostra o link.
  */
 export function pdfUrlWithPage(url: string | undefined, page: number | undefined): string {
-  if (!url) return "";
+  // A URL vem de dado ingerido (portal DIORONDON); valida esquema http(s)
+  // antes de usar em href — bloqueia javascript:/data:.
+  const safe = safeHttpUrl(url);
+  if (!safe) return "";
   const p = Number(page) || 1;
-  if (p > 1 && !url.includes("#page=")) return `${url}#page=${p}`;
-  return url;
+  if (p > 1 && !safe.includes("#page=")) return `${safe}#page=${p}`;
+  return safe;
 }
 
 function normalizeText(text: string | undefined): string {

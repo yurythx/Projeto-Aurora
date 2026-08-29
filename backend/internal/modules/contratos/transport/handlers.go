@@ -36,11 +36,9 @@ func (h *Handlers) CreateContrato(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var createdBy *uuid.UUID
-	if identity, ok := auth.IdentityFromContext(r.Context()); ok {
-		if id, err := uuid.Parse(identity.Subject); err == nil {
-			createdBy = &id
-		}
+	createdBy, subject, ok := auth.ActorUUID(r.Context())
+	if !ok && subject != "" {
+		h.logger.Warn("contratos: subject do token não é UUID — autoria não registrada", "subject", subject)
 	}
 
 	in := application.CreateInput{

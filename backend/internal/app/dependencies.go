@@ -42,6 +42,11 @@ type RateLimiters struct {
 	TestJob    httpserver.Limiter // POST .../diario-oficial/test
 	WSTicket   httpserver.Limiter // POST /api/v1/ws/ticket
 	LocalLogin httpserver.Limiter // POST /api/v1/auth/login — chave por IP, não por usuário (§ Sistema de Login Local), já que quem chama ainda não está autenticado
+	// Mutations cobre as escritas autenticadas de baixa frequência humana
+	// (mover card de etapa, anexar documento, promover/descartar finding):
+	// generoso o bastante para um operador clicando, apertado o bastante
+	// para barrar abuso scriptado por um token comprometido.
+	Mutations httpserver.Limiter
 }
 
 // OutboxSource identifica este backend como o Source carimbado em todo
@@ -186,6 +191,9 @@ func NewDependencies(ctx context.Context, component string) (*Dependencies, erro
 			// travar um usuário legítimo que só errou a senha uma ou
 			// duas vezes.
 			LocalLogin: ratelimit.NewPostgresLimiter(pool, 60, 5, "local_login"),
+			// Até 40 escritas a cada 60s por usuário — muito acima do ritmo
+			// de um humano operando o Kanban / a fila de revisão.
+			Mutations: ratelimit.NewPostgresLimiter(pool, 60, 40, "mutations"),
 		},
 		Idempotency: idempotency.NewPostgresStore(pool),
 		Flags:       configflags.NewPostgresStore(pool),
