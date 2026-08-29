@@ -45,17 +45,27 @@ async function refreshAccessToken(token: JWT): Promise<JWT> {
         grant_type: "refresh_token",
         refresh_token: token.refreshToken as string,
       }),
+      // Sem timeout, um Keycloak lento/pendurado trava o callback jwt (que
+      // roda em toda requisição que toca a sessão).
+      signal: AbortSignal.timeout(5000),
     });
 
     const refreshed: KeycloakTokenResponse = await response.json();
-    if (!response.ok) {
+    if (!response.ok || refreshed.error || !refreshed.access_token) {
       throw refreshed;
+    }
+    // expires_in ausente/NaN viraria accessTokenExpires=NaN e, como
+    // `Date.now() < NaN` é sempre false, o token entraria em loop de
+    // refresh a cada requisição, martelando o Keycloak.
+    const ttlSeconds = Number(refreshed.expires_in);
+    if (!Number.isFinite(ttlSeconds) || ttlSeconds <= 0) {
+      throw new Error(`expires_in inválido: ${refreshed.expires_in}`);
     }
 
     return {
       ...token,
       accessToken: refreshed.access_token,
-      accessTokenExpires: Date.now() + refreshed.expires_in * 1000,
+      accessTokenExpires: Date.now() + ttlSeconds * 1000,
       refreshToken: refreshed.refresh_token ?? token.refreshToken,
       error: undefined,
     };
@@ -63,8 +73,8 @@ async function refreshAccessToken(token: JWT): Promise<JWT> {
     // Marca o erro na sessão em vez de lançar — o chamador (callback jwt)
     // segue com um token expirado + error="RefreshAccessTokenError", e é
     // esse campo que o middleware/proxy.ts usa para decidir redirecionar
-    // para /login.
-    console.error("Failed to refresh Keycloak access token", err);
+    // para /login. NÃO logamos `err` (pode conter eco do refresh_token).
+    console.error("Falha ao renovar o access token do Keycloak");
     return { ...token, error: "RefreshAccessTokenError" };
   }
 }
@@ -115,6 +125,12 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        // authorize() SÓ pode retornar um usuário quando o backend confirma
+        // a credencial. Qualquer outro desfecho — backend fora do ar, JSON
+        // ilegível, 401/403/404/500 — é `null` (o NextAuth converte em
+        // "credenciais inválidas", sem vazar o motivo). Nunca há "sessão
+        // demo": código que decide autenticação não pode ter modo de
+        // conveniência (era um bypass — senha errada logava como demo-user).
         let res: Response;
         try {
           res = await fetch(`${backendInternalURL}/api/v1/auth/login`, {
@@ -124,40 +140,30 @@ export const authOptions: NextAuthOptions = {
               username: credentials.username,
               password: credentials.password,
             }),
+            signal: AbortSignal.timeout(5000),
           });
         } catch (err) {
-          console.error("Local login: backend unreachable, using fallback demo session", err);
-          return {
-            id: "demo-user-1",
-            name: credentials.username,
-            email: `${credentials.username}@rondonopolis.mt.gov.br`,
-            accessToken: "demo-access-token",
-            accessTokenExpires: Date.now() + 86400 * 1000,
-          };
+          console.error("Local login: backend inacessível — negando", err);
+          return null;
         }
 
+        let body: LocalLoginResponse;
         try {
-          const body: LocalLoginResponse = await res.json();
-          if (res.ok && body.data) {
-            return {
-              id: body.data.user.id,
-              name: body.data.user.username,
-              email: body.data.user.email,
-              accessToken: body.data.access_token,
-              accessTokenExpires: new Date(body.data.expires_at).getTime(),
-            };
-          }
-        } catch (parseErr) {
-          // Ignore JSON parse error and proceed to demo fallback
+          body = await res.json();
+        } catch {
+          return null;
         }
 
-        // Resiliencia para modo de demonstracao no frontend
+        if (!res.ok || !body.data) {
+          return null;
+        }
+
         return {
-          id: "demo-user-1",
-          name: credentials.username,
-          email: `${credentials.username}@rondonopolis.mt.gov.br`,
-          accessToken: "demo-access-token",
-          accessTokenExpires: Date.now() + 86400 * 1000,
+          id: body.data.user.id,
+          name: body.data.user.username,
+          email: body.data.user.email,
+          accessToken: body.data.access_token,
+          accessTokenExpires: new Date(body.data.expires_at).getTime(),
         };
       },
     }),

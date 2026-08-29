@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/yurythx/projeto-nova/internal/modules/contratos/domain"
 )
@@ -28,7 +29,9 @@ func (f *fakeRepo) ListByStatus(_ context.Context) (map[domain.Status][]domain.C
 	return f.byStatus, nil
 }
 
-func (f *fakeRepo) LinkDiarioRef(_ context.Context, ref domain.DiarioRef) (bool, error) {
+// As variantes ...Tx ignoram a tx (o teste não tem Postgres) e mantêm a
+// mesma semântica idempotente da implementação real.
+func (f *fakeRepo) LinkDiarioRefTx(_ context.Context, _ pgx.Tx, ref domain.DiarioRef) (bool, error) {
 	f.links = append(f.links, ref)
 	isNew := f.linkNew == nil || f.linkNew[ref.EditionNumber]
 	if isNew {
@@ -40,11 +43,11 @@ func (f *fakeRepo) LinkDiarioRef(_ context.Context, ref domain.DiarioRef) (bool,
 	return isNew, nil
 }
 
-func (f *fakeRepo) ListDiarioRefs(_ context.Context, id uuid.UUID) ([]domain.DiarioRef, error) {
+func (f *fakeRepo) ListDiarioRefsTx(_ context.Context, _ pgx.Tx, id uuid.UUID) ([]domain.DiarioRef, error) {
 	return f.refs[id], nil
 }
 
-func (f *fakeRepo) RecordAlertOnce(_ context.Context, id uuid.UUID, kind, refKey string) (bool, error) {
+func (f *fakeRepo) RecordAlertOnceTx(_ context.Context, _ pgx.Tx, id uuid.UUID, kind, refKey string) (bool, error) {
 	if f.alerts == nil {
 		f.alerts = map[string]bool{}
 	}
@@ -62,17 +65,27 @@ func (f fakeSource) FindForContract(_ context.Context, _, _ string) ([]DiarioFin
 	return f.out, nil
 }
 
-type spyEmitter struct{ events []string }
+// spyEvents captura os eventos que teriam sido escritos no outbox — no lugar
+// do outbox.Writer real, que exigiria uma pgx.Tx.
+type spyEvents struct{ events []string }
 
-func (s *spyEmitter) EmitContratoEvent(_ context.Context, eventType, _ string, _ any) error {
+func (s *spyEvents) write(_ context.Context, _ pgx.Tx, eventType, _ string, _ any) error {
 	s.events = append(s.events, eventType)
 	return nil
 }
 
 func discardLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
-func newMatcherSvc(repo *fakeRepo, src DiarioMatchSource, em ContratoEventEmitter) *Service {
-	return &Service{repo: repo, logger: discardLogger(), diario: src, events: em}
+// newMatcherSvc monta o Service com os seams do casador apontando para
+// fakes: runInTx só chama fn(nil), writeEvent grava no spy.
+func newMatcherSvc(repo *fakeRepo, src DiarioMatchSource, em *spyEvents) *Service {
+	return &Service{
+		repo:       repo,
+		logger:     discardLogger(),
+		diario:     src,
+		runInTx:    func(ctx context.Context, fn func(pgx.Tx) error) error { return fn(nil) },
+		writeEvent: em.write,
+	}
 }
 
 func vigente(numero, cnpj string) domain.Contrato {
@@ -89,7 +102,7 @@ func TestRunDiarioMatch_LinksRefsAndEmitsLinkedEvent(t *testing.T) {
 		{EditionNumber: "6301", ActType: "CONTRATO", RawContent: "duplicata na mesma edição"},
 		{EditionNumber: "6305", ActType: "DESIGNACAO_FUNCAO", RawContent: "designa fiscal do contrato 012/2026"},
 	}}
-	em := &spyEmitter{}
+	em := &spyEvents{}
 	linked, alerts, err := newMatcherSvc(repo, src, em).RunDiarioMatch(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -118,7 +131,7 @@ func TestRunDiarioMatch_FiscalExoneradoAlert_Once(t *testing.T) {
 	src := fakeSource{out: []DiarioFinding{
 		{EditionNumber: "6310", ActType: "EXONERACAO", ServidorNome: "MARIA SOUZA", RawContent: "exonera MARIA SOUZA, fiscal do contrato 050/2026"},
 	}}
-	em := &spyEmitter{}
+	em := &spyEvents{}
 	svc := newMatcherSvc(repo, src, em)
 
 	_, alerts1, _ := svc.RunDiarioMatch(context.Background())
@@ -145,7 +158,7 @@ func TestRunDiarioMatch_ContratoVigenteSemVinculo(t *testing.T) {
 		byStatus: map[domain.Status][]domain.Contrato{domain.StatusVigente: {c}},
 		refs:     map[uuid.UUID][]domain.DiarioRef{}, // sem refs
 	}
-	em := &spyEmitter{}
+	em := &spyEvents{}
 	_, alerts, _ := newMatcherSvc(repo, fakeSource{}, em).RunDiarioMatch(context.Background())
 	if alerts != 1 || len(em.events) != 1 || em.events[0] != EventFiscalAlert {
 		t.Errorf("esperava 1 alerta SEM_VINCULO_DIARIO, got alerts=%d events=%v", alerts, em.events)
@@ -156,7 +169,7 @@ func TestRunDiarioMatch_ShortNumeroAndNoCNPJ_Skips(t *testing.T) {
 	c := domain.Contrato{ID: uuid.New(), Numero: "12", CNPJ: "", Status: domain.StatusAprovado}
 	repo := &fakeRepo{byStatus: map[domain.Status][]domain.Contrato{domain.StatusAprovado: {c}}}
 	src := fakeSource{out: []DiarioFinding{{EditionNumber: "9999", ActType: "CONTRATO"}}}
-	em := &spyEmitter{}
+	em := &spyEvents{}
 	linked, alerts, _ := newMatcherSvc(repo, src, em).RunDiarioMatch(context.Background())
 	if linked != 0 || alerts != 0 || len(repo.links) != 0 {
 		t.Errorf("número curto sem CNPJ deveria ser ignorado; linked=%d links=%+v", linked, repo.links)

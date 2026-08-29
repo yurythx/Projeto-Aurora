@@ -110,10 +110,7 @@ func buildModules(deps *Dependencies) *Modules {
 	// Módulo Contratos Municipais (Fase 4 — Projeto-Nova)
 	contratosRepo := contratosInfra.NewPostgresRepository(deps.DB)
 	contratosSvc := contratosApp.NewService(contratosRepo, deps.Logger).
-		WithDiarioMatching(
-			diarioMatchSource{findings: editionRepo},
-			contratosInfra.NewOutboxEmitter(deps.DB, deps.Outbox),
-		)
+		WithDiarioMatching(diarioMatchSource{findings: editionRepo}, deps.DB, deps.Outbox)
 	m.Contratos.Service = contratosSvc
 	m.Contratos.Handlers = contratosTransport.NewHandlers(contratosSvc, deps.Logger)
 

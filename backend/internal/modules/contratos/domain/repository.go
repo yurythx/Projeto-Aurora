@@ -53,15 +53,21 @@ type Repository interface {
 	// chamar múltiplas vezes para a mesma referência.
 	AddDiarioRef(ctx context.Context, ref DiarioRef) error
 
-	// LinkDiarioRef é o AddDiarioRef do casador automático: mesmo INSERT
-	// idempotente, mas devolve se a linha é NOVA (true) — o worker só
-	// notifica quando de fato vinculou algo.
-	LinkDiarioRef(ctx context.Context, ref DiarioRef) (inserted bool, err error)
+	// LinkDiarioRefTx é o AddDiarioRef do casador automático: mesmo INSERT
+	// idempotente, mas devolve se a linha é NOVA (true) e roda DENTRO da tx
+	// de negócio — o INSERT da ref e o evento de outbox que a anuncia
+	// nascem juntos ou não nascem (padrão Transactional Outbox).
+	LinkDiarioRefTx(ctx context.Context, tx pgx.Tx, ref DiarioRef) (inserted bool, err error)
 
-	// RecordAlertOnce registra que um alerta (kind + ref_key) já foi
-	// emitido para o contrato. Devolve true só na primeira vez — o worker
-	// usa isso para não repetir a mesma notificação a cada ciclo.
-	RecordAlertOnce(ctx context.Context, contratoID uuid.UUID, kind, refKey string) (firstTime bool, err error)
+	// RecordAlertOnceTx registra que um alerta (kind + ref_key) já foi
+	// emitido para o contrato, dentro da tx. Devolve true só na primeira
+	// vez — atômico com o evento de outbox do alerta.
+	RecordAlertOnceTx(ctx context.Context, tx pgx.Tx, contratoID uuid.UUID, kind, refKey string) (firstTime bool, err error)
+
+	// ListDiarioRefsTx lista as referências dentro da tx (o casador checa
+	// "contrato vigente sem nenhuma publicação" na mesma transação em que
+	// pode inserir a primeira).
+	ListDiarioRefsTx(ctx context.Context, tx pgx.Tx, contratoID uuid.UUID) ([]DiarioRef, error)
 
 	// ListByStatus agrupa os contratos por status — usado pela visão
 	// Kanban para retornar as colunas em uma única consulta.

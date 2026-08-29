@@ -9,9 +9,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
 	"github.com/yurythx/projeto-nova/internal/modules/contratos/domain"
+	"github.com/yurythx/projeto-nova/internal/platform/outbox"
 )
 
 // Service implementa os casos de uso de gestão de contratos municipais.
@@ -21,7 +24,11 @@ type Service struct {
 	// Casador automático Contrato <-> Diário Oficial (opcional; ligado por
 	// WithDiarioMatching a partir de internal/app).
 	diario DiarioMatchSource
-	events ContratoEventEmitter
+	db     *pgxpool.Pool
+	outbox *outbox.Writer
+	// Seams do casador — sobrescritos em teste para não exigir um Postgres real.
+	runInTx    func(ctx context.Context, fn func(pgx.Tx) error) error
+	writeEvent func(ctx context.Context, tx pgx.Tx, eventType, aggregateID string, payload any) error
 }
 
 // NewService constrói um Service com as dependências injetadas.

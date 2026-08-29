@@ -8,7 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/yurythx/projeto-nova/internal/modules/contratos/domain"
+	"github.com/yurythx/projeto-nova/internal/platform/database"
+	"github.com/yurythx/projeto-nova/internal/platform/outbox"
 )
 
 // DiarioFinding é a projeção mínima de um ato do Diário Oficial que o
@@ -33,17 +39,21 @@ type DiarioMatchSource interface {
 	FindForContract(ctx context.Context, numero, cnpjDigits string) ([]DiarioFinding, error)
 }
 
-// ContratoEventEmitter publica um evento de contrato no outbox (na mesma
-// transação, atomicamente). Implementado em infrastructure; injetado em
-// internal/app. nil = casador roda mas não notifica.
-type ContratoEventEmitter interface {
-	EmitContratoEvent(ctx context.Context, eventType, aggregateID string, payload any) error
-}
-
 // WithDiarioMatching liga o casador automático Contrato <-> Diário Oficial.
-func (s *Service) WithDiarioMatching(src DiarioMatchSource, emitter ContratoEventEmitter) *Service {
+// db + outbox são exigidos para o padrão Transactional Outbox: cada contrato
+// é processado numa única transação onde as linhas de contrato_diario_refs /
+// contrato_diario_alertas e os eventos de outbox que as anunciam nascem
+// juntos ou não nascem. runInTx / writeEvent são seams sobrescritos em teste.
+func (s *Service) WithDiarioMatching(src DiarioMatchSource, db *pgxpool.Pool, ob *outbox.Writer) *Service {
 	s.diario = src
-	s.events = emitter
+	s.db = db
+	s.outbox = ob
+	s.runInTx = func(ctx context.Context, fn func(pgx.Tx) error) error {
+		return database.WithTx(ctx, db, func(ctx context.Context, tx pgx.Tx) error { return fn(tx) })
+	}
+	s.writeEvent = func(ctx context.Context, tx pgx.Tx, eventType, aggregateID string, payload any) error {
+		return ob.Write(ctx, tx, eventType, "contrato", aggregateID, uuid.New(), payload)
+	}
 	return s
 }
 
@@ -95,6 +105,24 @@ func (s *Service) RunDiarioMatch(ctx context.Context) (linked int, alerts int, e
 	return linked, alerts, nil
 }
 
+func fiscalAlertPayload(c domain.Contrato, kind, message string, f DiarioFinding) map[string]any {
+	return map[string]any{
+		"contrato_id":     c.ID.String(),
+		"contrato_numero": c.Numero,
+		"kind":            kind,
+		"message":         message,
+		"servidor":        f.ServidorNome,
+		"act_type":        f.ActType,
+		"edition_number":  f.EditionNumber,
+		"doc_url":         f.DocURL,
+	}
+}
+
+// matchOne processa UM contrato numa única transação: os INSERTs de
+// contrato_diario_refs / contrato_diario_alertas e os eventos de outbox que
+// os anunciam são commitados juntos (Transactional Outbox — nada de dual
+// write). Qualquer erro faz rollback de tudo e o contrato é reprocessado no
+// próximo ciclo (o casador é idempotente).
 func (s *Service) matchOne(ctx context.Context, c domain.Contrato, st domain.Status) (linked int, alerts int) {
 	numero := strings.TrimSpace(c.Numero)
 	if len([]rune(numero)) < 4 {
@@ -114,79 +142,89 @@ func (s *Service) matchOne(ctx context.Context, c domain.Contrato, st domain.Sta
 		return 0, 0
 	}
 
-	seenEdition := map[string]bool{}
-	for _, f := range findings {
-		if f.EditionNumber != "" && !seenEdition[f.EditionNumber] {
-			seenEdition[f.EditionNumber] = true
-			ref := domain.DiarioRef{
-				ContratoID:    c.ID,
-				EditionNumber: f.EditionNumber,
-				TipoEvento:    tipoEventoFromAct(f.ActType),
-				PublicadoEm:   f.EditionDate,
-				Contexto:      snippet(f.RawContent, numero),
-				DocURL:        f.DocURL,
+	txErr := s.runInTx(ctx, func(tx pgx.Tx) error {
+		linked, alerts = 0, 0 // idempotente sob eventual retry da tx
+		seenEdition := map[string]bool{}
+
+		for _, f := range findings {
+			if f.EditionNumber != "" && !seenEdition[f.EditionNumber] {
+				seenEdition[f.EditionNumber] = true
+				ref := domain.DiarioRef{
+					ContratoID:    c.ID,
+					EditionNumber: f.EditionNumber,
+					TipoEvento:    tipoEventoFromAct(f.ActType),
+					PublicadoEm:   f.EditionDate,
+					Contexto:      snippet(f.RawContent, numero),
+					DocURL:        f.DocURL,
+				}
+				inserted, e := s.repo.LinkDiarioRefTx(ctx, tx, ref)
+				if e != nil {
+					return e
+				}
+				if inserted {
+					linked++
+				}
 			}
-			if inserted, e := s.repo.LinkDiarioRef(ctx, ref); e != nil {
-				s.logger.Warn("contratos: vincular ref do Diário falhou", slog.String("contrato", c.Numero), slog.Any("erro", e))
-			} else if inserted {
-				linked++
+
+			if st == domain.StatusVigente && f.ServidorNome != "" && atosDeSaida[strings.ToUpper(f.ActType)] {
+				refKey := f.EditionNumber + "|" + f.ServidorNome + "|" + strings.ToUpper(f.ActType)
+				first, e := s.repo.RecordAlertOnceTx(ctx, tx, c.ID, AlertKindMovimentacaoPessoal, refKey)
+				if e != nil {
+					return e
+				}
+				if first {
+					msg := fmt.Sprintf("Publicação de %s de %s (edição %s) pode afetar a fiscalização do contrato %s.",
+						strings.ToLower(strings.ReplaceAll(f.ActType, "_", " ")), f.ServidorNome, f.EditionNumber, c.Numero)
+					if e := s.writeEvent(ctx, tx, EventFiscalAlert, c.ID.String(),
+						fiscalAlertPayload(c, AlertKindMovimentacaoPessoal, msg, f)); e != nil {
+						return e
+					}
+					alerts++
+				}
 			}
 		}
 
-		if st == domain.StatusVigente && f.ServidorNome != "" && atosDeSaida[strings.ToUpper(f.ActType)] {
-			refKey := f.EditionNumber + "|" + f.ServidorNome + "|" + strings.ToUpper(f.ActType)
-			if first, e := s.repo.RecordAlertOnce(ctx, c.ID, AlertKindMovimentacaoPessoal, refKey); e == nil && first {
-				msg := fmt.Sprintf("Publicação de %s de %s (edição %s) pode afetar a fiscalização do contrato %s.",
-					strings.ToLower(strings.ReplaceAll(f.ActType, "_", " ")), f.ServidorNome, f.EditionNumber, c.Numero)
-				s.emitAlert(ctx, c, AlertKindMovimentacaoPessoal, msg, f)
-				alerts++
+		if linked > 0 {
+			if e := s.writeEvent(ctx, tx, EventDiarioRefLinked, c.ID.String(), map[string]any{
+				"contrato_id":     c.ID.String(),
+				"contrato_numero": c.Numero,
+				"refs_vinculadas": linked,
+			}); e != nil {
+				return e
 			}
 		}
-	}
 
-	if linked > 0 {
-		s.emit(ctx, EventDiarioRefLinked, c.ID.String(), map[string]any{
-			"contrato_id":     c.ID.String(),
-			"contrato_numero": c.Numero,
-			"refs_vinculadas": linked,
-		})
-	}
-
-	// Contrato vigente sem nenhuma publicação vinculada: pode estar sem
-	// portaria de fiscal registrada no Diário.
-	if st == domain.StatusVigente {
-		refs, e := s.repo.ListDiarioRefs(ctx, c.ID)
-		if e == nil && len(refs) == 0 {
-			if first, e2 := s.repo.RecordAlertOnce(ctx, c.ID, AlertKindSemVinculoDiario, "-"); e2 == nil && first {
-				msg := fmt.Sprintf("Contrato %s está vigente mas não tem nenhuma publicação do Diário Oficial vinculada — verifique a portaria de designação do fiscal.", c.Numero)
-				s.emitAlert(ctx, c, AlertKindSemVinculoDiario, msg, DiarioFinding{})
-				alerts++
+		// Contrato vigente sem nenhuma publicação vinculada (inclusive as
+		// recém-inseridas nesta mesma tx): pode estar sem portaria de fiscal.
+		if st == domain.StatusVigente {
+			refs, e := s.repo.ListDiarioRefsTx(ctx, tx, c.ID)
+			if e != nil {
+				return e
+			}
+			if len(refs) == 0 {
+				first, e := s.repo.RecordAlertOnceTx(ctx, tx, c.ID, AlertKindSemVinculoDiario, "-")
+				if e != nil {
+					return e
+				}
+				if first {
+					msg := fmt.Sprintf("Contrato %s está vigente mas não tem nenhuma publicação do Diário Oficial vinculada — verifique a portaria de designação do fiscal.", c.Numero)
+					if e := s.writeEvent(ctx, tx, EventFiscalAlert, c.ID.String(),
+						fiscalAlertPayload(c, AlertKindSemVinculoDiario, msg, DiarioFinding{})); e != nil {
+						return e
+					}
+					alerts++
+				}
 			}
 		}
+		return nil
+	})
+
+	if txErr != nil {
+		s.logger.Warn("contratos: casamento do contrato falhou (rollback, tenta no próximo ciclo)",
+			slog.String("contrato", c.Numero), slog.Any("erro", txErr))
+		return 0, 0
 	}
 	return linked, alerts
-}
-
-func (s *Service) emitAlert(ctx context.Context, c domain.Contrato, kind, message string, f DiarioFinding) {
-	s.emit(ctx, EventFiscalAlert, c.ID.String(), map[string]any{
-		"contrato_id":     c.ID.String(),
-		"contrato_numero": c.Numero,
-		"kind":            kind,
-		"message":         message,
-		"servidor":        f.ServidorNome,
-		"act_type":        f.ActType,
-		"edition_number":  f.EditionNumber,
-		"doc_url":         f.DocURL,
-	})
-}
-
-func (s *Service) emit(ctx context.Context, eventType, aggregateID string, payload any) {
-	if s.events == nil {
-		return
-	}
-	if err := s.events.EmitContratoEvent(ctx, eventType, aggregateID, payload); err != nil {
-		s.logger.Warn("contratos: emitir evento falhou", slog.String("event", eventType), slog.Any("erro", err))
-	}
 }
 
 func tipoEventoFromAct(act string) string {

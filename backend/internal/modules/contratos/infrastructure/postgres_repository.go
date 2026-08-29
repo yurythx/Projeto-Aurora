@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
@@ -215,9 +216,15 @@ func (r *PostgresRepository) AddDiarioRef(ctx context.Context, ref domain.Diario
 	return nil
 }
 
-// LinkDiarioRef insere uma referência e reporta se ela é nova.
-func (r *PostgresRepository) LinkDiarioRef(ctx context.Context, ref domain.DiarioRef) (bool, error) {
-	tag, err := r.pool.Exec(ctx, `
+// pgxExec é satisfeito por *pgxpool.Pool e por pgx.Tx — deixa o INSERT do
+// casador ser escrito uma vez e reutilizado na variante transacional.
+type pgxExec interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+func linkDiarioRef(ctx context.Context, db pgxExec, ref domain.DiarioRef) (bool, error) {
+	tag, err := db.Exec(ctx, `
 		INSERT INTO contrato_diario_refs
 			(contrato_id, edition_number, tipo_evento, publicado_em, contexto, doc_url)
 		VALUES ($1,$2,$3,$4,$5,$6)
@@ -231,10 +238,8 @@ func (r *PostgresRepository) LinkDiarioRef(ctx context.Context, ref domain.Diari
 	return tag.RowsAffected() > 0, nil
 }
 
-// RecordAlertOnce grava (contrato_id, kind, ref_key) e devolve true só na
-// primeira vez.
-func (r *PostgresRepository) RecordAlertOnce(ctx context.Context, contratoID uuid.UUID, kind, refKey string) (bool, error) {
-	tag, err := r.pool.Exec(ctx, `
+func recordAlertOnce(ctx context.Context, db pgxExec, contratoID uuid.UUID, kind, refKey string) (bool, error) {
+	tag, err := db.Exec(ctx, `
 		INSERT INTO contrato_diario_alertas (contrato_id, kind, ref_key)
 		VALUES ($1,$2,$3)
 		ON CONFLICT (contrato_id, kind, ref_key) DO NOTHING`,
@@ -244,6 +249,41 @@ func (r *PostgresRepository) RecordAlertOnce(ctx context.Context, contratoID uui
 		return false, fmt.Errorf("contratos: record alert once: %w", err)
 	}
 	return tag.RowsAffected() > 0, nil
+}
+
+func listDiarioRefs(ctx context.Context, db pgxExec, contratoID uuid.UUID) ([]domain.DiarioRef, error) {
+	rows, err := db.Query(ctx, `
+		SELECT contrato_id, edition_number, tipo_evento, publicado_em, contexto, doc_url
+		FROM contrato_diario_refs
+		WHERE contrato_id = $1
+		ORDER BY publicado_em DESC NULLS LAST`, contratoID)
+	if err != nil {
+		return nil, fmt.Errorf("contratos: list diario refs: %w", err)
+	}
+	defer rows.Close()
+	var out []domain.DiarioRef
+	for rows.Next() {
+		var ref domain.DiarioRef
+		if err := rows.Scan(&ref.ContratoID, &ref.EditionNumber, &ref.TipoEvento, &ref.PublicadoEm, &ref.Contexto, &ref.DocURL); err != nil {
+			return nil, fmt.Errorf("contratos: scan diario ref: %w", err)
+		}
+		out = append(out, ref)
+	}
+	return out, rows.Err()
+}
+
+// LinkDiarioRefTx / RecordAlertOnceTx / ListDiarioRefsTx: variantes que
+// rodam na tx de negócio do casador (padrão Transactional Outbox).
+func (r *PostgresRepository) LinkDiarioRefTx(ctx context.Context, tx pgx.Tx, ref domain.DiarioRef) (bool, error) {
+	return linkDiarioRef(ctx, tx, ref)
+}
+
+func (r *PostgresRepository) RecordAlertOnceTx(ctx context.Context, tx pgx.Tx, contratoID uuid.UUID, kind, refKey string) (bool, error) {
+	return recordAlertOnce(ctx, tx, contratoID, kind, refKey)
+}
+
+func (r *PostgresRepository) ListDiarioRefsTx(ctx context.Context, tx pgx.Tx, contratoID uuid.UUID) ([]domain.DiarioRef, error) {
+	return listDiarioRefs(ctx, tx, contratoID)
 }
 
 // ListByStatus retorna todos os contratos agrupados por status.
@@ -286,28 +326,7 @@ func (r *PostgresRepository) KanbanCols(ctx context.Context, limitPerCol int) (m
 
 // ListDiarioRefs retorna as referências do Diário Oficial de um contrato.
 func (r *PostgresRepository) ListDiarioRefs(ctx context.Context, contratoID uuid.UUID) ([]domain.DiarioRef, error) {
-	rows, err := r.pool.Query(ctx, `
-		SELECT contrato_id, edition_number, tipo_evento, publicado_em, contexto, doc_url
-		FROM contrato_diario_refs
-		WHERE contrato_id = $1
-		ORDER BY publicado_em DESC NULLS LAST`, contratoID)
-	if err != nil {
-		return nil, fmt.Errorf("contratos: list diario refs: %w", err)
-	}
-	defer rows.Close()
-
-	var result []domain.DiarioRef
-	for rows.Next() {
-		var ref domain.DiarioRef
-		if err := rows.Scan(
-			&ref.ContratoID, &ref.EditionNumber, &ref.TipoEvento,
-			&ref.PublicadoEm, &ref.Contexto, &ref.DocURL,
-		); err != nil {
-			return nil, fmt.Errorf("contratos: scan diario ref: %w", err)
-		}
-		result = append(result, ref)
-	}
-	return result, rows.Err()
+	return listDiarioRefs(ctx, r.pool, contratoID)
 }
 
 // ListAditivos retorna os aditivos de um contrato.
