@@ -18,7 +18,7 @@ type CreateContratoRequest struct {
 	Contratado         string   `json:"contratado"`
 	CNPJ               string   `json:"cnpj,omitempty"`
 	Valor              *float64 `json:"valor,omitempty"`
-	DataAssinatura     *string  `json:"data_assinatura,omitempty"`  // "2006-01-02"
+	DataAssinatura     *string  `json:"data_assinatura,omitempty"` // "2006-01-02"
 	DataVigenciaInicio *string  `json:"data_vigencia_inicio,omitempty"`
 	DataVigenciaFim    *string  `json:"data_vigencia_fim,omitempty"`
 }
@@ -41,22 +41,22 @@ type AddDiarioRefRequest struct {
 
 // ContratoResponse é a representação de um contrato na API.
 type ContratoResponse struct {
-	ID                 uuid.UUID          `json:"id"`
-	Numero             string             `json:"numero"`
-	Objeto             string             `json:"objeto"`
-	Contratante        string             `json:"contratante"`
-	Contratado         string             `json:"contratado"`
-	CNPJ               string             `json:"cnpj,omitempty"`
-	Valor              *float64           `json:"valor,omitempty"`
-	DataAssinatura     *string            `json:"data_assinatura,omitempty"`
-	DataVigenciaInicio *string            `json:"data_vigencia_inicio,omitempty"`
-	DataVigenciaFim    *string            `json:"data_vigencia_fim,omitempty"`
-	Status             string             `json:"status"`
-	StatusLabel        string             `json:"status_label"`
+	ID                 uuid.UUID           `json:"id"`
+	Numero             string              `json:"numero"`
+	Objeto             string              `json:"objeto"`
+	Contratante        string              `json:"contratante"`
+	Contratado         string              `json:"contratado"`
+	CNPJ               string              `json:"cnpj,omitempty"`
+	Valor              *float64            `json:"valor,omitempty"`
+	DataAssinatura     *string             `json:"data_assinatura,omitempty"`
+	DataVigenciaInicio *string             `json:"data_vigencia_inicio,omitempty"`
+	DataVigenciaFim    *string             `json:"data_vigencia_fim,omitempty"`
+	Status             string              `json:"status"`
+	StatusLabel        string              `json:"status_label"`
 	DiarioRefs         []DiarioRefResponse `json:"diario_refs,omitempty"`
 	Aditivos           []AditivoResponse   `json:"aditivos,omitempty"`
-	CreatedAt          time.Time          `json:"created_at"`
-	UpdatedAt          time.Time          `json:"updated_at"`
+	CreatedAt          time.Time           `json:"created_at"`
+	UpdatedAt          time.Time           `json:"updated_at"`
 }
 
 // DiarioRefResponse é a representação de uma referência do Diário Oficial.

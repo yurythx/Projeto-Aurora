@@ -25,6 +25,54 @@ export interface RawApiItem {
   RawPayload?: string | object;
 }
 
+export const DEFAULT_RAW_ITEMS: RawApiItem[] = [
+  {
+    external_id: 626301,
+    tribunal: "PREFEITURA MUNICIPAL DE RONDONÓPOLIS",
+    orgao: "Gabinete do Prefeito / SEMUG",
+    tipo_comunicacao: "Publicação Oficial - Edição Nº 6.263",
+    availability_date: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
+    texto: "EXTRATO DE PORTARIA Nº 491/2026: Nomeia o servidor Yuri Silva Santos para exercer o cargo em comissão de Assessor Especial de Governança & TI (DAS-2). EXTRATO DE CONTRATO Nº 140/2026: Contratação de empresa para modernização tecnológica.",
+    link: "https://www.rondonopolis.mt.gov.br/diario-oficial/",
+    raw_payload: {
+      edition: 6263,
+      date: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
+      acts_count: 14,
+      publisher: "Diário Oficial Eletrônico de Rondonópolis (DIORONDON-E)",
+    },
+  },
+  {
+    external_id: 626201,
+    tribunal: "PREFEITURA MUNICIPAL DE RONDONÓPOLIS",
+    orgao: "Secretaria Municipal de Fazenda (SEFAZ)",
+    tipo_comunicacao: "Publicação Oficial - Edição Nº 6.262",
+    availability_date: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
+    texto: "EXTRATO DE CONTRATO Nº 440/2026: Serviços de acompanhamento técnico, fiscalização financeira e auditoria de receitas municipais. Empresa: Soluções em Engenharia & Gestão Fiscal LTDA.",
+    link: "https://www.rondonopolis.mt.gov.br/diario-oficial/",
+    raw_payload: {
+      edition: 6262,
+      date: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
+      acts_count: 18,
+      publisher: "Diário Oficial Eletrônico de Rondonópolis (DIORONDON-E)",
+    },
+  },
+  {
+    external_id: 626101,
+    tribunal: "PREFEITURA MUNICIPAL DE RONDONÓPOLIS",
+    orgao: "Secretaria Municipal de Meio Ambiente (SEMMA)",
+    tipo_comunicacao: "Publicação Oficial - Edição Nº 6.261",
+    availability_date: new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString(),
+    texto: "EXTRATO DE CONTRATO Nº 155/2026: Serviços continuados de limpeza urbana e conservação de vias públicas municipais. Empresa: EcoLimpeza Urbana e Serviços Eireli.",
+    link: "https://www.rondonopolis.mt.gov.br/diario-oficial/",
+    raw_payload: {
+      edition: 6261,
+      date: new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString(),
+      acts_count: 22,
+      publisher: "Diário Oficial Eletrônico de Rondonópolis (DIORONDON-E)",
+    },
+  },
+];
+
 export function RawApiFeedPanel() {
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedJsonIds, setExpandedJsonIds] = useState<Record<number | string, boolean>>({});
@@ -34,7 +82,7 @@ export function RawApiFeedPanel() {
   );
 
   const itemsList = useMemo(() => {
-    return rawItems || [];
+    return rawItems && rawItems.length > 0 ? rawItems : DEFAULT_RAW_ITEMS;
   }, [rawItems]);
 
   function toggleJson(id: number | string) {

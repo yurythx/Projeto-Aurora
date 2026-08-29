@@ -27,13 +27,19 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<{ data: T; meta?: unknown }> {
-  // Um corpo FormData (Fase 10 — postForm, upload de .zip) nunca ganha um
-  // Content-Type fixo aqui: o browser precisa gerar esse header sozinho,
-  // com o boundary multipart correto — um Content-Type: application/json
-  // explícito (mesmo que "errado") NUNCA é sobrescrito pelo fetch, então
-  // fixá-lo aqui quebraria toda requisição multipart.
+  let cleanPath = path.startsWith("/") ? path.slice(1) : path;
+  if (cleanPath.startsWith("api/")) {
+    cleanPath = cleanPath.slice(4);
+  }
+  if (cleanPath.startsWith("backend/")) {
+    cleanPath = cleanPath.slice(8);
+  }
   const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
-  const res = await fetch(`/api/backend/${path}`, {
+  const baseUrl = typeof window !== "undefined"
+    ? ""
+    : (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000");
+
+  const res = await fetch(`${baseUrl}/api/backend/${cleanPath}`, {
     ...init,
     headers: {
       ...(isFormData ? {} : { "Content-Type": "application/json" }),

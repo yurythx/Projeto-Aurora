@@ -107,6 +107,19 @@ func (c *RondonopolisClient) Check(ctx context.Context) (*domain.CheckResult, er
 	}, nil
 }
 
+// parsePortalDate lê a "Data de Edição" da tabela do portal ("27/08/26" ou
+// "27/08/2026"). Retorna o zero de time.Time (não uma data inventada) se não
+// parsear — a montante isso vira NULL no banco.
+func parsePortalDate(s string) time.Time {
+	s = strings.TrimSpace(s)
+	for _, layout := range []string{"02/01/2006", "02/01/06", "2006-01-02"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+		}
+	}
+	return time.Time{}
+}
+
 func (c *RondonopolisClient) Search(ctx context.Context, query domain.SearchQuery) (*domain.SearchResult, error) {
 	if c.baseURL == "" {
 		return nil, apperrors.DependencyUnavailable("Rondonópolis Diário Oficial integration is not configured").WithCode("INTEGRATION_UNAVAILABLE")
@@ -186,21 +199,25 @@ func (c *RondonopolisClient) Search(ctx context.Context, query domain.SearchQuer
 		}
 	}
 
-	// 2. Se JSON não retornou edições (ex.: resposta HTML do portal), faz parsing via expressão regular no HTML oficial
+	// 2. Se JSON não retornou edições (ex.: resposta HTML do portal), faz parsing da TABELA oficial.
+	// Estrutura real: <tr><th scope="row">6265</th><td ...>27/08/26</td><td ...><a href="...pdf" title="Baixar edição n° 6265 ...">
 	if len(items) == 0 {
-		re := regexp.MustCompile(`<a\s+href="([^"]+\.pdf)"\s+title="Baixar edição n°\s*(\d+)([^"]*)"`)
-		matches := re.FindAllStringSubmatch(string(bodyBytes), -1)
+		rowRe := regexp.MustCompile(`(?is)<th[^>]*scope="row"[^>]*>\s*(\d+)\s*</th>\s*<td[^>]*>\s*([\d/]{6,10})\s*</td>\s*<td[^>]*>\s*<a\s+href="([^"]+\.pdf)"`)
+		matches := rowRe.FindAllStringSubmatch(string(bodyBytes), -1)
 
-		now := time.Now()
-		seenEditions := make(map[string]bool)
-
-		for idx, match := range matches {
-			if len(match) < 3 {
-				continue
+		// Fallback: layout mudou e a linha não casou — pega ao menos o <a> (sem data).
+		if len(matches) == 0 {
+			aRe := regexp.MustCompile(`(?i)<a\s+href="([^"]+\.pdf)"\s+title="Baixar edição n°\s*(\d+)`)
+			for _, m := range aRe.FindAllStringSubmatch(string(bodyBytes), -1) {
+				matches = append(matches, []string{m[0], m[2], "", m[1]}) // [_, ednum, data-vazia, href]
 			}
-			pdfPath := match[1]
-			edNumber := match[2]
-			extraTitle := strings.TrimSpace(match[3])
+		}
+
+		seenEditions := make(map[string]bool)
+		for _, match := range matches {
+			edNumber := match[1]
+			dateStr := strings.TrimSpace(match[2])
+			pdfPath := match[3]
 
 			if !strings.HasPrefix(pdfPath, "http") {
 				if strings.HasPrefix(pdfPath, "/") {
@@ -210,30 +227,35 @@ func (c *RondonopolisClient) Search(ctx context.Context, query domain.SearchQuer
 				}
 			}
 
-			editionKey := edNumber + "-" + pdfPath
-			if seenEditions[editionKey] {
+			if seenEditions[edNumber] {
 				continue
 			}
-			seenEditions[editionKey] = true
+			seenEditions[edNumber] = true
 
-			if freeTextLower != "" && !strings.Contains(strings.ToLower(edNumber), freeTextLower) && !strings.Contains(strings.ToLower(extraTitle), freeTextLower) && !strings.Contains(strings.ToLower(pdfPath), freeTextLower) {
+			if freeTextLower != "" && !strings.Contains(strings.ToLower(edNumber), freeTextLower) && !strings.Contains(strings.ToLower(pdfPath), freeTextLower) {
 				continue
 			}
 
-			idVal := int64(6263 - idx)
+			var idVal int64
 			if n, pErr := strconv.ParseInt(edNumber, 10, 64); pErr == nil {
 				idVal = n
+			} else {
+				continue // sem número de edição não há como deduplicar
 			}
 
-			pubDate := now.AddDate(0, 0, -idx)
-			titleLabel := fmt.Sprintf("Edição Nº %s %s", edNumber, extraTitle)
+			// Data REAL da tabela (dd/mm/yy ou dd/mm/yyyy). Se não parsear,
+			// zero — o watcher grava NULL, nunca uma data inventada.
+			pubDate := parsePortalDate(dateStr)
+			if query.Since != nil && !pubDate.IsZero() && pubDate.Before(*query.Since) {
+				continue
+			}
 
 			rawMap := map[string]interface{}{
 				"edition_number": edNumber,
-				"extra_title":    extraTitle,
+				"edition_date":   dateStr,
 				"pdf_url":        pdfPath,
-				"parsed_at":      now.Format(time.RFC3339),
-				"source":         "DIORONDON-E Portal Oficial",
+				"parsed_at":      time.Now().Format(time.RFC3339),
+				"source":         "DIORONDON-E Portal Oficial (tabela)",
 			}
 			rawPayload, _ := json.Marshal(rawMap)
 
@@ -241,47 +263,42 @@ func (c *RondonopolisClient) Search(ctx context.Context, query domain.SearchQuer
 				ExternalID:       idVal,
 				Tribunal:         "Prefeitura Municipal de Rondonópolis / DIORONDON-E",
 				Orgao:            "Secretaria Municipal de Administração, Gestão de Pessoas e Inovação",
-				TipoComunicacao:  strings.TrimSpace(titleLabel),
-				Texto:            fmt.Sprintf("Publicação oficial do Diário Oficial de Rondonópolis - Edição Nº %s %s. Disponível para download e auditoria.", edNumber, extraTitle),
+				TipoComunicacao:  fmt.Sprintf("Edição Nº %s", edNumber),
+				Texto:            fmt.Sprintf("Diário Oficial de Rondonópolis - Edição Nº %s (%s).", edNumber, dateStr),
 				AvailabilityDate: pubDate,
 				Link:             pdfPath,
 				RawPayload:       rawPayload,
 			})
 
-			if len(items) >= 20 {
+			if len(items) >= 30 {
 				break
 			}
 		}
 	}
 
-	// 3. PARSING EM STREAM DE CONTEÚDO PDF (Extrai texto real do PDF via pdftotext)
-	maxExtract := 5
-	if len(items) < maxExtract {
-		maxExtract = len(items)
-	}
-
-	for i := 0; i < maxExtract; i++ {
-		pdfURL := items[i].Link
-		if pdfURL != "" && strings.Contains(pdfURL, ".pdf") {
-			pdfText, pdfErr := ExtractPDFTextStream(ctx, c.client, pdfURL)
-			if pdfErr == nil && len(pdfText) > 0 {
-				snippet := pdfText
-				if len(snippet) > 1000 {
-					snippet = snippet[:1000] + "..."
-				}
-				items[i].Texto = snippet
-
-				rawMap := map[string]interface{}{
-					"edition_number":     items[i].TipoComunicacao,
-					"pdf_url":            pdfURL,
-					"pdf_text_extracted": true,
-					"extracted_snippet":  snippet,
-					"full_text_length":   len(pdfText),
-					"source":             "DIORONDON-E PDF Stream Extractor",
-				}
-				rawPayloadBytes, _ := json.Marshal(rawMap)
-				items[i].RawPayload = json.RawMessage(rawPayloadBytes)
+	// 3. Extração de SNIPPET do PDF — só quando há termo de busca (o feed que
+	// mostra trechos). A descoberta do watcher (query vazia) pula isto: baixar
+	// e rodar pdftotext em 5 PDFs a cada Search estourava o timeout do portal
+	// e ainda sobrescrevia o edition_date do RawPayload.
+	if freeTextLower != "" {
+		maxExtract := 5
+		if len(items) < maxExtract {
+			maxExtract = len(items)
+		}
+		for i := 0; i < maxExtract; i++ {
+			pdfURL := items[i].Link
+			if pdfURL == "" || !strings.Contains(pdfURL, ".pdf") {
+				continue
 			}
+			pdfText, pdfErr := ExtractPDFTextStream(ctx, c.client, pdfURL)
+			if pdfErr != nil || len(pdfText) == 0 {
+				continue
+			}
+			snippet := pdfText
+			if len(snippet) > 1000 {
+				snippet = snippet[:1000] + "..."
+			}
+			items[i].Texto = snippet
 		}
 	}
 

@@ -1,12 +1,21 @@
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
-import { X, FileText, CheckCircle2, Lock, Upload, Printer } from "lucide-react";
-import type { DemandResponse } from "@/types/api";
+import { FileText, CheckCircle2, Lock, Upload, Printer, History } from "lucide-react";
+import type { AuditLogRow, DemandResponse } from "@/types/api";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useToast } from "@/components/notifications/ToastProvider";
-import { addDemandDocument } from "@/lib/api/demands";
-import Link from "next/link";
+import { addDemandDocument, getDemandHistory } from "@/lib/api/demands";
+
+function describeAudit(row: AuditLogRow): string {
+  if (row.action === "demand.created") return "Demanda criada";
+  if (row.action === "demand.etapa_changed") {
+    const from = row.metadata?.old_etapa;
+    const to = row.metadata?.new_etapa;
+    return `Movida da Etapa ${from ?? "?"} para a Etapa ${to ?? "?"}`;
+  }
+  return row.action;
+}
 
 interface Props {
   demand: DemandResponse;
@@ -20,6 +29,17 @@ export function ContratoModal({ demand, onClose, onDemandUpdated }: Props) {
   const { showToast } = useToast();
 
   const documents = demand.documents || [];
+
+  const [history, setHistory] = useState<AuditLogRow[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    getDemandHistory(demand.id)
+      .then((rows) => alive && setHistory(rows))
+      .catch(() => alive && setHistory([]));
+    return () => {
+      alive = false;
+    };
+  }, [demand.id]);
 
   const [selectedDocType, setSelectedDocType] = useState<string>("OF_PRE_EMPENHO");
 
@@ -139,15 +159,56 @@ export function ContratoModal({ demand, onClose, onDemandUpdated }: Props) {
               )}
             </div>
           </div>
+
+          <div className="flex flex-col gap-3">
+            <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
+              <History className="h-4 w-4 text-primary" />
+              Histórico (trilha de auditoria)
+            </h4>
+            <div className="rounded-md border border-border/50 max-h-56 overflow-y-auto divide-y divide-border/40">
+              {history === null ? (
+                <p className="p-3 text-xs text-muted">Carregando…</p>
+              ) : history.length === 0 ? (
+                <p className="p-3 text-xs text-muted">Sem registros de auditoria para esta demanda.</p>
+              ) : (
+                history.map((row) => (
+                  <div key={row.id} className="flex items-start justify-between gap-3 p-3">
+                    <span className="text-sm text-foreground">{describeAudit(row)}</span>
+                    <span className="shrink-0 text-xs text-muted font-mono">
+                      {new Date(row.created_at).toLocaleString("pt-BR")}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
 
-        <div className="flex justify-between border-t border-border/40 pt-4 mt-4">
-          <Link href={`/contratos/demandas/${demand.id}/oficio`} target="_blank">
-            <Button variant="secondary" className="gap-2">
-              <Printer className="h-4 w-4" />
-              Gerar OF (PDF)
-            </Button>
-          </Link>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-4 mt-4">
+          <div className="flex flex-wrap gap-2">
+            <a href={`/api/backend/v1/demands/${demand.id}/oficio.pdf`} target="_blank" rel="noreferrer">
+              <Button variant="secondary" className="gap-2">
+                <Printer className="h-4 w-4" />
+                Ofício (PDF)
+              </Button>
+            </a>
+            {demand.etapa >= 3 && (
+              <a href={`/api/backend/v1/demands/${demand.id}/ordem-servico.pdf`} target="_blank" rel="noreferrer">
+                <Button variant="secondary" className="gap-2">
+                  <Printer className="h-4 w-4" />
+                  Ordem de Serviço (PDF)
+                </Button>
+              </a>
+            )}
+            {demand.etapa >= 5 && (
+              <a href={`/api/backend/v1/demands/${demand.id}/relatorio.pdf`} target="_blank" rel="noreferrer">
+                <Button variant="secondary" className="gap-2">
+                  <Printer className="h-4 w-4" />
+                  Relatório / Anexo I (PDF)
+                </Button>
+              </a>
+            )}
+          </div>
           <Button variant="secondary" onClick={onClose}>
             Fechar
           </Button>

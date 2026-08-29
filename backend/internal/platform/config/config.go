@@ -153,6 +153,12 @@ type MinIOConfig struct {
 	UseSSL    bool
 }
 
+// TypesenseConfig guarda as credenciais do motor de busca Typesense.
+type TypesenseConfig struct {
+	URL    string
+	APIKey string
+}
+
 // Config é a configuração da aplicação já totalmente validada.
 type Config struct {
 	App       AppConfig
@@ -166,6 +172,7 @@ type Config struct {
 
 	DiarioOficial DiarioOficialConfig
 	MinIO         MinIOConfig
+	Typesense     TypesenseConfig
 
 	FrontendURL         string
 	APIPublicURL        string
@@ -352,6 +359,10 @@ func Load() (*Config, error) {
 			SecretKey: l.str("MINIO_SECRET_KEY", false, "password123"),
 			Bucket:    l.str("MINIO_BUCKET", false, "demands"),
 			UseSSL:    l.boolVal("MINIO_USE_SSL", false),
+		},
+		Typesense: TypesenseConfig{
+			URL:    l.str("TYPESENSE_URL", false, "http://localhost:8108"),
+			APIKey: l.secret("TYPESENSE_API_KEY", false, "xyz123secret"),
 		},
 		FrontendURL:         l.str("FRONTEND_URL", false, "http://localhost:3000"),
 		APIPublicURL:        l.str("API_PUBLIC_URL", false, "http://localhost:8000"),

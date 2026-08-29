@@ -1,6 +1,6 @@
 .PHONY: dev up down logs build test lint format \
 	migrate-up migrate-down migrate-status seed-admin \
-	backend-shell frontend-shell rabbitmq-status clean \
+	backend-shell frontend-shell rabbitmq-status clean diario-reindex \
 	backend-build backend-test backend-lint backend-format \
 	frontend-build frontend-test frontend-lint frontend-format
 
@@ -116,6 +116,11 @@ backend-shell: ## Abre um shell no container backend-api em execução
 
 frontend-shell: ## Abre um shell no container frontend em execução
 	$(COMPOSE) exec frontend sh
+
+## --- Diário Oficial ---
+
+diario-reindex: ## Reconstrói as coleções do Typesense a partir das findings do PostgreSQL
+	$(COMPOSE) run --rm --no-deps backend-worker reindex-diario
 
 ## --- RabbitMQ ---
 

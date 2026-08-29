@@ -45,10 +45,10 @@ func PublicationMatchedHandler(svc *application.Service, logger *slog.Logger) ev
 		)
 
 		now := time.Now()
-		
+
 		// Converte os dados do evento em um contrato.
-		// Na vida real, poderíamos consultar os detalhes completos da 
-		// publicação (PDF, partes envolvidas) via API ou shared DB, 
+		// Na vida real, poderíamos consultar os detalhes completos da
+		// publicação (PDF, partes envolvidas) via API ou shared DB,
 		// mas aqui usamos os dados contidos no evento.
 		input := application.CreateFromDiarioInput{
 			Numero:         payload.ProcessNumber,
@@ -57,11 +57,11 @@ func PublicationMatchedHandler(svc *application.Service, logger *slog.Logger) ev
 			Contratado:     "A DEFINIR",
 			CNPJ:           "00.000.000/0000-00", // A extração exata viria do ETL.
 			TipoEvento:     payload.TipoComunicacao,
-			EditionNumber  : payload.PublicationID.String()[:8], // Fallback para ID truncado.
-			DataPublicacao : &now,
-			PublicadoEm    : &now,
-			Contexto       : "Publicação casou com termo monitorado: " + payload.MonitoredTermLabel,
-			DocURL         : "/diario-oficial", // Placeholder.
+			EditionNumber:  payload.PublicationID.String()[:8], // Fallback para ID truncado.
+			DataPublicacao: &now,
+			PublicadoEm:    &now,
+			Contexto:       "Publicação casou com termo monitorado: " + payload.MonitoredTermLabel,
+			DocURL:         "/diario-oficial", // Placeholder.
 		}
 
 		// Se não veio número de processo, gera um pseudo-número baseado na publicação.

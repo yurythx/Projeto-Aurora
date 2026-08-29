@@ -32,7 +32,12 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
     );
   }
 
-  const targetUrl = new URL(`/api/${path.join("/")}`, BACKEND_URL);
+  // Previne duplicação caso 'api' ou 'backend' venha nos primeiros elementos do path
+  const cleanPathSegments = [...path];
+  while (cleanPathSegments.length > 0 && (cleanPathSegments[0] === "api" || cleanPathSegments[0] === "backend")) {
+    cleanPathSegments.shift();
+  }
+  const targetUrl = new URL(`/api/${cleanPathSegments.join("/")}`, BACKEND_URL);
   targetUrl.search = req.nextUrl.search;
 
   const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID();
@@ -68,9 +73,20 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
     );
   }
 
-  const body = await backendResponse.text();
+  // Respostas binárias (hoje: GET .../package.zip — o compilador de
+  // pacote de uma demanda) NÃO podem passar por .text(): o decode UTF-8
+  // troca cada byte inválido por U+FFFD e corrompe o .zip. Encaminha os
+  // bytes crus nesse caso; texto (JSON, CSV) sobrevive igual a um
+  // round-trip por ArrayBuffer, então o galho binário serve os dois.
+  const upstreamContentType = backendResponse.headers.get("content-type") ?? "application/json";
+  const isTextual =
+    upstreamContentType.startsWith("application/json") ||
+    upstreamContentType.startsWith("text/");
+  const body = isTextual
+    ? await backendResponse.text()
+    : await backendResponse.arrayBuffer();
   const headers: Record<string, string> = {
-    "Content-Type": backendResponse.headers.get("content-type") ?? "application/json",
+    "Content-Type": upstreamContentType,
     "X-Request-ID": requestId,
   };
   // Content-Disposition (Fase 14 — Maturidade de AppSec: exportação CSV,

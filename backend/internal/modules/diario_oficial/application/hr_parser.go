@@ -4,15 +4,20 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/yurythx/projeto-nova/internal/gazette"
 )
 
 // HREventType define a categoria do ato de pessoal encontrado no diário oficial.
+// Usa o mesmo vocabulário canônico de internal/gazette (act_type.go) para que
+// o filtro escolhido no front case tanto com o índice do Typesense quanto com
+// o act_type persistido em diario_oficial_findings.
 type HREventType string
 
 const (
-	HREventExoneracao   HREventType = "EXONERACAO"
-	HREventNomeacao     HREventType = "NOMEACAO"
-	HREventMudancaSetor HREventType = "MUDANCA_SETOR"
+	HREventExoneracao   HREventType = HREventType(gazette.ActExoneracao)
+	HREventNomeacao     HREventType = HREventType(gazette.ActNomeacaoComissionado)
+	HREventMudancaSetor HREventType = HREventType(gazette.ActRelotacao)
 )
 
 // HREvent representa um ato de pessoal estruturado extraído de uma publicação do Diário Oficial.
@@ -30,6 +35,7 @@ type HREvent struct {
 	PublicationDate   time.Time   `json:"publication_date"`
 	ContextSnippet    string      `json:"context_snippet"`
 	DocURL            string      `json:"doc_url"`
+	PDFPageNumber     int         `json:"pdf_page_number"`
 }
 
 var (

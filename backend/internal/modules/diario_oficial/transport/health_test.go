@@ -34,8 +34,8 @@ func TestHealth_ReportsHealthyWhenClientSucceeds(t *testing.T) {
 		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
 	}
 	got := decodeEnvelope[sourceHealthResponseDTO](t, rec.Body.Bytes())
-	if !got.Healthy || got.Source != "djen" {
-		t.Errorf("got %+v, want healthy=true source=djen", got)
+	if !got.Healthy || got.Source != "rondonopolis" {
+		t.Errorf("got %+v, want healthy=true source=rondonopolis", got)
 	}
 }
 

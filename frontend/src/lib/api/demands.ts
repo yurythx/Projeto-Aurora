@@ -1,4 +1,10 @@
 import { apiClient } from "./client";
+import type { AuditLogRow } from "@/types/api";
+
+export async function getDemandHistory(id: string): Promise<AuditLogRow[]> {
+  const { data } = await apiClient.get<AuditLogRow[]>(`/api/v1/demands/${id}/history`);
+  return Array.isArray(data) ? data : [];
+}
 
 export async function updateDemandEtapa(id: string, targetEtapa: number): Promise<void> {
   await apiClient.patch(`/api/v1/demands/${id}/etapa`, { target_etapa: targetEtapa });

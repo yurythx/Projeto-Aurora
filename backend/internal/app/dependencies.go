@@ -29,6 +29,7 @@ import (
 	"github.com/yurythx/projeto-nova/internal/platform/storage"
 	"github.com/yurythx/projeto-nova/internal/platform/telemetry"
 	"github.com/yurythx/projeto-nova/internal/platform/ws"
+	"github.com/yurythx/projeto-nova/pkg/typesense"
 )
 
 // RateLimiters guarda todo rate limiter distribuído (baseado em Postgres —
@@ -69,6 +70,7 @@ type Dependencies struct {
 	RateLimiters *RateLimiters
 	Idempotency  idempotency.Store
 	Flags        configflags.Store
+	Typesense    *typesense.Client
 
 	telemetryShutdown telemetry.Shutdown
 }
@@ -187,6 +189,7 @@ func NewDependencies(ctx context.Context, component string) (*Dependencies, erro
 		},
 		Idempotency: idempotency.NewPostgresStore(pool),
 		Flags:       configflags.NewPostgresStore(pool),
+		Typesense:   typesense.NewClient(cfg.Typesense.URL, cfg.Typesense.APIKey),
 
 		telemetryShutdown: telemetryShutdown,
 	}

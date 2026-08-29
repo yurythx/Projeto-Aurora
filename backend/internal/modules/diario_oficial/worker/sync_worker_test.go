@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/yurythx/projeto-nova/internal/modules/diario_oficial/domain"
 )
 
@@ -71,6 +73,81 @@ func (m *mockEditionRepo) SaveFindingsTx(ctx context.Context, editionID int64, f
 
 func (m *mockEditionRepo) SearchFindings(ctx context.Context, query string, actType string, limit, offset int) ([]domain.Finding, int, error) {
 	return m.findings, len(m.findings), nil
+}
+
+func (m *mockEditionRepo) ListFindingsForIndex(ctx context.Context, afterID uuid.UUID, limit int) ([]domain.Finding, error) {
+	if afterID != uuid.Nil {
+		return nil, nil // mock: entrega tudo numa página só
+	}
+	return m.findings, nil
+}
+
+func (m *mockEditionRepo) RequeueFailedEditions(ctx context.Context, maxRetries int) (int, error) {
+	n := 0
+	for _, ed := range m.editions {
+		if ed.Status == domain.EditionStatusFailed && ed.RetryCount < maxRetries {
+			ed.Status = domain.EditionStatusPending
+			ed.RetryCount++
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (m *mockEditionRepo) ListFindingsByEdition(ctx context.Context, editionID int64) ([]domain.Finding, error) {
+	out := make([]domain.Finding, 0)
+	for _, f := range m.findings {
+		if f.EditionID == editionID {
+			out = append(out, f)
+		}
+	}
+	return out, nil
+}
+
+func (m *mockEditionRepo) ListFindingsForReview(ctx context.Context, limit int) ([]domain.Finding, error) {
+	out := make([]domain.Finding, 0)
+	for _, f := range m.findings {
+		if f.Confidence == "low" {
+			out = append(out, f)
+		}
+	}
+	return out, nil
+}
+
+func (m *mockEditionRepo) GetFindingByID(ctx context.Context, id uuid.UUID) (*domain.Finding, error) {
+	for i := range m.findings {
+		if m.findings[i].ID == id {
+			f := m.findings[i]
+			return &f, nil
+		}
+	}
+	return nil, fmt.Errorf("not found")
+}
+
+func (m *mockEditionRepo) UpdateFindingReview(ctx context.Context, id uuid.UUID, in domain.FindingReviewInput, reviewedBy *uuid.UUID) (*domain.Finding, error) {
+	for i := range m.findings {
+		if m.findings[i].ID == id {
+			m.findings[i].ActType = in.ActType
+			m.findings[i].Confidence = in.Confidence
+			f := m.findings[i]
+			return &f, nil
+		}
+	}
+	return nil, fmt.Errorf("not found")
+}
+
+func (m *mockEditionRepo) AcknowledgeFinding(ctx context.Context, id uuid.UUID, reviewedBy *uuid.UUID, note string) error {
+	return nil
+}
+
+func (m *mockEditionRepo) DeleteFinding(ctx context.Context, id uuid.UUID) error {
+	for i := range m.findings {
+		if m.findings[i].ID == id {
+			m.findings = append(m.findings[:i], m.findings[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("not found")
 }
 
 func TestSyncWorkerPool_MockExecution(t *testing.T) {

@@ -18,15 +18,53 @@ import (
 	"github.com/yurythx/projeto-nova/internal/platform/storage"
 )
 
+// ContratoRef é o mínimo que a geração automática de demandas precisa saber
+// sobre um contrato vigente.
+type ContratoRef struct {
+	ID     uuid.UUID
+	Numero string
+}
+
+// ContractLister é a fonte de contratos vigentes (implementada em app/ sobre
+// o repositório de contratos) — evita o módulo demands depender do módulo
+// contratos diretamente.
+type ContractLister interface {
+	ListVigentes(ctx context.Context) ([]ContratoRef, error)
+}
+
 // Service coordena os fluxos das Demandas Mensais.
 type Service struct {
-	db      *pgxpool.Pool
-	repo    domain.Repository
-	outbox  *outbox.Writer
-	storage storage.Provider
-	audit   *audit.Writer
-	bucket  string
-	logger  *slog.Logger
+	db        *pgxpool.Pool
+	repo      domain.Repository
+	outbox    *outbox.Writer
+	storage   storage.Provider
+	audit     *audit.Writer
+	auditLog  *audit.Reader
+	contracts ContractLister
+	bucket    string
+	logger    *slog.Logger
+}
+
+// WithContractLister injeta a fonte de contratos vigentes (geração mensal).
+func (s *Service) WithContractLister(cl ContractLister) *Service {
+	s.contracts = cl
+	return s
+}
+
+// WithAuditReader injeta o leitor da trilha de auditoria (painel de
+// histórico da demanda).
+func (s *Service) WithAuditReader(r *audit.Reader) *Service {
+	s.auditLog = r
+	return s
+}
+
+// DemandHistory devolve a trilha de auditoria de uma demanda (criação,
+// mudanças de etapa) da mais recente para a mais antiga.
+func (s *Service) DemandHistory(ctx context.Context, demandID uuid.UUID) ([]audit.LogRow, error) {
+	if s.auditLog == nil {
+		return []audit.LogRow{}, nil
+	}
+	return s.auditLog.ListByResource(ctx, "demand", demandID.String(), 200)
 }
 
 // NewService constrói o Service.
@@ -48,8 +86,8 @@ func (s *Service) MoveKanbanCard(ctx context.Context, demandID uuid.UUID, target
 	}
 
 	// 2. Aciona a Máquina de Estados para checar as travas
-	if err := ValidateTransition(demand, nextStage); err != nil {
-		s.logger.Warn("bloqueio de transicao no kanban", 
+	if err := ValidateTransition(demand, nextStage, time.Now()); err != nil {
+		s.logger.Warn("bloqueio de transicao no kanban",
 			slog.String("demanda_id", demandID.String()),
 			slog.Int("de_etapa", int(demand.Etapa)),
 			slog.Int("para_etapa", int(nextStage)),
@@ -68,7 +106,7 @@ func (s *Service) MoveKanbanCard(ctx context.Context, demandID uuid.UUID, target
 	// 4. Salva a transição e publica o evento atomica e confiavelmente (Outbox)
 	correlationID := uuid.New()
 	err = database.WithTx(ctx, s.db, func(ctx context.Context, tx pgx.Tx) error {
-		// Precisamos converter s.repo para uma interface que aceita Tx, 
+		// Precisamos converter s.repo para uma interface que aceita Tx,
 		// ou fazer cast para PostgresRepository localmente.
 		// Para simplificar no Go, se o repo suportar transação:
 		type txUpdater interface {
@@ -120,13 +158,113 @@ func (s *Service) MoveKanbanCard(ctx context.Context, demandID uuid.UUID, target
 		})
 	}
 
-	s.logger.Info("kanban card movido", 
+	s.logger.Info("kanban card movido",
 		slog.String("demanda_id", demandID.String()),
 		slog.Int("de_etapa", int(oldStage)),
 		slog.Int("para_etapa", int(nextStage)),
 		slog.String("correlation_id", correlationID.String()),
 	)
 	return nil
+}
+
+// EnsureMonthlyDemands garante que todo contrato vigente tem uma demanda
+// mensal (na Etapa 1) para o mês `anoMes` (formato "2006-01"). Idempotente —
+// só cria as que faltam. Chamado por um loop do worker.
+func (s *Service) EnsureMonthlyDemands(ctx context.Context, anoMes string) (int, error) {
+	if s.contracts == nil {
+		return 0, nil // sem fonte de contratos configurada
+	}
+	vigentes, err := s.contracts.ListVigentes(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("demands service: list vigentes: %w", err)
+	}
+	created := 0
+	for _, c := range vigentes {
+		exists, err := s.repo.ExistsForContractMonth(ctx, c.ID, anoMes)
+		if err != nil {
+			s.logger.Warn("demands: checar demanda mensal existente falhou", slog.String("contrato", c.Numero), slog.Any("erro", err))
+			continue
+		}
+		if exists {
+			continue
+		}
+		now := time.Now()
+		d := domain.MonthlyDemand{
+			ID: uuid.New(), ContratoID: c.ID, AnoMes: anoMes,
+			Etapa: domain.Etapa1ElaborarOF, StatusEtapa: domain.StatusPendente,
+			Observacoes:    "Demanda mensal gerada automaticamente.",
+			EtapaStartedAt: now, CreatedAt: now, UpdatedAt: now,
+		}
+		if err := s.repo.Create(ctx, d); err != nil {
+			s.logger.Warn("demands: criar demanda mensal automática falhou", slog.String("contrato", c.Numero), slog.Any("erro", err))
+			continue
+		}
+		created++
+	}
+	if created > 0 {
+		s.logger.Info("demands: demandas mensais geradas automaticamente", slog.String("ano_mes", anoMes), slog.Int("criadas", created))
+	}
+	return created, nil
+}
+
+// SweepSLA varre as demandas paradas além do prazo da etapa e abre uma
+// pendência (contract_occurrences) para cada — uma por demanda/tipo enquanto
+// não resolvida. Chamado por um loop do worker.
+func (s *Service) SweepSLA(ctx context.Context) (int, error) {
+	now := time.Now()
+	// Só precisa avaliar demandas cuja etapa começou há mais de 5 dias (o
+	// menor SLA); o cálculo fino é por etapa em domain.ComputeSLA.
+	stale, err := s.repo.ListStale(ctx, now.AddDate(0, 0, -5))
+	if err != nil {
+		return 0, fmt.Errorf("demands service: list stale: %w", err)
+	}
+	opened := 0
+	for _, d := range stale {
+		sla := domain.ComputeSLA(d.Etapa, d.EtapaStartedAt, now)
+		if !sla.Breached {
+			continue
+		}
+		occ := domain.Occurrence{
+			ID: uuid.New(), ContratoID: d.ContratoID, DemandaID: &d.ID,
+			Tipo: domain.OccurrenceSLABreach,
+			Descricao: fmt.Sprintf("Demanda %s parada há %d dias na etapa %d (SLA %d dias).",
+				d.AnoMes, sla.DaysInStage, d.Etapa, sla.SLADays),
+			SLAVenceEm: sla.DueAt,
+		}
+		created, err := s.repo.EnsureSLAOccurrence(ctx, occ)
+		if err != nil {
+			s.logger.Warn("demands: abrir pendência de SLA falhou", slog.String("demanda", d.ID.String()), slog.Any("erro", err))
+			continue
+		}
+		if created {
+			opened++
+		}
+	}
+	if opened > 0 {
+		s.logger.Info("demands: pendências de SLA abertas", slog.Int("count", opened))
+	}
+	return opened, nil
+}
+
+// OpenOccurrences lista as pendências não resolvidas (dashboard/alertas).
+func (s *Service) OpenOccurrences(ctx context.Context, limit int) ([]domain.Occurrence, error) {
+	return s.repo.ListOpenOccurrences(ctx, limit)
+}
+
+// NextRequirements devolve o checklist da PRÓXIMA etapa de uma demanda — o
+// que já está anexado, o que falta e o que está vencido — para o Kanban
+// mostrar o cadeado e a lista antes de o fiscal tentar arrastar o card.
+func (s *Service) NextRequirements(ctx context.Context, demandID uuid.UUID) (StageCheck, error) {
+	demand, err := s.repo.GetByID(ctx, demandID)
+	if err != nil {
+		return StageCheck{}, fmt.Errorf("demands service: get demand: %w", err)
+	}
+	target := demand.Etapa + 1
+	if target > domain.Etapa6Contabilidade {
+		// Última etapa: nada a exigir para "avançar".
+		return StageCheck{FromEtapa: int(demand.Etapa), ToEtapa: int(demand.Etapa), CanAdvance: false, Docs: []DocStatus{}}, nil
+	}
+	return CheckAdvance(demand, target, time.Now()), nil
 }
 
 // KanbanView retorna o quadro completo para exibição.
@@ -142,7 +280,7 @@ func (s *Service) KanbanView(ctx context.Context) (map[domain.EtapaKanban][]doma
 func (s *Service) GenerateUploadURL(ctx context.Context, demandID uuid.UUID, docType, fileName string) (string, string, error) {
 	// Ex: /demands/{demandID}/{docType}-{timestamp}-{fileName}
 	objectPath := fmt.Sprintf("%s/%s-%d-%s", demandID.String(), docType, time.Now().Unix(), fileName)
-	
+
 	// Gera URL válida por 15 minutos
 	url, err := s.storage.PresignedPutURL(ctx, s.bucket, objectPath, 15*time.Minute)
 	if err != nil {
@@ -153,7 +291,9 @@ func (s *Service) GenerateUploadURL(ctx context.Context, demandID uuid.UUID, doc
 }
 
 // ConfirmUpload salva a referência do documento no banco após o cliente terminar de subir no MinIO.
-func (s *Service) ConfirmUpload(ctx context.Context, demandID uuid.UUID, docType, filePath, fileName string) error {
+// validade é o prazo de validade da certidão (nil quando não se aplica) —
+// usado pela Máquina de Estados para bloquear a demanda com certidão vencida.
+func (s *Service) ConfirmUpload(ctx context.Context, demandID uuid.UUID, docType, filePath, fileName string, validade *time.Time) error {
 	// Cria o documento de prova
 	doc := domain.DemandDocument{
 		ID:         uuid.New(),
@@ -162,13 +302,14 @@ func (s *Service) ConfirmUpload(ctx context.Context, demandID uuid.UUID, docType
 		FilePath:   filePath,
 		FileName:   fileName,
 		UploadedAt: time.Now(),
+		Validade:   validade,
 	}
 
 	if err := s.repo.AddDocument(ctx, doc); err != nil {
 		return fmt.Errorf("demands service: confirm upload: %w", err)
 	}
 
-	s.logger.Info("documento de demanda anexado com sucesso", 
+	s.logger.Info("documento de demanda anexado com sucesso",
 		slog.String("demanda_id", demandID.String()),
 		slog.String("doc_type", docType),
 	)

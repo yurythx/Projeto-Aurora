@@ -29,3 +29,21 @@ func TestHasPermission_NoRolesDeniesEverything(t *testing.T) {
 		t.Error("expected an identity with no roles to have no permissions")
 	}
 }
+
+func TestHasPermission_FiscalRunsLiquidationOnly(t *testing.T) {
+	fiscal := Identity{Roles: []string{RoleFiscal}}
+
+	for _, p := range []Permission{PermDemandsRead, PermDemandsManage, PermContratosRead} {
+		if !HasPermission(fiscal, p) {
+			t.Errorf("expected fiscal to have %q", p)
+		}
+	}
+	for _, p := range []Permission{
+		PermContratosManage, PermIntegrationsManage, PermUsersManage,
+		PermDiarioOficialManage, PermAuditRead,
+	} {
+		if HasPermission(fiscal, p) {
+			t.Errorf("expected fiscal NOT to have %q", p)
+		}
+	}
+}

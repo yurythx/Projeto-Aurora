@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -101,12 +103,18 @@ func (h *Handlers) KanbanView(w http.ResponseWriter, r *http.Request) {
 		6: "Contabilidade",
 	}
 
+	now := time.Now()
 	for i := 1; i <= 6; i++ {
 		items := []DemandResponse{}
 		for _, d := range cols[domain.EtapaKanban(i)] {
-			items = append(items, toDemandResponse(d))
+			resp := toDemandResponseAt(d, now)
+			if d.Etapa < domain.Etapa6Contabilidade {
+				chk := application.CheckAdvance(d, d.Etapa+1, now)
+				resp.NextRequirements = &chk
+			}
+			items = append(items, resp)
 		}
-		
+
 		columns = append(columns, map[string]interface{}{
 			"status": fmt.Sprintf("%d", i),
 			"label":  labels[i],
@@ -142,8 +150,8 @@ func (h *Handlers) GetUploadURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteOK(w, map[string]string{
-		"upload_url":  uploadURL,
-		"file_path":   objectPath,
+		"upload_url": uploadURL,
+		"file_path":  objectPath,
 	})
 }
 
@@ -156,21 +164,137 @@ func (h *Handlers) ConfirmUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		DocType  string `json:"doc_type"`
-		FilePath string `json:"file_path"`
-		FileName string `json:"file_name"`
+		DocType     string `json:"doc_type"`
+		FilePath    string `json:"file_path"`
+		FileName    string `json:"file_name"`
+		ValidadeAte string `json:"validade_ate,omitempty"` // YYYY-MM-DD (certidões)
 	}
 	if err := httputil.DecodeJSON(w, r, &req); err != nil {
 		httputil.WriteError(w, r, h.logger, err)
 		return
 	}
 
-	if err := h.service.ConfirmUpload(r.Context(), demandID, req.DocType, req.FilePath, req.FileName); err != nil {
+	var validade *time.Time
+	if s := strings.TrimSpace(req.ValidadeAte); s != "" {
+		t, perr := time.Parse("2006-01-02", s)
+		if perr != nil {
+			httputil.WriteError(w, r, h.logger, apperrors.BadRequest("validade_ate deve estar no formato AAAA-MM-DD"))
+			return
+		}
+		validade = &t
+	}
+
+	if err := h.service.ConfirmUpload(r.Context(), demandID, req.DocType, req.FilePath, req.FileName, validade); err != nil {
 		httputil.WriteError(w, r, h.logger, err)
 		return
 	}
 
 	httputil.WriteOK(w, map[string]string{"message": "documento anexado com sucesso"})
+}
+
+// ListOccurrences devolve as pendências abertas (GET /demands/occurrences).
+func (h *Handlers) ListOccurrences(w http.ResponseWriter, r *http.Request) {
+	items, err := h.service.OpenOccurrences(r.Context(), 200)
+	if err != nil {
+		httputil.WriteError(w, r, h.logger, err)
+		return
+	}
+	httputil.WriteOK(w, items)
+}
+
+// NextRequirements devolve o checklist da próxima etapa (GET /demands/{id}/requirements).
+func (h *Handlers) NextRequirements(w http.ResponseWriter, r *http.Request) {
+	demandID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httputil.WriteError(w, r, h.logger, apperrors.BadRequest("id da demanda inválido"))
+		return
+	}
+	check, err := h.service.NextRequirements(r.Context(), demandID)
+	if err != nil {
+		httputil.WriteError(w, r, h.logger, err)
+		return
+	}
+	httputil.WriteOK(w, check)
+}
+
+// DownloadPDF gera e transmite um documento oficial da demanda em PDF
+// (GET /demands/{id}/{oficio|ordem-servico|relatorio}.pdf).
+func (h *Handlers) DownloadPDF(kind application.PDFKind) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		demandID, err := uuid.Parse(chi.URLParam(r, "id"))
+		if err != nil {
+			httputil.WriteError(w, r, h.logger, apperrors.BadRequest("id da demanda inválido"))
+			return
+		}
+		demand, fileName, err := h.service.LoadDemandForPDF(r.Context(), demandID, kind)
+		if err != nil {
+			httputil.WriteError(w, r, h.logger, err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename=%q`, fileName))
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if err := application.RenderDemandPDF(kind, demand, w); err != nil {
+			h.logger.Error("falha ao gerar PDF da demanda",
+				slog.String("demanda_id", demandID.String()), slog.String("kind", string(kind)), slog.Any("error", err))
+		}
+	}
+}
+
+// DownloadPackage transmite um .zip com todos os anexos da demanda, na
+// ordem das etapas, mais um índice (GET /demands/{id}/package.zip).
+func (h *Handlers) DownloadPackage(w http.ResponseWriter, r *http.Request) {
+	demandID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httputil.WriteError(w, r, h.logger, apperrors.BadRequest("id da demanda inválido"))
+		return
+	}
+
+	// Carrega e valida ANTES de escrever qualquer cabeçalho, para poder
+	// responder 400/404 em JSON em vez de um zip quebrado.
+	demand, err := h.service.LoadDemandForPackage(r.Context(), demandID)
+	if err != nil {
+		httputil.WriteError(w, r, h.logger, err)
+		return
+	}
+
+	fileName := application.PackageFileName(demand)
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, fileName))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+
+	if err := h.service.WriteDemandPackage(r.Context(), demand, w); err != nil {
+		// Cabeçalhos (e talvez parte do corpo) já foram enviados — não dá
+		// para trocar por um 500 JSON. Só registra; o cliente recebe um
+		// zip truncado e tenta de novo.
+		h.logger.Error("falha ao gerar pacote da demanda",
+			slog.String("demanda_id", demandID.String()), slog.Any("error", err))
+	}
+}
+
+// Dashboard devolve o painel de Demandas Mensais (GET /demands/dashboard).
+func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
+	data, err := h.service.Dashboard(r.Context(), time.Now())
+	if err != nil {
+		httputil.WriteError(w, r, h.logger, err)
+		return
+	}
+	httputil.WriteOK(w, data)
+}
+
+// GetHistory devolve a trilha de auditoria da demanda (GET /demands/{id}/history).
+func (h *Handlers) GetHistory(w http.ResponseWriter, r *http.Request) {
+	demandID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httputil.WriteError(w, r, h.logger, apperrors.BadRequest("id da demanda inválido"))
+		return
+	}
+	rows, err := h.service.DemandHistory(r.Context(), demandID)
+	if err != nil {
+		httputil.WriteError(w, r, h.logger, err)
+		return
+	}
+	httputil.WriteOK(w, rows)
 }
 
 // GetByID retorna os detalhes de uma demanda específica.

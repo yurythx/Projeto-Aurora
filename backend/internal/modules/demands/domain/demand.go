@@ -18,6 +18,27 @@ const (
 	Etapa6Contabilidade    EtapaKanban = 6
 )
 
+// Label devolve o rótulo de exibição da etapa (colunas do Kanban / funil
+// do dashboard).
+func (e EtapaKanban) Label() string {
+	switch e {
+	case Etapa1ElaborarOF:
+		return "Elaborar OF / Pré-Empenho"
+	case Etapa2TramitarPlan:
+		return "Tramitar Planejamento"
+	case Etapa3EmitirOS:
+		return "Emitir OS / Envio Empresa"
+	case Etapa4ExecucaoRecepcao:
+		return "Execução e Recepção"
+	case Etapa5RelatorioPgto:
+		return "Relatório Pgto / Certidões"
+	case Etapa6Contabilidade:
+		return "Contabilidade"
+	default:
+		return "Etapa desconhecida"
+	}
+}
+
 // StatusEtapa indica o status interno do card na coluna atual do Kanban.
 type StatusEtapa string
 
@@ -31,9 +52,9 @@ const (
 type ContractType string
 
 const (
-	CompraConsumo       ContractType = "COMPRA_CONSUMO"
+	CompraConsumo         ContractType = "COMPRA_CONSUMO"
 	ServicosTerceirizados ContractType = "SERVICOS_TERCEIRIZADOS"
-	Obras               ContractType = "OBRAS"
+	Obras                 ContractType = "OBRAS"
 )
 
 // DocumentType especifica todos os tipos de documentos mapeados no roadmap.
@@ -93,13 +114,13 @@ type DemandDocument struct {
 
 // Ocurrence (Antingerência IN 04/2021) mapeia as notificações ao preposto.
 type Occurrence struct {
-	ID          uuid.UUID
-	ContratoID  uuid.UUID
-	DemandaID   *uuid.UUID
-	Tipo        string
-	Descricao   string
-	SLAVenceEm  *time.Time
-	Resolvida   bool
-	CreatedBy   *uuid.UUID
-	CreatedAt   time.Time
+	ID         uuid.UUID
+	ContratoID uuid.UUID
+	DemandaID  *uuid.UUID
+	Tipo       string
+	Descricao  string
+	SLAVenceEm *time.Time
+	Resolvida  bool
+	CreatedBy  *uuid.UUID
+	CreatedAt  time.Time
 }

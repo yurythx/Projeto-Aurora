@@ -52,15 +52,15 @@ type SearchResultItem struct {
 	// ExternalID é o id que o próprio provedor atribui à comunicação —
 	// a chave de deduplicação entre ciclos de sync sucessivos (ver
 	// migration 000026, UNIQUE(external_id)).
-	ExternalID          int64           `json:"external_id"`
-	Tribunal            string          `json:"tribunal"`
-	Orgao               string          `json:"orgao"`
-	TipoComunicacao     string          `json:"tipo_comunicacao"`
-	Texto               string          `json:"texto"`
-	ProcessNumber       string          `json:"process_number,omitempty"`
-	ProcessNumberMasked string          `json:"process_number_masked,omitempty"`
-	AvailabilityDate    time.Time       `json:"availability_date"`
-	Link                string          `json:"link"`
+	ExternalID          int64     `json:"external_id"`
+	Tribunal            string    `json:"tribunal"`
+	Orgao               string    `json:"orgao"`
+	TipoComunicacao     string    `json:"tipo_comunicacao"`
+	Texto               string    `json:"texto"`
+	ProcessNumber       string    `json:"process_number,omitempty"`
+	ProcessNumberMasked string    `json:"process_number_masked,omitempty"`
+	AvailabilityDate    time.Time `json:"availability_date"`
+	Link                string    `json:"link"`
 	// RawPayload é o JSON bruto do item, exatamente como o provedor
 	// devolveu — guardado sem perda (ver migration 000026's comentário em
 	// raw_payload) mesmo que este Go struct só extraia um subconjunto de

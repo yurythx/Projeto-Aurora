@@ -22,11 +22,11 @@ import { CSS } from "@dnd-kit/utilities";
 
 import { updateDemandEtapa } from "@/lib/api/demands";
 import { apiClient } from "@/lib/api/client";
-import type { KanbanResponse, KanbanColumn, DemandResponse } from "@/types/api";
+import type { KanbanResponse, KanbanColumn, DemandResponse, StageCheck } from "@/types/api";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/notifications/ToastProvider";
-import { Building2, Calendar, Lock, Plus } from "lucide-react";
+import { Building2, Calendar, Lock, Plus, CheckCircle2, Clock, AlertTriangle, FileArchive, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { ContratoModal } from "./ContratoModal";
 import { NewDemandModal } from "./NewDemandModal";
@@ -40,11 +40,13 @@ export function KanbanBoard({ initialData }: Props) {
   const [activeItem, setActiveItem] = useState<DemandResponse | null>(null);
   const [selectedDemand, setSelectedDemand] = useState<DemandResponse | null>(null);
   const [isNewDemandOpen, setIsNewDemandOpen] = useState(false);
+  // Etapa visível no layout mobile (o quadro horizontal não cabe no celular).
+  const [mobileEtapa, setMobileEtapa] = useState(1);
   const { showToast } = useToast();
 
   const refreshKanban = async () => {
     try {
-      const { data } = await apiClient.get<KanbanResponse>("/api/v1/demands/kanban");
+      const { data } = await apiClient.get<KanbanResponse>("v1/demands/kanban");
       if (data && data.columns) {
         setColumns(data.columns);
       }
@@ -70,64 +72,56 @@ export function KanbanBoard({ initialData }: Props) {
     if (item) setActiveItem(item);
   };
 
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveItem(null);
-
-    if (!over) return;
-
-    const activeId = active.id;
-    const overId = over.id;
-
-    // Encontrar a coluna de origem
+  // moveDemand centraliza a transição de etapa (usada pelo drag-and-drop no
+  // desktop E pelos botões ←/→ do layout mobile): mesmo bloqueio preventivo,
+  // mesma atualização otimista com reversão em caso de erro do backend.
+  const moveDemand = async (itemId: string | number, targetEtapa: number) => {
     let sourceColIndex = -1;
     let itemToMove: DemandResponse | null = null;
-    
     for (let i = 0; i < columns.length; i++) {
-      const col = columns[i];
-      if (!col) continue;
-      const item = col.items.find((it) => it.id === activeId);
-      if (item) {
+      const found = columns[i]?.items.find((it) => it.id === itemId);
+      if (found) {
         sourceColIndex = i;
-        itemToMove = item;
+        itemToMove = found;
         break;
       }
     }
-
     if (!itemToMove) return;
 
-    // Encontrar a coluna de destino
-    let destColIndex = columns.findIndex((col) => col.status === overId);
-    if (destColIndex === -1) {
-      destColIndex = columns.findIndex((col) => col.items.some((i) => i.id === overId));
-    }
+    const destColIndex = columns.findIndex((c) => parseInt(c.status, 10) === targetEtapa);
+    if (destColIndex === -1 || destColIndex === sourceColIndex) return;
 
-    if (destColIndex === -1 || sourceColIndex === destColIndex) return;
-
-    const newColumns = [...columns];
-    const sourceCol = newColumns[sourceColIndex];
-    const destCol = newColumns[destColIndex];
+    const sourceCol = columns[sourceColIndex];
+    const destCol = columns[destColIndex];
     if (!sourceCol || !destCol) return;
 
-    // Atualiza otimisticamente a UI
+    // Bloqueio PREVENTIVO: avanço de +1 com checklist da próxima etapa
+    // incompleto nem chega a chamar a API — mostra o que falta.
+    const req = itemToMove.next_requirements;
+    if (targetEtapa === itemToMove.etapa + 1 && req && !req.wait_only && !req.can_advance) {
+      showToast({
+        title: "Avanço bloqueado — pendências",
+        description: (req.blocking || ["Faltam documentos obrigatórios."]).join(" · "),
+        tone: "danger",
+      });
+      return;
+    }
+
+    const prevColumns = columns;
+    const newColumns = [...columns];
     newColumns[sourceColIndex] = {
       ...sourceCol,
       total: sourceCol.total - 1,
-      items: sourceCol.items.filter((i) => i.id !== activeId),
+      items: sourceCol.items.filter((i) => i.id !== itemId),
     };
-
-    const targetEtapa = parseInt(destCol.status, 10);
     const updatedItem = { ...itemToMove, etapa: targetEtapa, status_etapa: "pendente" };
-    
     newColumns[destColIndex] = {
       ...destCol,
       total: destCol.total + 1,
       items: [updatedItem, ...destCol.items],
     };
-
     setColumns(newColumns);
 
-    // Persiste no backend
     try {
       await updateDemandEtapa(itemToMove.id, targetEtapa);
       showToast({
@@ -135,16 +129,29 @@ export function KanbanBoard({ initialData }: Props) {
         description: `Demanda ${itemToMove.ano_mes} movida para ${destCol.label}.`,
         tone: "success",
       });
+      refreshKanban();
     } catch (err: any) {
-      // Falha na Máquina de Estados (Documentos ausentes)
       showToast({
         title: "Avanço Bloqueado (Compliance)",
         description: err.message || "Faltam documentos obrigatórios para esta etapa.",
         tone: "danger",
       });
-      // Reverte a alteração otimista
-      setColumns(columns);
+      setColumns(prevColumns);
     }
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveItem(null);
+    if (!over) return;
+
+    let destColIndex = columns.findIndex((col) => col.status === over.id);
+    if (destColIndex === -1) {
+      destColIndex = columns.findIndex((col) => col.items.some((i) => i.id === over.id));
+    }
+    if (destColIndex === -1) return;
+
+    await moveDemand(active.id, parseInt(columns[destColIndex]!.status, 10));
   };
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -211,13 +218,14 @@ export function KanbanBoard({ initialData }: Props) {
         </div>
       </div>
 
+      {/* Desktop: quadro horizontal com drag-and-drop (lg+) */}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex flex-1 gap-4 pb-2 overflow-x-auto">
+        <div className="hidden lg:flex flex-1 gap-4 pb-2 overflow-x-auto">
           {displayColumns.map((col) => (
             <Column key={col.status} column={col} onCardClick={setSelectedDemand} />
           ))}
@@ -226,21 +234,115 @@ export function KanbanBoard({ initialData }: Props) {
         <DragOverlay>
           {activeItem ? <DemandCard demand={activeItem} isOverlay /> : null}
         </DragOverlay>
-
-        {selectedDemand && (
-          <ContratoModal
-            demand={selectedDemand}
-            onClose={() => setSelectedDemand(null)}
-          />
-        )}
-
-        {isNewDemandOpen && (
-          <NewDemandModal
-            onClose={() => setIsNewDemandOpen(false)}
-            onCreated={refreshKanban}
-          />
-        )}
       </DndContext>
+
+      {/* Mobile: uma etapa por vez + botões ←/→ no lugar do arrasto */}
+      <MobileBoard
+        columns={displayColumns}
+        currentEtapa={mobileEtapa}
+        onSelectEtapa={setMobileEtapa}
+        onCardClick={setSelectedDemand}
+        onMove={moveDemand}
+      />
+
+      {selectedDemand && (
+        <ContratoModal
+          demand={selectedDemand}
+          onClose={() => setSelectedDemand(null)}
+          onDemandUpdated={async () => {
+            await refreshKanban();
+            try {
+              const { data } = await apiClient.get<DemandResponse>(`v1/demands/${selectedDemand.id}`);
+              if (data) {
+                setSelectedDemand(data);
+              }
+            } catch {}
+          }}
+        />
+      )}
+
+      {isNewDemandOpen && (
+        <NewDemandModal onClose={() => setIsNewDemandOpen(false)} onCreated={refreshKanban} />
+      )}
+    </div>
+  );
+}
+
+function MobileBoard({
+  columns,
+  currentEtapa,
+  onSelectEtapa,
+  onCardClick,
+  onMove,
+}: {
+  columns: KanbanColumn[];
+  currentEtapa: number;
+  onSelectEtapa: (etapa: number) => void;
+  onCardClick: (demand: DemandResponse) => void;
+  onMove: (itemId: string | number, targetEtapa: number) => void;
+}) {
+  const current = columns.find((c) => parseInt(c.status, 10) === currentEtapa) ?? columns[0];
+  const currentNum = current ? parseInt(current.status, 10) : 1;
+
+  return (
+    <div className="lg:hidden flex flex-1 flex-col gap-3">
+      {/* Seletor de etapa */}
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+        {columns.map((col) => {
+          const n = parseInt(col.status, 10);
+          const active = n === currentNum;
+          return (
+            <button
+              key={col.status}
+              onClick={() => onSelectEtapa(n)}
+              className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                active
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border/60 bg-surface text-muted hover:text-foreground"
+              }`}
+            >
+              {n}. {col.label}
+              <span className="ml-1.5 rounded-full bg-surface-hover px-1.5 text-[10px] text-muted">{col.total}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Cards da etapa selecionada */}
+      <div className="flex flex-col gap-3">
+        {current && current.items.length > 0 ? (
+          current.items.map((item) => (
+            <div key={item.id} className="flex flex-col gap-1.5">
+              <DemandCard demand={item} onClick={() => onCardClick(item)} />
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={item.etapa <= 1}
+                  onClick={() => onMove(item.id, item.etapa - 1)}
+                  className="flex-1 text-xs"
+                >
+                  <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+                  Etapa {item.etapa - 1}
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={item.etapa >= 6}
+                  onClick={() => onMove(item.id, item.etapa + 1)}
+                  className="flex-1 text-xs"
+                >
+                  Etapa {item.etapa + 1}
+                  <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="rounded-lg border border-dashed border-border/50 p-8 text-center text-xs text-muted">
+            Nenhuma demanda nesta etapa.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -319,20 +421,87 @@ function DemandCard({ demand, isOverlay, onClick }: { demand: DemandResponse; is
           </div>
 
           <div className="flex items-center justify-between text-xs text-muted">
-            <div className="flex items-center">
+            <div
+              className={`flex items-center ${demand.sla?.breached ? "text-danger font-medium" : ""}`}
+              title={
+                demand.sla?.breached && demand.sla.due_at
+                  ? `SLA da etapa (${demand.sla.sla_days} dias) estourou em ${new Date(demand.sla.due_at).toLocaleDateString("pt-BR")}`
+                  : demand.sla
+                    ? `${demand.sla.days_in_stage}/${demand.sla.sla_days} dias na etapa`
+                    : "Nesta etapa desde"
+              }
+            >
               <Calendar className="mr-1.5 h-3.5 w-3.5" />
-              <span>{new Date(demand.etapa_started_at).toLocaleDateString("pt-BR")}</span>
+              <span>
+                {demand.sla ? `${demand.sla.days_in_stage}d / ${demand.sla.sla_days}d` : daysInStage(demand.etapa_started_at)}
+                {demand.sla?.breached ? " · SLA!" : ""}
+              </span>
             </div>
-
-            {demand.documents && demand.documents.length < 2 && demand.etapa > 1 && (
-              <div className="flex items-center text-danger" title="Faltam Documentos">
-                <Lock className="mr-1 h-3 w-3" />
-                <span>Bloqueado</span>
-              </div>
-            )}
+            <NextStepBadge req={demand.next_requirements} />
           </div>
+
+          {demand.next_requirements && !demand.next_requirements.wait_only && demand.next_requirements.docs.length > 0 && (
+            <div className="flex flex-wrap gap-1 pt-1" title="Documentos exigidos para a próxima etapa">
+              {demand.next_requirements.docs.map((d) => (
+                <span
+                  key={d.doc_type}
+                  title={`${d.label}${d.valid_until ? ` — válida até ${new Date(d.valid_until).toLocaleDateString("pt-BR")}` : ""}`}
+                  className={`inline-block h-1.5 w-5 rounded-full ${
+                    !d.present ? "bg-border" : d.expired ? "bg-danger" : "bg-emerald-500"
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+
+          {(demand.documents?.length ?? 0) > 0 && (
+            <a
+              href={`/api/backend/v1/demands/${demand.id}/package.zip`}
+              download
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="mt-1 inline-flex items-center gap-1.5 self-start rounded px-1.5 py-0.5 text-xs text-muted hover:bg-surface-hover hover:text-foreground"
+              title={`Baixar pacote (.zip) com os ${demand.documents?.length} documentos anexados, na ordem das etapas`}
+            >
+              <FileArchive className="h-3.5 w-3.5" />
+              Baixar pacote ({demand.documents?.length})
+            </a>
+          )}
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function daysInStage(startedAt: string): string {
+  const d = Math.floor((Date.now() - new Date(startedAt).getTime()) / 86400000);
+  if (d <= 0) return "hoje";
+  return `${d}d nesta etapa`;
+}
+
+function NextStepBadge({ req }: { req?: StageCheck }) {
+  if (!req) return null;
+  if (req.wait_only) {
+    return (
+      <span className="inline-flex items-center text-amber-600 dark:text-amber-400" title="Etapa de espera externa — sem documento pendente">
+        <Clock className="mr-1 h-3 w-3" /> Aguardando prazo
+      </span>
+    );
+  }
+  if (req.can_advance) {
+    return (
+      <span className="inline-flex items-center text-emerald-600 dark:text-emerald-400" title="Pronto para avançar">
+        <CheckCircle2 className="mr-1 h-3 w-3" /> Pronto
+      </span>
+    );
+  }
+  const missing = req.docs.filter((d) => !d.present).length;
+  const expired = req.docs.filter((d) => d.present && d.expired).length;
+  const Icon = expired > 0 ? AlertTriangle : Lock;
+  return (
+    <span className="inline-flex items-center text-danger" title={(req.blocking || []).join(" · ")}>
+      <Icon className="mr-1 h-3 w-3" />
+      {expired > 0 ? `${expired} vencida${expired > 1 ? "s" : ""}` : `Faltam ${missing}`}
+    </span>
   );
 }

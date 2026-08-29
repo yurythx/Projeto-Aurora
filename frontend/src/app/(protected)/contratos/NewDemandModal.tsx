@@ -25,7 +25,7 @@ export function NewDemandModal({ onClose, onCreated }: Props) {
   useEffect(() => {
     async function loadContratos() {
       try {
-        const { data } = await apiClient.get<Contrato[]>("/api/v1/contratos");
+        const { data } = await apiClient.get<Contrato[]>("v1/contratos");
         setContratos(data || []);
         if (data && data.length > 0 && data[0]) {
           setSelectedContratoId(data[0].id);
@@ -49,7 +49,7 @@ export function NewDemandModal({ onClose, onCreated }: Props) {
       showToast({
         title: "Campo obrigatório",
         description: "Selecione um contrato para iniciar a demanda.",
-        tone: "warning",
+        tone: "info",
       });
       return;
     }
@@ -57,7 +57,7 @@ export function NewDemandModal({ onClose, onCreated }: Props) {
       showToast({
         title: "Campo obrigatório",
         description: "Informe o mês/ano de competência (AAAA-MM).",
-        tone: "warning",
+        tone: "info",
       });
       return;
     }

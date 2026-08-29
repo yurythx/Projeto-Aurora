@@ -110,5 +110,21 @@ make seed-admin
 * **Frontend:** Next.js (React), TypeScript, Tailwind CSS, SWR, dnd-kit (Kanban), Zustand, WebSockets.
 * **Backend:** Go (Golang), Mux (Rotas), pgx (Database Driver).
 * **Mensageria:** RabbitMQ (Topic Exchanges, Dead-Letter Queues nativas).
+* **Motor de Busca & Inteligência:** Typesense 27+ (Pesquisa textual sub-segundo, facetas em tempo real e parser de atos de RH).
 * **Banco de Dados:** PostgreSQL 16.
+* **Armazenamento de Objetos (S3):** MinIO.
 * **Auditoria de Segurança:** Gitleaks, Trivy (escaneamento das imagens Docker geradas).
+
+---
+
+## 🔎 Motor de Busca Typesense & Inteligência de Diários Oficiais
+
+O Projeto Nova utiliza o **Typesense 27+** para fornecer buscas ultrarrápidas (< 15ms) e tolerantes a erros de digitação sobre as publicações do Diário Oficial de Rondonópolis (**DIORONDON-E**).
+
+### Coleções do Typesense:
+1. **`diorondon_articles`**: Extratos de contratos, CNPJs de fornecedores, matérias e editais municipais.
+2. **`diorondon_personnel_acts`**: Inteligência de Atos de Pessoal (Nomeações de Efetivos/Comissionados, Exonerações, Remunerações/DAS, Secretarias, CPFs e Matrículas).
+
+Para a documentação completa dos schemas, exemplos de requisições cURL e arquitetura de integração, consulte:
+👉 **[Documentação do Motor de Busca Typesense](docs/typesense_search_engine.md)**
+

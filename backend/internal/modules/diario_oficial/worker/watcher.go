@@ -4,12 +4,36 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/yurythx/projeto-nova/internal/modules/diario_oficial/domain"
 	"github.com/yurythx/projeto-nova/internal/modules/diario_oficial/infrastructure"
 )
+
+// maxIngestRetries limita quantas vezes uma edição FAILED é reprocessada
+// automaticamente antes de o watcher desistir dela.
+const maxIngestRetries = 3
+
+var editionDigitsRegex = regexp.MustCompile(`\d+`)
+
+// sanitizeEditionNumber normaliza o rótulo cru da edição ("Edição Nº 6265",
+// "6265 (PDF)", "6263-E") para a chave usada em
+// diario_oficial_editions.edition_number (UNIQUE): dígitos iniciais mais um
+// sufixo S/E de suplementar, se houver. Retorna "" quando não há dígitos.
+func sanitizeEditionNumber(raw string) string {
+	s := strings.ToUpper(strings.TrimSpace(raw))
+	digits := editionDigitsRegex.FindString(s)
+	if digits == "" {
+		return ""
+	}
+	rest := strings.TrimLeft(s[strings.Index(s, digits)+len(digits):], "-/ ")
+	if len(rest) > 0 && (rest[0] == 'S' || rest[0] == 'E') {
+		return digits + string(rest[0])
+	}
+	return digits
+}
 
 type Watcher struct {
 	repo       domain.EditionRepository
@@ -68,22 +92,23 @@ func (w *Watcher) sync(ctx context.Context) {
 		w.logger.Info("Vigia verificando edições recém-publicadas no portal oficial...")
 	}
 
-	// 1. Consulta edições no portal oficial via Search do Client
+	// 1. DESCOBERTA no portal. Falha aqui (portal fora do ar / lento) NÃO
+	// pode impedir o processamento das edições já conhecidas — elas têm
+	// pdf_url próprio e não dependem do portal.
+	now := time.Now()
+	newCount := 0
 	searchResult, err := w.client.Search(ctx, domain.SearchQuery{})
 	if err != nil {
 		if w.logger != nil {
-			w.logger.Error("Vigia falhou ao consultar catálogo de edições", "err", err)
+			w.logger.Warn("Vigia: portal indisponível na descoberta; segue processando pendentes", "err", err)
 		}
-		return
+		searchResult = &domain.SearchResult{}
 	}
 
-	now := time.Now()
-	newCount := 0
-
 	for _, item := range searchResult.Items {
-		edNumber := strings.TrimSpace(strings.TrimPrefix(item.TipoComunicacao, "Edição Nº "))
+		edNumber := sanitizeEditionNumber(item.TipoComunicacao)
 		if edNumber == "" || edNumber == "0" {
-			edNumber = fmt.Sprintf("%d", item.ExternalID)
+			edNumber = sanitizeEditionNumber(fmt.Sprintf("%d", item.ExternalID))
 		}
 		if edNumber == "" || edNumber == "0" {
 			continue
@@ -94,8 +119,11 @@ func (w *Watcher) sync(ctx context.Context) {
 			continue
 		}
 
-		if existing == nil {
-			// Nova edição encontrada no portal!
+		switch {
+		case existing == nil:
+			// Nova edição encontrada no portal. Data desconhecida (portal sem
+			// data parseável) fica zero -> NULL no banco, nunca uma data
+			// inventada.
 			ed := &domain.Edition{
 				EditionNumber: edNumber,
 				EditionDate:   item.AvailabilityDate,
@@ -104,12 +132,15 @@ func (w *Watcher) sync(ctx context.Context) {
 				CreatedAt:     now,
 				UpdatedAt:     now,
 			}
-			if ed.EditionDate.IsZero() {
-				ed.EditionDate = now
-			}
 			if err := w.repo.SaveEdition(ctx, ed); err == nil {
 				newCount++
 			}
+		case existing.EditionDate.IsZero() && !item.AvailabilityDate.IsZero():
+			// Já existia sem data; o portal agora tem uma — preenche
+			// (SaveEdition faz COALESCE, não sobrescreve data já boa).
+			existing.EditionDate = item.AvailabilityDate
+			existing.PdfURL = item.Link
+			_ = w.repo.SaveEdition(ctx, existing)
 		}
 	}
 
@@ -117,9 +148,22 @@ func (w *Watcher) sync(ctx context.Context) {
 		w.logger.Info("Vigia concluiu verificação", "novas_edicoes_encontradas", newCount)
 	}
 
-	// 2. Processa edições pendentes através do Worker Pool
+	// 2. Reencaminha edições que falharam (até o limite de tentativas) — sem
+	// isso, uma edição FAILED (ex.: um PDF que produziu bytes inválidos e já
+	// foi corrigido por gazette.RepairEncoding) ficaria presa para sempre.
+	if requeued, rErr := w.repo.RequeueFailedEditions(ctx, maxIngestRetries); rErr == nil && requeued > 0 && w.logger != nil {
+		w.logger.Info("Vigia reencaminhou edições FAILED para nova tentativa", "count", requeued)
+	}
+
+	// 3. Processa edições pendentes através do Worker Pool
 	pending, err := w.repo.GetPendingEditions(ctx, 20)
-	if err == nil && len(pending) > 0 {
+	if err != nil {
+		if w.logger != nil {
+			w.logger.Error("Vigia: falha ao listar edições pendentes", "err", err)
+		}
+		return
+	}
+	if len(pending) > 0 {
 		if w.logger != nil {
 			w.logger.Info("Disparando Worker Pool para edições pendentes", "count", len(pending))
 		}

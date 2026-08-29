@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/yurythx/projeto-nova/internal/modules/demands/application"
 	"github.com/yurythx/projeto-nova/internal/modules/demands/domain"
 )
 
@@ -39,10 +40,14 @@ type DemandResponse struct {
 	EtapaStartedAt time.Time          `json:"etapa_started_at"`
 	Documents      []DocumentResponse `json:"documents,omitempty"`
 	// Campos enriquecidos via JOIN com contratos
-	ContratoNumero string  `json:"contrato_numero,omitempty"`
-	ContratoObjeto string  `json:"contrato_objeto,omitempty"`
-	Contratado     string  `json:"contratado,omitempty"`
+	ContratoNumero string   `json:"contrato_numero,omitempty"`
+	ContratoObjeto string   `json:"contrato_objeto,omitempty"`
+	Contratado     string   `json:"contratado,omitempty"`
 	ContratoValor  *float64 `json:"contrato_valor,omitempty"`
+	// Checklist da próxima etapa (só no /kanban): o front usa para o cadeado.
+	NextRequirements *application.StageCheck `json:"next_requirements,omitempty"`
+	// Situação de prazo na etapa atual.
+	SLA *domain.SLAInfo `json:"sla,omitempty"`
 }
 
 // DocumentResponse reflete um arquivo anexo.
@@ -57,6 +62,10 @@ type DocumentResponse struct {
 
 // toDemandResponse converte do domínio puro para a saída HTTP.
 func toDemandResponse(d domain.MonthlyDemand) DemandResponse {
+	return toDemandResponseAt(d, time.Now())
+}
+
+func toDemandResponseAt(d domain.MonthlyDemand, now time.Time) DemandResponse {
 	docs := make([]DocumentResponse, len(d.Documents))
 	for i, doc := range d.Documents {
 		docs[i] = DocumentResponse{
@@ -67,6 +76,12 @@ func toDemandResponse(d domain.MonthlyDemand) DemandResponse {
 			UploadedAt: doc.UploadedAt,
 			Validade:   doc.Validade,
 		}
+	}
+
+	var sla *domain.SLAInfo
+	if !d.EtapaStartedAt.IsZero() {
+		s := domain.ComputeSLA(d.Etapa, d.EtapaStartedAt, now)
+		sla = &s
 	}
 
 	return DemandResponse{
@@ -82,5 +97,6 @@ func toDemandResponse(d domain.MonthlyDemand) DemandResponse {
 		ContratoObjeto: d.ContratoObjeto,
 		Contratado:     d.Contratado,
 		ContratoValor:  d.ContratoValor,
+		SLA:            sla,
 	}
 }

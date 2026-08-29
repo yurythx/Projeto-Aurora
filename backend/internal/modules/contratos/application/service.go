@@ -18,6 +18,10 @@ import (
 type Service struct {
 	repo   domain.Repository
 	logger *slog.Logger
+	// Casador automático Contrato <-> Diário Oficial (opcional; ligado por
+	// WithDiarioMatching a partir de internal/app).
+	diario DiarioMatchSource
+	events ContratoEventEmitter
 }
 
 // NewService constrói um Service com as dependências injetadas.

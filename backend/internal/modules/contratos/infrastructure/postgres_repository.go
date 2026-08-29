@@ -215,6 +215,37 @@ func (r *PostgresRepository) AddDiarioRef(ctx context.Context, ref domain.Diario
 	return nil
 }
 
+// LinkDiarioRef insere uma referência e reporta se ela é nova.
+func (r *PostgresRepository) LinkDiarioRef(ctx context.Context, ref domain.DiarioRef) (bool, error) {
+	tag, err := r.pool.Exec(ctx, `
+		INSERT INTO contrato_diario_refs
+			(contrato_id, edition_number, tipo_evento, publicado_em, contexto, doc_url)
+		VALUES ($1,$2,$3,$4,$5,$6)
+		ON CONFLICT (contrato_id, edition_number) DO NOTHING`,
+		ref.ContratoID, ref.EditionNumber, ref.TipoEvento,
+		ref.PublicadoEm, ref.Contexto, ref.DocURL,
+	)
+	if err != nil {
+		return false, fmt.Errorf("contratos: link diario ref: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// RecordAlertOnce grava (contrato_id, kind, ref_key) e devolve true só na
+// primeira vez.
+func (r *PostgresRepository) RecordAlertOnce(ctx context.Context, contratoID uuid.UUID, kind, refKey string) (bool, error) {
+	tag, err := r.pool.Exec(ctx, `
+		INSERT INTO contrato_diario_alertas (contrato_id, kind, ref_key)
+		VALUES ($1,$2,$3)
+		ON CONFLICT (contrato_id, kind, ref_key) DO NOTHING`,
+		contratoID, kind, refKey,
+	)
+	if err != nil {
+		return false, fmt.Errorf("contratos: record alert once: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
 // ListByStatus retorna todos os contratos agrupados por status.
 func (r *PostgresRepository) ListByStatus(ctx context.Context) (map[domain.Status][]domain.Contrato, error) {
 	return r.KanbanCols(ctx, 100)

@@ -119,3 +119,37 @@ func TestWriter_Record_NilUserAndEmptyIP(t *testing.T) {
 		t.Fatalf("Record with nil user/empty IP: %v", err)
 	}
 }
+
+func TestReader_ListByResource(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	writer := NewWriter(pool)
+	reader := NewReader(pool)
+
+	rid := "demand-" + uuid.NewString()
+	for _, act := range []string{"demand.created", "demand.etapa_changed"} {
+		if err := writer.Record(ctx, Entry{Action: act, ResourceType: "demand", ResourceID: rid, Metadata: map[string]any{"k": act}}); err != nil {
+			t.Fatalf("Record %s: %v", act, err)
+		}
+	}
+
+	rows, err := reader.ListByResource(ctx, "demand", rid, 50)
+	if err != nil {
+		t.Fatalf("ListByResource: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("esperava 2 linhas para %s, got %d", rid, len(rows))
+	}
+	// ordem: mais recente primeiro
+	if rows[0].Action != "demand.etapa_changed" || rows[1].Action != "demand.created" {
+		t.Errorf("ordem inesperada: %s, %s", rows[0].Action, rows[1].Action)
+	}
+	if rows[0].Metadata["k"] != "demand.etapa_changed" {
+		t.Errorf("metadata não desserializada: %+v", rows[0].Metadata)
+	}
+	// isolamento por recurso
+	other, _ := reader.ListByResource(ctx, "demand", "demand-"+uuid.NewString(), 50)
+	if len(other) != 0 {
+		t.Errorf("esperava 0 para recurso inexistente, got %d", len(other))
+	}
+}

@@ -1,13 +1,19 @@
 package app
 
 import (
+	"context"
+	"fmt"
+	"strings"
+
 	contratosApp "github.com/yurythx/projeto-nova/internal/modules/contratos/application"
+	contratosDomain "github.com/yurythx/projeto-nova/internal/modules/contratos/domain"
 	contratosInfra "github.com/yurythx/projeto-nova/internal/modules/contratos/infrastructure"
 	contratosTransport "github.com/yurythx/projeto-nova/internal/modules/contratos/transport"
 
 	diarioApp "github.com/yurythx/projeto-nova/internal/modules/diario_oficial/application"
 	diarioInfra "github.com/yurythx/projeto-nova/internal/modules/diario_oficial/infrastructure"
 	diarioTransport "github.com/yurythx/projeto-nova/internal/modules/diario_oficial/transport"
+	diarioWorker "github.com/yurythx/projeto-nova/internal/modules/diario_oficial/worker"
 
 	integrationsApp "github.com/yurythx/projeto-nova/internal/modules/integrations/application"
 	integrationsInfra "github.com/yurythx/projeto-nova/internal/modules/integrations/infrastructure"
@@ -88,6 +94,11 @@ func buildModules(deps *Dependencies) *Modules {
 	editionRepo := diarioInfra.NewPostgresEditionRepository(deps.DB)
 	diarioSvc := diarioApp.NewService(deps.DB, jobsRepo, deps.Outbox, diarioClient, diarioRepo, integrationsSvc, auditWriter, deps.Flags, deps.Logger).WithRondonopolisClient(rondonopolisClient)
 	diarioSvc.SetEditionRepository(editionRepo)
+	if deps.Typesense != nil {
+		diarioSvc.WithSearchKeyManager(diarioInfra.NewTypesenseSearchKeyManager(deps.Typesense, deps.DB))
+		// Ações da fila de revisão ressincronizam a edição no Typesense.
+		diarioSvc.WithReindexer(diarioWorker.NewReindexer(editionRepo, deps.Typesense, deps.Logger))
+	}
 	m.DiarioOficial.Service = diarioSvc
 	m.DiarioOficial.Handlers = diarioTransport.NewHandlers(diarioSvc, deps.Logger)
 
@@ -98,15 +109,83 @@ func buildModules(deps *Dependencies) *Modules {
 
 	// Módulo Contratos Municipais (Fase 4 — Projeto-Nova)
 	contratosRepo := contratosInfra.NewPostgresRepository(deps.DB)
-	contratosSvc := contratosApp.NewService(contratosRepo, deps.Logger)
+	contratosSvc := contratosApp.NewService(contratosRepo, deps.Logger).
+		WithDiarioMatching(
+			diarioMatchSource{findings: editionRepo},
+			contratosInfra.NewOutboxEmitter(deps.DB, deps.Outbox),
+		)
 	m.Contratos.Service = contratosSvc
 	m.Contratos.Handlers = contratosTransport.NewHandlers(contratosSvc, deps.Logger)
 
 	// Módulo Demandas Mensais (Kanban)
 	demandsRepo := demandsInfra.NewPostgresRepository(deps.DB)
-	demandsSvc := demandsApp.NewService(deps.DB, demandsRepo, deps.Outbox, deps.Storage, auditWriter, deps.Config.MinIO.Bucket, deps.Logger)
+	demandsSvc := demandsApp.NewService(deps.DB, demandsRepo, deps.Outbox, deps.Storage, auditWriter, deps.Config.MinIO.Bucket, deps.Logger).
+		WithContractLister(vigentesLister{repo: contratosRepo}).
+		WithAuditReader(audit.NewReader(deps.DB))
 	m.Demands.Service = demandsSvc
 	m.Demands.Handlers = demandsTransport.NewHandlers(demandsSvc, deps.Logger)
 
 	return m
+}
+
+// vigentesLister adapta o repositório de contratos à interface ContractLister
+// que a geração automática de demandas mensais precisa.
+type vigentesLister struct {
+	repo contratosDomain.Repository
+}
+
+func (v vigentesLister) ListVigentes(ctx context.Context) ([]demandsApp.ContratoRef, error) {
+	byStatus, err := v.repo.ListByStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]demandsApp.ContratoRef, 0)
+	for _, c := range byStatus[contratosDomain.StatusVigente] {
+		out = append(out, demandsApp.ContratoRef{ID: c.ID, Numero: c.Numero})
+	}
+	return out, nil
+}
+
+// diarioMatchSource adapta o repositório de findings do módulo diario_oficial
+// à interface DiarioMatchSource do casador automático do módulo contratos —
+// os dois módulos não se importam diretamente.
+type diarioMatchSource struct {
+	findings *diarioInfra.PostgresEditionRepository
+}
+
+func (d diarioMatchSource) FindForContract(ctx context.Context, numero, cnpjDigits string) ([]contratosApp.DiarioFinding, error) {
+	rows, err := d.findings.MatchFindingsForContract(ctx, numero, cnpjDigits, 100)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contratosApp.DiarioFinding, 0, len(rows))
+	for _, f := range rows {
+		docURL := f.PdfURL
+		if docURL != "" && f.PDFPageNumber > 1 && !strings.Contains(docURL, "#page=") {
+			docURL = fmt.Sprintf("%s#page=%d", docURL, f.PDFPageNumber)
+		}
+		df := contratosApp.DiarioFinding{
+			EditionNumber:  f.EditionNumber,
+			ActType:        f.ActType,
+			PortariaNumber: derefStr(f.PortariaNumber),
+			ServidorNome:   derefStr(f.ServidorNome),
+			EmpresaNome:    derefStr(f.EmpresaNome),
+			CNPJ:           derefStr(f.CNPJ),
+			RawContent:     f.RawContent,
+			DocURL:         docURL,
+		}
+		if !f.EditionDate.IsZero() {
+			ed := f.EditionDate
+			df.EditionDate = &ed
+		}
+		out = append(out, df)
+	}
+	return out, nil
+}
+
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

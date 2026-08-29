@@ -31,10 +31,14 @@ Empresa: TechGov Soluções em Tecnologia e Sistemas LTDA, CNPJ: 41.987.654/0001
 	foundContrato := false
 
 	for _, f := range findings {
-		if f.ActType == "NOMEACAO" {
+		if f.ActType == "NOMEACAO" || f.ActType == "NOMEACAO_COMISSIONADO" {
 			foundNomeacao = true
-			if f.ServidorNome == nil || !strings.Contains(*f.ServidorNome, "Yuri Thx Silva") {
-				t.Errorf("expected Nomeacao servidor Yuri Thx Silva, got %v", f.ServidorNome)
+			if f.ServidorNome == nil || !strings.Contains(strings.ToUpper(*f.ServidorNome), "YURI THX SILVA") {
+				nameStr := "<nil>"
+				if f.ServidorNome != nil {
+					nameStr = *f.ServidorNome
+				}
+				t.Errorf("expected Nomeacao servidor YURI THX SILVA, got %s", nameStr)
 			}
 			if f.CPF == nil || *f.CPF != "999.888.777-00" {
 				t.Errorf("expected CPF 999.888.777-00, got %v", f.CPF)
@@ -42,8 +46,12 @@ Empresa: TechGov Soluções em Tecnologia e Sistemas LTDA, CNPJ: 41.987.654/0001
 		}
 		if f.ActType == "EXONERACAO" {
 			foundExoneracao = true
-			if f.ServidorNome == nil || !strings.Contains(*f.ServidorNome, "Vanete Barbosa do Rego") {
-				t.Errorf("expected Exoneracao servidor Vanete Barbosa do Rego, got %v", f.ServidorNome)
+			if f.ServidorNome == nil || !strings.Contains(strings.ToUpper(*f.ServidorNome), "VANETE BARBOSA DO REGO") {
+				nameStr := "<nil>"
+				if f.ServidorNome != nil {
+					nameStr = *f.ServidorNome
+				}
+				t.Errorf("expected Exoneracao servidor VANETE BARBOSA DO REGO, got %s", nameStr)
 			}
 		}
 		if f.ActType == "CONTRATO" {

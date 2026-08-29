@@ -10,6 +10,9 @@ import {
   integrationStatusPayloadSchema,
   jobEventPayloadSchema,
   demandEtapaChangedPayloadSchema,
+  scanCompletedPayloadSchema,
+  contratoDiarioRefLinkedPayloadSchema,
+  contratoFiscalAlertPayloadSchema,
   type EventEnvelope,
 } from "@/lib/validation/schemas";
 import { mutate } from "swr";
@@ -59,6 +62,63 @@ export function NotificationCenter({
           pushHistory(notification);
           // Força o KanbanBoard (que usa useSWR("/api/v1/demands/kanban")) a buscar os dados novos 
           mutate("/api/v1/demands/kanban");
+        }
+        return;
+      }
+      if (event.type === "contrato.diario_ref.linked") {
+        const result = contratoDiarioRefLinkedPayloadSchema.safeParse(event.payload);
+        if (result.success) {
+          const n = result.data.refs_vinculadas;
+          const notification = {
+            title: `Contrato ${result.data.contrato_numero}: ${n} publicação${n > 1 ? "ões" : ""} do Diário vinculada${n > 1 ? "s" : ""}`,
+            tone: "info" as ToastTone,
+          };
+          showToast(notification);
+          pushHistory(notification);
+          mutate("/api/v1/contratos/kanban");
+        }
+        return;
+      }
+      if (event.type === "contrato.fiscal_alert") {
+        const result = contratoFiscalAlertPayloadSchema.safeParse(event.payload);
+        if (result.success) {
+          const notification = {
+            title: `Alerta de fiscalização — contrato ${result.data.contrato_numero}`,
+            description: result.data.message,
+            tone: "danger" as ToastTone,
+          };
+          showToast(notification);
+          pushHistory(notification);
+        }
+        return;
+      }
+      if (event.type === "scanning.scan.completed") {
+        const result = scanCompletedPayloadSchema.safeParse(event.payload);
+        if (result.success) {
+          const { scanners, findings_count, critical_count, high_count } = result.data;
+          let description = "Nenhum achado.";
+          let tone: ToastTone = "success";
+
+          if (findings_count > 0) {
+            if (critical_count > 0) {
+              description = `${findings_count} achado(s), ${critical_count} crítico(s)! — veja em Segurança.`;
+              tone = "danger";
+            } else if (high_count > 0) {
+              description = `${findings_count} achado(s), ${high_count} alto(s) — veja em Segurança.`;
+              tone = "danger";
+            } else {
+              description = `${findings_count} achado(s) — veja em Segurança.`;
+              tone = "info";
+            }
+          }
+
+          const notification = {
+            title: `Scan concluído (${scanners.join(", ")})`,
+            description,
+            tone,
+          };
+          showToast(notification);
+          pushHistory(notification);
         }
         return;
       }

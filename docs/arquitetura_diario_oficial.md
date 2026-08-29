@@ -131,3 +131,18 @@ A plataforma disponibiliza um motor de auditoria administrativa projetado para r
 * **Cruzamento de Empresas & CNPJ**: Associa os contratos públicos auditados às empresas contratadas, objetos contratuais e montantes financeiros globais.
 * **Emissão de Certidões de Auditoria**: Geração em um clique de certidões e extratos formatados em texto puro para juntada de provas e relatórios fiscais.
 
+---
+
+## 🚀 8. Motor de Busca de Alta Performance Typesense 27+
+
+Além da persistência relacional no PostgreSQL, o pipeline de ingestão indexa todos os extratos de diário e atos funcionais de pessoal no motor de busca **Typesense 27+** (Porta `8108`).
+
+O Typesense fornece:
+- **Busca em sub-milissegundos (< 15ms)** com tolerância nativa a erros de digitação (*typo tolerance*).
+- **Facetas Dinâmicas em Tempo Real**: Filtros por Secretaria, Nível DAS, Tipo de Ato e Categoria da Edição.
+- **Coleções Mapeadas**: `diorondon_articles` (Conteúdo integral) e `diorondon_personnel_acts` (Atos de RH).
+
+Consulte o documento completo com schemas e exemplos cURL:
+👉 **[Guia Completo da Engine de Busca Typesense](typesense_search_engine.md)**
+
+

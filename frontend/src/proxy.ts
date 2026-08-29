@@ -22,32 +22,41 @@ import { getToken } from "next-auth/jwt";
 // um único grupo de rotas no App Router (app/(protected)/), mas esse
 // grupo não aparece na URL — proxy.ts só enxerga o caminho real, então
 // precisa saber sobre as duas independentemente.
-const PROTECTED_PREFIXES = ["/dashboard", "/integracoes", "/configuracao", "/seguranca"];
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/integracoes",
+  "/configuracao",
+  "/seguranca",
+  "/diario",
+  "/diario-oficial",
+  "/pessoal",
+  "/contratos",
+  "/monitoramento",
+];
 
 export async function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV === "development";
 
-  // connect-src precisa liberar explicitamente a origem do WebSocket: o
-  // navegador conecta DIRETO no backend Go (ws://.../ws?ticket=...), não
-  // através do proxy BFF same-origin usado pelas chamadas REST.
   const wsOrigin = wsOriginFromPublicUrl(process.env.NEXT_PUBLIC_WS_URL);
+  const typesenseUrl = process.env.NEXT_PUBLIC_TYPESENSE_URL || "http://localhost:8108";
+  const typesenseOrigin = wsOriginFromPublicUrl(typesenseUrl);
 
   // unsafe-eval só em desenvolvimento: o React usa eval para reconstruir
   // stack traces do servidor no navegador durante o dev; não é usado em
   // produção nem pelo React nem pelo Next.js.
+  const connectSrcDev = isDev ? " http: https: ws: wss:" : "";
   const cspHeader = `
     default-src 'self';
     script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""};
-    style-src 'self' 'nonce-${nonce}'${isDev ? " 'unsafe-inline'" : ""};
+    style-src 'self' 'nonce-${nonce}' 'unsafe-inline';
     img-src 'self' blob: data:;
     font-src 'self';
-    connect-src 'self'${wsOrigin ? ` ${wsOrigin}` : ""};
+    connect-src 'self' http://localhost:8108 http://127.0.0.1:8108 ws://localhost:8000 ws://127.0.0.1:8000 http://localhost:3000 http://127.0.0.1:3000${connectSrcDev}${wsOrigin ? ` ${wsOrigin}` : ""}${typesenseOrigin ? ` ${typesenseOrigin}` : ""};
     object-src 'none';
     base-uri 'self';
     form-action 'self';
     frame-ancestors 'none';
-    upgrade-insecure-requests;
   `
     .replace(/\s{2,}/g, " ")
     .trim();
@@ -100,3 +109,5 @@ export const config = {
     },
   ],
 };
+
+export default proxy;

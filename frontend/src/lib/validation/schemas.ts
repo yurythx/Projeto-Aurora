@@ -64,6 +64,28 @@ export const scanCompletedPayloadSchema = z.object({
   high_count: z.number().default(0),
 });
 
+// Payload do evento contrato.diario_ref.linked — o casador automático
+// vinculou N publicações do Diário Oficial a um contrato.
+export const contratoDiarioRefLinkedPayloadSchema = z.object({
+  contrato_id: z.string(),
+  contrato_numero: z.string(),
+  refs_vinculadas: z.number(),
+});
+
+// Payload do evento contrato.fiscal_alert — alerta de fiscalização
+// levantado pelo casador (fiscal exonerado/relotado, contrato vigente sem
+// publicação vinculada).
+export const contratoFiscalAlertPayloadSchema = z.object({
+  contrato_id: z.string(),
+  contrato_numero: z.string(),
+  kind: z.string(),
+  message: z.string(),
+  servidor: z.string().optional().default(""),
+  act_type: z.string().optional().default(""),
+  edition_number: z.string().optional().default(""),
+  doc_url: z.string().optional().default(""),
+});
+
 /** Faz o parse e valida uma mensagem bruta de WebSocket; retorna null para
  * qualquer entrada malformada em vez de lançar exceção, para que uma
  * mensagem ruim nunca derrube o pipeline de notificações inteiro. */

@@ -34,6 +34,12 @@ func run() error {
 	}
 	defer deps.Close()
 
+	// Subcomando one-shot: `worker reindex-diario` reconstrói as coleções do
+	// Typesense a partir das findings do PostgreSQL e sai (não sobe consumers).
+	if len(os.Args) > 1 && os.Args[1] == "reindex-diario" {
+		return app.ReindexDiarioOficial(ctx, deps, os.Args[2:])
+	}
+
 	runner, err := app.NewWorker(deps)
 	if err != nil {
 		return fmt.Errorf("bootstrap worker: %w", err)

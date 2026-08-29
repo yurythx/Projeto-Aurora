@@ -16,8 +16,10 @@ COPY . .
 # runtime `environment:` in docker-compose.yml.
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_WS_URL
+ARG NEXT_PUBLIC_TYPESENSE_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL} \
-    NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
+    NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL} \
+    NEXT_PUBLIC_TYPESENSE_URL=${NEXT_PUBLIC_TYPESENSE_URL}
 # Auth/config env is only READ at request time by server code, so build
 # placeholders are enough to satisfy the fail-fast checks in lib/auth —
 # the real values come from docker-compose's runtime `environment:`.

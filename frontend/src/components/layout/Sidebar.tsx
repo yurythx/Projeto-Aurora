@@ -1,13 +1,17 @@
 "use client";
 
-import { LayoutDashboard, Newspaper, Plug, Settings, Bell, FileSignature } from "lucide-react";
+import { LayoutDashboard, Newspaper, Plug, Settings, Bell, FileSignature, FileText, Users, Search, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 
 const links = [
   { href: "/dashboard", label: "Visão geral", icon: LayoutDashboard },
-  { href: "/contratos", label: "Contratos", icon: FileSignature },
+  { href: "/contratos", label: "Liquidação (Demandas)", icon: FileSignature },
+  { href: "/contratos/cadastro", label: "Contratos", icon: FileText },
+  { href: "/pessoal", label: "Atos de Pessoal", icon: Users },
+  { href: "/diario", label: "Busca no Diário", icon: Search },
+  { href: "/diario/revisao", label: "Revisão (baixa confiança)", icon: AlertTriangle },
   { href: "/diario-oficial", label: "Diário Oficial", icon: Newspaper },
   { href: "/monitoramento", label: "Monitoramento", icon: Bell },
   { href: "/integracoes", label: "Integrações", icon: Plug },

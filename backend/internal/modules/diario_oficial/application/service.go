@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
+	"github.com/yurythx/projeto-nova/internal/gazette"
 	"github.com/yurythx/projeto-nova/internal/modules/diario_oficial/domain"
 	"github.com/yurythx/projeto-nova/internal/platform/audit"
 	"github.com/yurythx/projeto-nova/internal/platform/configflags"
@@ -53,6 +55,12 @@ type rondonopolisEditionPayload struct {
 	Content     string `json:"content"`
 }
 
+// SearchKeyManager entrega uma API key do Typesense restrita a busca, para o
+// navegador não receber a chave admin. Implementado em infrastructure.
+type SearchKeyManager interface {
+	EnsureFrontendSearchKey(ctx context.Context) (string, error)
+}
+
 type Service struct {
 	db                 *pgxpool.Pool
 	jobsRepo           *jobs.Repository
@@ -64,6 +72,8 @@ type Service struct {
 	integrations       *integrations.Service
 	audit              *audit.Writer
 	flags              configflags.Store
+	searchKeys         SearchKeyManager
+	reindexer          FindingReindexer
 	logger             *slog.Logger
 }
 
@@ -97,6 +107,21 @@ func NewService(
 
 func (s *Service) SetEditionRepository(repo domain.EditionRepository) {
 	s.editionRepo = repo
+}
+
+// WithSearchKeyManager injeta o provedor da API key search-only do Typesense.
+func (s *Service) WithSearchKeyManager(m SearchKeyManager) *Service {
+	s.searchKeys = m
+	return s
+}
+
+// GetFrontendSearchKey devolve a API key do Typesense restrita a busca para o
+// frontend usar direto (sem a chave admin no navegador).
+func (s *Service) GetFrontendSearchKey(ctx context.Context) (string, error) {
+	if s.searchKeys == nil {
+		return "", apperrors.DependencyUnavailable("busca (Typesense) não configurada").WithCode("SEARCH_UNAVAILABLE")
+	}
+	return s.searchKeys.EnsureFrontendSearchKey(ctx)
 }
 
 // CreateTestJob implementa o fluxo do §34/§72 até o "Commit": cria o job e
@@ -286,61 +311,78 @@ func (s *Service) GetRondonopolisRawFeed(ctx context.Context, search string) ([]
 	return res.Items, nil
 }
 
-// GetRondonopolisHREvents busca edições na API de Rondonópolis e no banco PostgreSQL e extrai os atos de pessoal (Exonerados, Contratados, Mudança de Setor).
+// GetRondonopolisHREvents busca atos de pessoal no PostgreSQL (findings já
+// parseados) e, complementarmente, no scraping ao vivo da API de Rondonópolis.
+//
+// Garantias:
+//   - eventType é normalizado para o vocabulário canônico antes de filtrar;
+//   - PublicationDate é a data REAL da edição (edition_date), não a data de
+//     ingestão do ETL — é por ela que a lista é ordenada cronologicamente;
+//   - DocURL aponta para a página exata do PDF oficial (#page=N) quando a
+//     página é conhecida;
+//   - resultados das duas fontes são deduplicados por (servidor, tipo, edição).
 func (s *Service) GetRondonopolisHREvents(ctx context.Context, eventType HREventType, search string, since *time.Time) ([]HREvent, error) {
+	canonType := HREventType(gazette.NormalizeActType(string(eventType)))
 	allEvents := make([]HREvent, 0)
+	seen := make(map[string]bool)
 
-	// 1. Busca primeiro no repositório persistente PostgreSQL (Trigram + FTS) se disponível
+	dedupKey := func(ev HREvent) string {
+		return strings.ToLower(strings.TrimSpace(ev.Servidor)) + "|" + string(ev.Type) + "|" + strings.TrimSpace(ev.EditionNumber)
+	}
+	add := func(ev HREvent) {
+		k := dedupKey(ev)
+		if seen[k] {
+			return
+		}
+		seen[k] = true
+		allEvents = append(allEvents, ev)
+	}
+
+	// 1. Fonte primária: findings persistidos no PostgreSQL (Trigram + FTS).
 	if s.editionRepo != nil {
-		findings, _, fErr := s.editionRepo.SearchFindings(ctx, search, string(eventType), 100, 0)
-		if fErr == nil && len(findings) > 0 {
+		findings, _, fErr := s.editionRepo.SearchFindings(ctx, search, string(canonType), 200, 0)
+		if fErr == nil {
 			for _, f := range findings {
-				evType := HREventType(f.ActType)
-				if evType == "" {
-					evType = HREventNomeacao
+				evType := HREventType(gazette.NormalizeActType(f.ActType))
+				if evType == "" || evType == HREventType(gazette.ActContrato) {
+					continue // contrato não é ato de pessoal
 				}
-				servidor := ""
-				if f.ServidorNome != nil {
-					servidor = *f.ServidorNome
+
+				pubDate := f.EditionDate
+				if pubDate.IsZero() {
+					pubDate = f.CreatedAt
 				}
-				cpf := ""
-				if f.CPF != nil {
-					cpf = *f.CPF
-				}
-				mat := ""
-				if f.Matricula != nil {
-					mat = *f.Matricula
-				}
-				allEvents = append(allEvents, HREvent{
+
+				add(HREvent{
 					Type:              evType,
-					Servidor:          servidor,
-					ServidorCPF:       cpf,
-					ServidorMatricula: mat,
-					Secretaria:        "Prefeitura Municipal de Rondonópolis",
+					Servidor:          derefStr(f.ServidorNome),
+					ServidorCPF:       derefStr(f.CPF),
+					ServidorMatricula: derefStr(f.Matricula),
+					Secretaria:        firstNonEmpty(derefStr(f.Secretaria), "Prefeitura Municipal de Rondonópolis"),
+					Cargo:             firstNonEmpty(derefStr(f.JobRole), extractCargo(f.RawContent)),
+					DASLevel:          firstNonEmpty(derefStr(f.DASLevel), extractDASLevel(f.RawContent)),
+					PortariaNumber:    firstNonEmpty(derefStr(f.PortariaNumber), firstSubmatchStr(f.RawContent, porRegex)),
+					EditionNumber:     f.EditionNumber,
 					ContextSnippet:    f.RawContent,
-					PublicationDate:   f.CreatedAt,
+					PublicationDate:   pubDate,
+					DocURL:            withPDFPage(f.PdfURL, f.PDFPageNumber),
+					PDFPageNumber:     f.PDFPageNumber,
 				})
 			}
 		}
 	}
 
+	// 2. Complemento: scraping ao vivo (edições ainda não ingeridas).
 	if s.rondonopolisClient != nil {
-		searchQuery := domain.SearchQuery{
-			FreeText: search,
-			Since:    since,
-		}
-
-		res, err := s.rondonopolisClient.Search(ctx, searchQuery)
-
+		res, err := s.rondonopolisClient.Search(ctx, domain.SearchQuery{FreeText: search, Since: since})
 		if err == nil && res != nil {
 			for _, item := range res.Items {
 				var ed rondonopolisEditionPayload
 				if err := json.Unmarshal(item.RawPayload, &ed); err != nil {
 					continue
 				}
-				events := ExtractHREvents(ed.Content, ed.Number, ed.DocURL, item.AvailabilityDate)
-				for _, ev := range events {
-					if eventType != "" && ev.Type != eventType {
+				for _, ev := range ExtractHREvents(ed.Content, ed.Number, ed.DocURL, item.AvailabilityDate) {
+					if canonType != "" && ev.Type != canonType {
 						continue
 					}
 					if search != "" {
@@ -352,240 +394,62 @@ func (s *Service) GetRondonopolisHREvents(ctx context.Context, eventType HREvent
 							continue
 						}
 					}
-					allEvents = append(allEvents, ev)
+					ev.DocURL = withPDFPage(ev.DocURL, ev.PDFPageNumber)
+					add(ev)
 				}
 			}
 		}
 	}
 
-	if len(allEvents) == 0 {
-		now := time.Now()
-		fallbackEvents := []HREvent{
-			{
-				Type:              HREventNomeacao,
-				Servidor:          "JOÃO PEDRO ALMEIDA CASTRO",
-				ServidorCPF:       "321.654.987-00",
-				ServidorMatricula: "MAT-41001",
-				Secretaria:        "Secretaria Municipal de Administração",
-				Cargo:             "Coordenador Geral de TI e Governança",
-				DASLevel:          "DAS-1",
-				PortariaNumber:    "42.500",
-				EditionNumber:     "6263",
-				ContextSnippet:    "RESOLVE: Art. 1º Nomear JOÃO PEDRO ALMEIDA CASTRO para o cargo em comissão de Coordenador Geral de TI e Governança.",
-				DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-				PublicationDate:   now.AddDate(0, 0, -1),
-			},
-			{
-				Type:              HREventNomeacao,
-				Servidor:          "RAFAELA SANTOS MENDONÇA",
-				ServidorCPF:       "210.987.654-11",
-				ServidorMatricula: "MAT-41002",
-				Secretaria:        "Gabinete do Prefeito",
-				Cargo:             "Assessora Especial de Governança",
-				DASLevel:          "DAS-2",
-				PortariaNumber:    "42.501",
-				EditionNumber:     "6263",
-				ContextSnippet:    "RESOLVE: Art. 1º Nomear RAFAELA SANTOS MENDONÇA para o cargo em comissão de Assessora Especial de Governança.",
-				DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-				PublicationDate:   now.AddDate(0, 0, -1),
-			},
-			{
-				Type:              HREventExoneracao,
-				Servidor:          "VANETE BARBOSA DO REGO",
-				ServidorCPF:       "123.456.789-01",
-				ServidorMatricula: "MAT-44102",
-				Secretaria:        "Secretaria Municipal de Administração",
-				Cargo:             "Agente Administrativo da Família",
-				DASLevel:          "DAS-5",
-				PortariaNumber:    "41.754",
-				EditionNumber:     "6262",
-				ContextSnippet:    "RESOLVE: Art. 1º Exonerar, a pedido, VANETE BARBOSA DO REGO, do cargo em comissão de Agente Administrativo da Família.",
-				DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-				PublicationDate:   now.AddDate(0, 0, -2),
-			},
-			{
-				Type:              HREventMudancaSetor,
-				Servidor:          "CARLOS EDUARDO SILVEIRA",
-				ServidorCPF:       "789.012.345-67",
-				ServidorMatricula: "MAT-33209",
-				Secretaria:        "Secretaria Municipal de Saúde -> Secretaria de Educação",
-				Cargo:             "Agente de Saúde Pública",
-				DASLevel:          "DAS-4",
-				PortariaNumber:    "41.905",
-				EditionNumber:     "6261",
-				ContextSnippet:    "RESOLVE: Art. 1º Relotar e transferir o servidor CARLOS EDUARDO SILVEIRA da Secretaria de Saúde para a Secretaria de Educação.",
-				DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-				PublicationDate:   now.AddDate(0, 0, -3),
-			},
-			{
-				Type:              HREventMudancaSetor,
-				Servidor:          "ANA MARIA FERREIRA SANTOS",
-				ServidorCPF:       "890.123.456-78",
-				ServidorMatricula: "MAT-22104",
-				Secretaria:        "Secretaria de Promoção Social -> Gabinete do Prefeito",
-				Cargo:             "Assistente Técnica Operacional",
-				DASLevel:          "DAS-3",
-				PortariaNumber:    "41.920",
-				EditionNumber:     "6260",
-				ContextSnippet:    "RESOLVE: Art. 1º Remanejar a servidora ANA MARIA FERREIRA SANTOS para prestar serviços junto ao Gabinete do Prefeito.",
-				DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-				PublicationDate:   now.AddDate(0, 0, -4),
-			},
-			{
-				Type:              HREventNomeacao,
-				Servidor:          "MARILEIDE GONÇALVES DE OLIVEIRA",
-				ServidorCPF:       "234.567.890-12",
-				ServidorMatricula: "MAT-55201",
-				Secretaria:        "Secretaria Municipal de Promoção Social",
-				Cargo:             "Agente Administrativo da Família",
-				DASLevel:          "DAS-4",
-				PortariaNumber:    "41.808",
-				EditionNumber:     "6253",
-				ContextSnippet:    "RESOLVE: Art. 1º Nomear MARILEIDE GONÇALVES DE OLIVEIRA para o cargo em comissão de Agente Administrativo da Família.",
-				DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-				PublicationDate:   now.AddDate(0, 0, -10),
-			},
-			{
-				Type:              HREventNomeacao,
-				Servidor:          "VINICIUS MARTINS GALHARDO LOPES",
-				ServidorCPF:       "345.678.901-23",
-				ServidorMatricula: "MAT-66304",
-				Secretaria:        "Secretaria Municipal de Infraestrutura",
-				Cargo:             "Assessor de Engenharia e Arquitetura",
-				DASLevel:          "DAS-2",
-				PortariaNumber:    "41.830",
-				EditionNumber:     "6260",
-				ContextSnippet:    "RESOLVE: Art. 1º Nomear VINICIUS MARTINS GALHARDO LOPES para o cargo em comissão de Assessor de Engenharia e Arquitetura.",
-				DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-				PublicationDate:   now.AddDate(0, 0, -4),
-			},
-			{
-				Type:              HREventExoneracao,
-				Servidor:          "GABRIELA INES GUARAGNI",
-				ServidorCPF:       "456.789.012-34",
-				ServidorMatricula: "MAT-77405",
-				Secretaria:        "Gabinete do Prefeito",
-				Cargo:             "Assessora de Gabinete III",
-				DASLevel:          "DAS-3",
-				PortariaNumber:    "41.809",
-				EditionNumber:     "6253",
-				ContextSnippet:    "RESOLVE: Art. 1º Exonerar GABRIELA INES GUARAGNI do cargo em comissão de Assessora de Gabinete III.",
-				DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-				PublicationDate:   now.AddDate(0, 0, -10),
-			},
-			{
-				Type:              HREventNomeacao,
-				Servidor:          "FERNANDO HENRIQUE MATOS",
-				ServidorCPF:       "567.890.123-45",
-				ServidorMatricula: "MAT-88506",
-				Secretaria:        "Gabinete do Prefeito",
-				Cargo:             "Assessor Especial de Gabinete",
-				DASLevel:          "DAS-2",
-				PortariaNumber:    "42.122",
-				EditionNumber:     "6263",
-				ContextSnippet:    "RESOLVE: Art. 1º Nomear FERNANDO HENRIQUE MATOS para o cargo em comissão de Assessor Especial de Gabinete.",
-				DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-				PublicationDate:   now.AddDate(0, 0, -1),
-			},
-			{
-				Type:              HREventNomeacao,
-				Servidor:          "PATRÍCIA MENDES ROCHA",
-				ServidorCPF:       "678.901.234-56",
-				ServidorMatricula: "MAT-99607",
-				Secretaria:        "Secretaria Municipal de Infraestrutura",
-				Cargo:             "Encarregada de Apoio Operacional",
-				DASLevel:          "DAS-6",
-				PortariaNumber:    "42.130",
-				EditionNumber:     "6261",
-				ContextSnippet:    "RESOLVE: Art. 1º Nomear PATRÍCIA MENDES ROCHA para o cargo em comissão de Encarregada de Apoio Operacional.",
-				DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-				PublicationDate:   now.AddDate(0, 0, -3),
-			},
-		}
-
-		for _, ev := range fallbackEvents {
-			if eventType != "" && ev.Type != eventType {
-				continue
+	// Ordenação: busca vazia -> alfabética por servidor (listagem/navegação);
+	// busca com termo -> cronológica pela data real da edição, mais recente
+	// primeiro, com o nome como desempate estável.
+	if search == "" {
+		sort.Slice(allEvents, func(i, j int) bool {
+			return strings.ToLower(allEvents[i].Servidor) < strings.ToLower(allEvents[j].Servidor)
+		})
+	} else {
+		sort.SliceStable(allEvents, func(i, j int) bool {
+			if !allEvents[i].PublicationDate.Equal(allEvents[j].PublicationDate) {
+				return allEvents[i].PublicationDate.After(allEvents[j].PublicationDate)
 			}
-			if search != "" {
-				sLower := strings.ToLower(search)
-				sDigits := regexp.MustCompile(`\D`).ReplaceAllString(sLower, "")
-				evCpfDigits := regexp.MustCompile(`\D`).ReplaceAllString(ev.ServidorCPF, "")
-				evMatDigits := regexp.MustCompile(`\D`).ReplaceAllString(ev.ServidorMatricula, "")
-
-				matchesServidor := strings.Contains(strings.ToLower(ev.Servidor), sLower)
-				matchesCpf := strings.Contains(strings.ToLower(ev.ServidorCPF), sLower) || (len(sDigits) >= 3 && strings.Contains(evCpfDigits, sDigits))
-				matchesMat := strings.Contains(strings.ToLower(ev.ServidorMatricula), sLower) || (len(sDigits) >= 3 && strings.Contains(evMatDigits, sDigits))
-				matchesSec := strings.Contains(strings.ToLower(ev.Secretaria), sLower)
-				matchesSnippet := strings.Contains(strings.ToLower(ev.ContextSnippet), sLower)
-
-				if !matchesServidor && !matchesCpf && !matchesMat && !matchesSec && !matchesSnippet {
-					continue
-				}
-			}
-			allEvents = append(allEvents, ev)
-		}
-	}
-
-	// Se for uma busca por termo específico (CPF ou Nome) e nenhum evento foi retornado do acervo atual, gera o histórico funcional completo (Nomeação, Relotação e Designação)
-	if len(allEvents) == 0 && strings.TrimSpace(search) != "" {
-		sClean := strings.TrimSpace(search)
-		searchUpper := strings.ToUpper(sClean)
-		servidorName := searchUpper
-		cpfVal := sClean
-		if regexp.MustCompile(`\d`).MatchString(sClean) {
-			servidorName = "YURI THIAGO / SERVIDOR MUNICIPAL"
-		} else {
-			cpfVal = "021.946.881-88"
-		}
-
-		allEvents = append(allEvents,
-			HREvent{
-				Type:              HREventNomeacao,
-				Servidor:          servidorName,
-				ServidorCPF:       cpfVal,
-				ServidorMatricula: "MAT-2025-03",
-				Secretaria:        "Secretaria Municipal de Infraestrutura e TI",
-				Cargo:             "Analista de TI e Governança",
-				DASLevel:          "DAS-2",
-				PortariaNumber:    "40.150",
-				EditionNumber:     "5980",
-				ContextSnippet:    fmt.Sprintf("RESOLVE: Art. 1º Nomear o servidor %s, inscrito no CPF sob nº %s, para exercer o cargo em comissão de Analista de TI e Governança junto à Secretaria Municipal de Infraestrutura.", servidorName, cpfVal),
-				DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-				PublicationDate:   time.Date(2025, time.March, 15, 10, 0, 0, 0, time.UTC),
-			},
-			HREvent{
-				Type:              HREventMudancaSetor,
-				Servidor:          servidorName,
-				ServidorCPF:       cpfVal,
-				ServidorMatricula: "MAT-2025-03",
-				Secretaria:        "Secretaria de Infraestrutura -> Gabinete do Prefeito",
-				Cargo:             "Analista de TI e Governança",
-				DASLevel:          "DAS-2",
-				PortariaNumber:    "41.020",
-				EditionNumber:     "6112",
-				ContextSnippet:    fmt.Sprintf("RESOLVE: Art. 1º Relotar o servidor %s, CPF %s, transferindo suas atividades da Secretaria de Infraestrutura para o Gabinete do Prefeito.", servidorName, cpfVal),
-				DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-				PublicationDate:   time.Date(2025, time.October, 10, 14, 30, 0, 0, time.UTC),
-			},
-			HREvent{
-				Type:              HREventNomeacao,
-				Servidor:          servidorName,
-				ServidorCPF:       cpfVal,
-				ServidorMatricula: "MAT-2025-03",
-				Secretaria:        "Gabinete do Prefeito",
-				Cargo:             "Coordenador Especial de Governança Digital",
-				DASLevel:          "DAS-1",
-				PortariaNumber:    "42.110",
-				EditionNumber:     "6210",
-				ContextSnippet:    fmt.Sprintf("RESOLVE: Art. 1º Designar o servidor %s, CPF %s, para a função de Coordenador Especial de Governança Digital (DAS-1).", servidorName, cpfVal),
-				DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-				PublicationDate:   time.Date(2026, time.May, 20, 9, 0, 0, 0, time.UTC),
-			},
-		)
+			return strings.ToLower(allEvents[i].Servidor) < strings.ToLower(allEvents[j].Servidor)
+		})
 	}
 
 	return allEvents, nil
+}
+
+// withPDFPage acrescenta a âncora de página à URL da edição quando a página é
+// conhecida (>1), para o link abrir direto na página do ato filtrado.
+func withPDFPage(url string, page int) string {
+	if url == "" || page <= 1 || strings.Contains(url, "#page=") {
+		return url
+	}
+	return fmt.Sprintf("%s#page=%d", url, page)
+}
+
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func firstSubmatchStr(text string, re *regexp.Regexp) string {
+	if m := re.FindStringSubmatch(text); len(m) > 1 {
+		return strings.TrimSpace(m[1])
+	}
+	return ""
 }
 
 type PublicContract struct {
@@ -612,135 +476,7 @@ type PublicContract struct {
 
 // GetPublicContracts retorna a listagem completa de contratos novos e existentes com fiscais e suplentes no Diário Oficial.
 func (s *Service) GetPublicContracts(ctx context.Context, search string) ([]PublicContract, error) {
-	now := time.Now()
-	contracts := []PublicContract{
-		{
-			ID:                "cnt-000",
-			ContractNumber:    "Contrato Nº 140/2026",
-			ContractType:      "Prestação de Serviços de TI",
-			PortariaNumber:    "Portaria Nº 480/2026",
-			NomeacaoDate:      now.AddDate(0, 0, -2),
-			Object:            "Prestação de serviços de modernização tecnológica e desenvolvimento da plataforma municipal de gestão.",
-			Contractor:        "TechGov Soluções em Tecnologia e Sistemas LTDA",
-			ContractorCNPJ:    "41.987.654/0001-22",
-			Value:             "R$ 950.000,00",
-			FiscalNome:        "RODRIGO ALVES MONTEIRO",
-			FiscalCPF:         "432.109.876-55",
-			FiscalMatricula:   "MAT-88101",
-			SuplenteNome:      "CAMILA CARDOSO DUARTE",
-			SuplenteCPF:       "567.890.123-55",
-			SuplenteMatricula: "MAT-77399",
-			EditionNumber:     "6263",
-			PublicationDate:   now.AddDate(0, 0, -1),
-			DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-			Status:            "NOVO",
-		},
-		{
-			ID:                "cnt-001",
-			ContractNumber:    "Contrato Nº 440/2026",
-			ContractType:      "Gestão Fiscal e Arrecadação",
-			PortariaNumber:    "Portaria Nº 440/2026",
-			NomeacaoDate:      now.AddDate(0, 0, -4),
-			Object:            "Contratação de serviços de acompanhamento fiscal e arrecadação para a Secretaria Municipal de Fazenda.",
-			Contractor:        "Soluções em Engenharia & Gestão Fiscal LTDA",
-			ContractorCNPJ:    "12.345.678/0001-90",
-			Value:             "R$ 840.000,00",
-			FiscalNome:        "MARCOS ANTONIO SILVA",
-			FiscalCPF:         "123.456.789-00",
-			FiscalMatricula:   "MAT-88421",
-			SuplenteNome:      "GABRIELA FREITAS COSTA",
-			SuplenteCPF:       "234.567.890-11",
-			SuplenteMatricula: "MAT-88499",
-			EditionNumber:     "6260",
-			PublicationDate:   now.AddDate(0, 0, -4),
-			DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-			Status:            "NOVO",
-		},
-		{
-			ID:                "cnt-002",
-			ContractNumber:    "Contrato Nº 444/2026",
-			ContractType:      "Fornecimento de Insumos Agropastoris",
-			PortariaNumber:    "Portaria Nº 444/2026",
-			NomeacaoDate:      now.AddDate(0, 0, -4),
-			Object:            "Fornecimento de insumos e maquinários agrícolas para a Secretaria Municipal de Agricultura e Pecuária.",
-			Contractor:        "Cooperativa de Agronomia e Alimentos Rondon",
-			ContractorCNPJ:    "98.765.432/0001-11",
-			Value:             "R$ 1.250.000,00",
-			FiscalNome:        "MARILEIDE GONÇALVES DE OLIVEIRA",
-			FiscalCPF:         "987.654.321-11",
-			FiscalMatricula:   "MAT-90112",
-			SuplenteNome:      "RICARDO NOGUEIRA LIMA",
-			SuplenteCPF:       "876.543.210-22",
-			SuplenteMatricula: "MAT-90150",
-			EditionNumber:     "6260",
-			PublicationDate:   now.AddDate(0, 0, -4),
-			DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-			Status:            "NOVO",
-		},
-		{
-			ID:                "cnt-003",
-			ContractNumber:    "Contrato Nº 351/2026",
-			ContractType:      "Prestação de Serviços Jurídicos e TI",
-			PortariaNumber:    "Portaria Interna Nº 55/2026",
-			NomeacaoDate:      now.AddDate(0, 0, -10),
-			Object:            "Prestação de serviços de apoio tecnológico e jurídico para a Procuradoria Geral do Município.",
-			Contractor:        "Tech Health & Law Sistemas S.A.",
-			ContractorCNPJ:    "45.678.912/0001-44",
-			Value:             "R$ 560.000,00",
-			FiscalNome:        "VINICIUS MARTINS GALHARDO LOPES",
-			FiscalCPF:         "456.789.123-44",
-			FiscalMatricula:   "MAT-77340",
-			SuplenteNome:      "CAMILA CARDOSO DUARTE",
-			SuplenteCPF:       "567.890.123-55",
-			SuplenteMatricula: "MAT-77399",
-			EditionNumber:     "6253",
-			PublicationDate:   now.AddDate(0, 0, -10),
-			DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-			Status:            "ATIVO",
-		},
-		{
-			ID:                "cnt-004",
-			ContractNumber:    "Contrato Nº 054/2026",
-			ContractType:      "Conservação Ambiental",
-			PortariaNumber:    "Portaria SEMMAAP Nº 171/2026",
-			NomeacaoDate:      now.AddDate(0, 0, -6),
-			Object:            "Serviços de conservação ambiental e manutenção de parques da Secretaria Municipal de Meio Ambiente.",
-			Contractor:        "EcoLimpeza e Conservação Eireli",
-			ContractorCNPJ:    "32.165.498/0001-88",
-			Value:             "R$ 780.000,00",
-			FiscalNome:        "VANETE BARBOSA DO REGO",
-			FiscalCPF:         "321.654.987-88",
-			FiscalMatricula:   "MAT-66109",
-			SuplenteNome:      "MARCIO VINICIUS RIBEIRO",
-			SuplenteCPF:       "654.321.987-77",
-			SuplenteMatricula: "MAT-66188",
-			EditionNumber:     "6258",
-			PublicationDate:   now.AddDate(0, 0, -6),
-			DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-			Status:            "ATIVO",
-		},
-		{
-			ID:                "cnt-005",
-			ContractNumber:    "Contrato Nº 155/2026",
-			ContractType:      "Terceirização de Mão de Obra",
-			PortariaNumber:    "Portaria Nº 544/2026",
-			NomeacaoDate:      now.AddDate(0, 0, -20),
-			Object:            "Serviços continuados de limpeza urbana, varrição e conservação de vias públicas municipais.",
-			Contractor:        "EcoLimpeza Urbana e Serviços Eireli",
-			ContractorCNPJ:    "67.890.123/0001-33",
-			Value:             "R$ 2.450.000,00",
-			FiscalNome:        "LUCIANA CASTRO RESENDE",
-			FiscalCPF:         "555.444.333-22",
-			FiscalMatricula:   "MAT-55201",
-			SuplenteNome:      "THIAGO MONTEIRO DIAS",
-			SuplenteCPF:       "444.333.222-11",
-			SuplenteMatricula: "MAT-55255",
-			EditionNumber:     "6260",
-			PublicationDate:   now.AddDate(0, 0, -4),
-			DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-			Status:            "ATIVO",
-		},
-	}
+	contracts := make([]PublicContract, 0)
 
 	// Integração com banco PostgreSQL para busca de contratos indexados
 	if s.editionRepo != nil {
@@ -771,24 +507,40 @@ func (s *Service) GetPublicContracts(ctx context.Context, search string) ([]Publ
 				if f.Valor != nil {
 					valor = fmt.Sprintf("R$ %.2f", *f.Valor)
 				}
+				docURL := withPDFPage(f.PdfURL, f.PDFPageNumber)
+				if docURL == "" {
+					docURL = "https://www.rondonopolis.mt.gov.br/diario-oficial/"
+				}
+				edNum := f.EditionNumber
+				if edNum == "" {
+					edNum = "Edição Registrada"
+				}
+				// Data real de publicação da edição; a data de ingestão só
+				// entra como último recurso.
+				pubDate := f.EditionDate
+				if pubDate.IsZero() {
+					pubDate = f.CreatedAt
+				}
+				portaria := firstNonEmpty(derefStr(f.PortariaNumber), "Portaria Interna")
+
 				contracts = append(contracts, PublicContract{
-					ID:                f.ID.String(),
-					ContractNumber:    "Contrato Indexado",
-					ContractType:      "Prestação de Serviços",
-					PortariaNumber:    "Portaria Interna",
-					NomeacaoDate:      f.CreatedAt,
-					Object:            f.RawContent,
-					Contractor:        empresa,
-					ContractorCNPJ:    cnpj,
-					Value:             valor,
-					FiscalNome:        fName,
-					FiscalCPF:         cpf,
-					FiscalMatricula:   mat,
-					SuplenteNome:      "Fiscal Suplente",
-					EditionNumber:     "Edição Registrada",
-					PublicationDate:   f.CreatedAt,
-					DocURL:            "https://www.rondonopolis.mt.gov.br/diario-oficial/",
-					Status:            "ATIVO",
+					ID:              f.ID.String(),
+					ContractNumber:  "Contrato Indexado",
+					ContractType:    "Prestação de Serviços",
+					PortariaNumber:  portaria,
+					NomeacaoDate:    pubDate,
+					Object:          f.RawContent,
+					Contractor:      empresa,
+					ContractorCNPJ:  cnpj,
+					Value:           valor,
+					FiscalNome:      fName,
+					FiscalCPF:       cpf,
+					FiscalMatricula: mat,
+					SuplenteNome:    "Fiscal Suplente",
+					EditionNumber:   edNum,
+					PublicationDate: pubDate,
+					DocURL:          docURL,
+					Status:          "ATIVO",
 				})
 			}
 		}
@@ -835,64 +587,6 @@ func (s *Service) GetPublicContracts(ctx context.Context, search string) ([]Publ
 		}
 	}
 
-	// Se for uma busca por termo específico (CPF ou Nome) que ainda não retornou registro no mock/DB, gera múltiplos contratos (Fiscal Titular e Suplente)
-	if len(filtered) == 0 && strings.TrimSpace(search) != "" {
-		sClean := strings.TrimSpace(search)
-		searchUpper := strings.ToUpper(sClean)
-		fiscalName := searchUpper
-		cpfVal := sClean
-		if regexp.MustCompile(`\d`).MatchString(sClean) {
-			fiscalName = "YURI THIAGO / FISCAL DESIGNADO"
-		} else {
-			cpfVal = "021.946.881-88"
-		}
-
-		filtered = append(filtered,
-			PublicContract{
-				ID:                "cnt-2025-01",
-				ContractNumber:    "Contrato Nº 088/2025",
-				ContractType:      "Prestação de Serviços de TI",
-				PortariaNumber:    "Portaria Nº 102/2025",
-				NomeacaoDate:      time.Date(2025, time.March, 10, 0, 0, 0, 0, time.UTC),
-				Object:            fmt.Sprintf("Gestão e fiscalização da modernização tecnológica da Secretaria de Infraestrutura sob responsabilidade de %s (CPF %s).", fiscalName, cpfVal),
-				Contractor:        "Consórcio TechGov Rondonópolis LTDA",
-				ContractorCNPJ:    "11.222.333/0001-44",
-				Value:             "R$ 450.000,00",
-				FiscalNome:        fiscalName,
-				FiscalCPF:         cpfVal,
-				FiscalMatricula:   "MAT-2025-03",
-				SuplenteNome:      "CAMILA CARDOSO DUARTE",
-				SuplenteCPF:       "567.890.123-55",
-				SuplenteMatricula: "MAT-77399",
-				EditionNumber:     "5980",
-				PublicationDate:   time.Date(2025, time.March, 15, 0, 0, 0, 0, time.UTC),
-				DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-				Status:            "ATIVO",
-			},
-			PublicContract{
-				ID:                "cnt-2026-04",
-				ContractNumber:    "Contrato Nº 142/2026",
-				ContractType:      "Serviços de Governança e Infraestrutura",
-				PortariaNumber:    "Portaria Nº 310/2026",
-				NomeacaoDate:      time.Date(2026, time.February, 1, 0, 0, 0, 0, time.UTC),
-				Object:            fmt.Sprintf("Prestação de serviços de infraestrutura para o Gabinete do Prefeito com suplência técnica de %s (CPF %s).", fiscalName, cpfVal),
-				Contractor:        "Sistemas e Soluções Urbanas S.A.",
-				ContractorCNPJ:    "99.888.777/0001-66",
-				Value:             "R$ 1.180.000,00",
-				FiscalNome:        "RODRIGO ALVES MONTEIRO",
-				FiscalCPF:         "432.109.876-55",
-				FiscalMatricula:   "MAT-88101",
-				SuplenteNome:      fiscalName,
-				SuplenteCPF:       cpfVal,
-				SuplenteMatricula: "MAT-2025-03",
-				EditionNumber:     "6150",
-				PublicationDate:   time.Date(2026, time.February, 5, 0, 0, 0, 0, time.UTC),
-				DocURL:            "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-				Status:            "ATIVO",
-			},
-		)
-	}
-
 	return filtered, nil
 }
 
@@ -902,4 +596,164 @@ func (s *Service) GetEditions(ctx context.Context, limit int) ([]domain.Edition,
 		return []domain.Edition{}, nil
 	}
 	return s.editionRepo.ListAllEditions(ctx, limit)
+}
+
+// GetReviewQueue retorna os findings de baixa confiança — o resíduo do parser
+// que ficou fora da busca do usuário e precisa de revisão manual.
+func (s *Service) GetReviewQueue(ctx context.Context, limit int) ([]domain.Finding, error) {
+	if s.editionRepo == nil {
+		return []domain.Finding{}, nil
+	}
+	return s.editionRepo.ListFindingsForReview(ctx, limit)
+}
+
+// FindingReindexer é o caminho para (re)sincronizar uma edição inteira com o
+// Typesense depois que um finding dela muda. Implementado por worker.Reindexer;
+// injetado com WithReindexer. Sem ele, promover/descartar ainda atualiza o
+// PostgreSQL, só não reflete no índice até o próximo reindex de boot.
+type FindingReindexer interface {
+	ReindexEdition(ctx context.Context, editionID int64) (int, error)
+}
+
+// WithReindexer injeta o reindexador do Typesense usado pela fila de revisão.
+func (s *Service) WithReindexer(r FindingReindexer) *Service {
+	s.reindexer = r
+	return s
+}
+
+// reindexEditionBestEffort ressincroniza a edição do finding com o Typesense.
+// Nunca falha a operação de revisão por causa do índice — só loga.
+func (s *Service) reindexEditionBestEffort(ctx context.Context, editionID int64, action string) {
+	if s.reindexer == nil {
+		return
+	}
+	if n, err := s.reindexer.ReindexEdition(ctx, editionID); err != nil {
+		s.logger.Warn("revisão: reindex da edição falhou (best-effort)",
+			slog.String("acao", action), slog.Int64("edition_id", editionID), slog.Any("erro", err))
+	} else {
+		s.logger.Info("revisão: edição reindexada",
+			slog.String("acao", action), slog.Int64("edition_id", editionID), slog.Int("docs", n))
+	}
+}
+
+var allowedReviewConfidence = map[string]bool{
+	gazette.ConfidenceHigh:   true,
+	gazette.ConfidenceMedium: true,
+}
+
+// allowedReviewActType: os tipos canônicos de pessoal que a UI filtra, mais
+// CONTRATO e OUTROS — tudo que um revisor pode legitimamente atribuir.
+var allowedReviewActType = func() map[string]bool {
+	m := map[string]bool{gazette.ActContrato: true, gazette.ActOutros: true}
+	for _, t := range gazette.CanonicalActTypes {
+		m[t] = true
+	}
+	return m
+}()
+
+// PromoteFinding aplica a correção manual do revisor a um finding da fila e o
+// sobe para a busca (confidence high|medium). Reindexa a edição no Typesense.
+func (s *Service) PromoteFinding(ctx context.Context, id uuid.UUID, in domain.FindingReviewInput, reviewedBy *uuid.UUID) (*domain.Finding, error) {
+	if s.editionRepo == nil {
+		return nil, apperrors.BadRequest("repositório de edições indisponível")
+	}
+	in.ActType = strings.ToUpper(strings.TrimSpace(in.ActType))
+	if !allowedReviewActType[in.ActType] {
+		return nil, apperrors.BadRequest("act_type inválido: " + in.ActType)
+	}
+	in.Confidence = strings.ToLower(strings.TrimSpace(in.Confidence))
+	if !allowedReviewConfidence[in.Confidence] {
+		return nil, apperrors.BadRequest("confidence deve ser 'high' ou 'medium' ao promover")
+	}
+	in.ServidorNome = trimPtr(in.ServidorNome)
+	in.EmpresaNome = trimPtr(in.EmpresaNome)
+	if in.ServidorNome == nil && in.EmpresaNome == nil {
+		return nil, apperrors.BadRequest("informe ao menos servidor_nome ou empresa_nome")
+	}
+	in.CPF = trimPtr(in.CPF)
+	in.Matricula = trimPtr(in.Matricula)
+	in.CNPJ = trimPtr(in.CNPJ)
+	in.Secretaria = trimPtr(in.Secretaria)
+	in.JobRole = trimPtr(in.JobRole)
+	in.DASLevel = trimPtr(in.DASLevel)
+	in.PortariaNumber = trimPtr(in.PortariaNumber)
+
+	updated, err := s.editionRepo.UpdateFindingReview(ctx, id, in, reviewedBy)
+	if err != nil {
+		return nil, err
+	}
+
+	s.reindexEditionBestEffort(ctx, updated.EditionID, "promover")
+
+	if s.audit != nil {
+		_ = s.audit.Record(ctx, audit.Entry{
+			UserID:       reviewedBy,
+			Action:       "diario_oficial.finding.promoted",
+			ResourceType: "diario_oficial_finding",
+			ResourceID:   id.String(),
+			Metadata: map[string]any{
+				"act_type":   updated.ActType,
+				"confidence": updated.Confidence,
+				"edition_id": updated.EditionID,
+			},
+		})
+	}
+	return updated, nil
+}
+
+// AcknowledgeFinding tira o finding da fila sem promovê-lo — o revisor
+// confirmou que é low mas legítimo (fica só no PostgreSQL).
+func (s *Service) AcknowledgeFinding(ctx context.Context, id uuid.UUID, note string, reviewedBy *uuid.UUID) error {
+	if s.editionRepo == nil {
+		return apperrors.BadRequest("repositório de edições indisponível")
+	}
+	if err := s.editionRepo.AcknowledgeFinding(ctx, id, reviewedBy, strings.TrimSpace(note)); err != nil {
+		return err
+	}
+	if s.audit != nil {
+		_ = s.audit.Record(ctx, audit.Entry{
+			UserID:       reviewedBy,
+			Action:       "diario_oficial.finding.acknowledged",
+			ResourceType: "diario_oficial_finding",
+			ResourceID:   id.String(),
+		})
+	}
+	return nil
+}
+
+// DiscardFinding remove um finding da fila de revisão em definitivo (ruído do
+// parser). Reindexa a edição para tirar o doc do Typesense caso já estivesse lá.
+func (s *Service) DiscardFinding(ctx context.Context, id uuid.UUID, reviewedBy *uuid.UUID) error {
+	if s.editionRepo == nil {
+		return apperrors.BadRequest("repositório de edições indisponível")
+	}
+	existing, err := s.editionRepo.GetFindingByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := s.editionRepo.DeleteFinding(ctx, id); err != nil {
+		return err
+	}
+	s.reindexEditionBestEffort(ctx, existing.EditionID, "descartar")
+	if s.audit != nil {
+		_ = s.audit.Record(ctx, audit.Entry{
+			UserID:       reviewedBy,
+			Action:       "diario_oficial.finding.discarded",
+			ResourceType: "diario_oficial_finding",
+			ResourceID:   id.String(),
+			Metadata:     map[string]any{"edition_id": existing.EditionID, "act_type": existing.ActType},
+		})
+	}
+	return nil
+}
+
+func trimPtr(s *string) *string {
+	if s == nil {
+		return nil
+	}
+	t := strings.TrimSpace(*s)
+	if t == "" {
+		return nil
+	}
+	return &t
 }

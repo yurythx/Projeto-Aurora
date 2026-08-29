@@ -23,8 +23,8 @@ export function ExecutiveAnalyticsPanel() {
   const { data: contracts } = useApiQuery<PublicContract[]>("v1/diario-oficial/rondonopolis/contracts");
 
   const analytics = useMemo(() => {
-    const events = hrEvents || [];
-    const contractList = contracts || [];
+    const events = Array.isArray(hrEvents) ? hrEvents : [];
+    const contractList = Array.isArray(contracts) ? contracts : [];
 
     const totalEvents = events.length;
     const totalNomeacoes = events.filter((e) => e.type === "NOMEACAO").length;

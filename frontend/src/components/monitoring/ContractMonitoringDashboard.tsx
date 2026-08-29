@@ -52,16 +52,18 @@ export function ContractMonitoringDashboard() {
     setLoading(true);
     try {
       const [resContratos, resKanban] = await Promise.all([
-        apiClient.get<Contrato[]>("/api/v1/contratos"),
-        apiClient.get<KanbanResponse>("/api/v1/demands/kanban").catch(() => ({ data: null })),
+        apiClient.get<Contrato[]>("v1/contratos").catch(() => ({ data: [] as Contrato[] })),
+        apiClient.get<KanbanResponse>("v1/demands/kanban").catch(() => ({ data: null })),
       ]);
 
-      setContratos(resContratos.data || []);
+      const contractsList = Array.isArray(resContratos.data) ? resContratos.data : [];
+
+      setContratos(contractsList);
       if (resKanban && resKanban.data) {
         setKanban(resKanban.data);
       }
 
-      // Mock inicial ou dados gravados no localStorage para Fiscais Nominal
+      // Dados gravados no localStorage para Fiscais Nominal
       const savedOfficials = localStorage.getItem("nova_contract_officials_v1");
       if (savedOfficials) {
         try {
@@ -69,40 +71,9 @@ export function ContractMonitoringDashboard() {
         } catch {
           // fallback
         }
-      } else if (resContratos.data && resContratos.data.length > 0) {
-        // Dados de demonstração inicial para 1º contrato
-        const c1 = resContratos.data[0];
-        const defaultOfficials: ContractOfficial[] = [
-          {
-            id: "official-1",
-            contrato_id: c1.id,
-            contrato_numero: c1.numero,
-            nome: "Yuri Silva",
-            matricula: "MAT-2025-081",
-            num_portaria: "PORT-491/2025",
-            is_titular: true,
-            created_at: new Date().toISOString(),
-          },
-          {
-            id: "official-2",
-            contrato_id: c1.id,
-            contrato_numero: c1.numero,
-            nome: "Carlos Eduardo Oliveira",
-            matricula: "MAT-2024-112",
-            num_portaria: "PORT-491/2025",
-            is_titular: false,
-            created_at: new Date().toISOString(),
-          },
-        ];
-        setOfficials(defaultOfficials);
-        localStorage.setItem("nova_contract_officials_v1", JSON.stringify(defaultOfficials));
       }
     } catch (err: any) {
-      showToast({
-        title: "Erro ao carregar dados",
-        description: "Não foi possível buscar as informações de monitoramento.",
-        tone: "danger",
-      });
+      console.error("Monitoring load error:", err);
     } finally {
       setLoading(false);
     }
@@ -114,16 +85,17 @@ export function ContractMonitoringDashboard() {
 
   // Cálculos das estatísticas de SLAs e vencimentos
   const metrics = useMemo(() => {
-    const totalContratos = contratos.length;
-    const vigentes = contratos.filter((c) => c.status === "vigente" || c.status_label === "Vigente").length;
-    const totalValor = contratos.reduce((acc, c) => acc + (c.valor || 0), 0);
+    const activeContratos = Array.isArray(contratos) ? contratos : [];
+    const totalContratos = activeContratos.length;
+    const vigentes = activeContratos.filter((c) => c.status === "vigente" || c.status_label === "Vigente").length;
+    const totalValor = activeContratos.reduce((acc, c) => acc + (c.valor || 0), 0);
 
     // Contratos vencendo nos próximos 60 dias
     const now = new Date();
     const in60Days = new Date();
     in60Days.setDate(now.getDate() + 60);
 
-    const expeditingContratos = contratos.filter((c) => {
+    const expeditingContratos = activeContratos.filter((c) => {
       if (!c.data_vigencia_fim) return false;
       const end = new Date(c.data_vigencia_fim);
       return end > now && end <= in60Days;
@@ -159,9 +131,10 @@ export function ContractMonitoringDashboard() {
   }, [contratos, kanban]);
 
   const filteredContratos = useMemo(() => {
-    if (!search.trim()) return contratos;
+    const activeContratos = Array.isArray(contratos) ? contratos : [];
+    if (!search.trim()) return activeContratos;
     const q = search.toLowerCase();
-    return contratos.filter(
+    return activeContratos.filter(
       (c) =>
         c.numero?.toLowerCase().includes(q) ||
         c.contratado?.toLowerCase().includes(q) ||
@@ -308,7 +281,7 @@ export function ContractMonitoringDashboard() {
                 {filteredContratos.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="p-8 text-center text-muted">
-                      Nenhum contrato encontrado com os filtros atuais.
+                      Não achamos nenhuma referência
                     </td>
                   </tr>
                 ) : (
@@ -373,7 +346,7 @@ export function ContractMonitoringDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {officials.length === 0 ? (
                 <div className="col-span-2 p-8 text-center text-muted border border-dashed rounded-lg">
-                  Nenhum fiscal cadastrado. Clique no botão acima para cadastrar a portaria de nomeação.
+                  Não achamos nenhuma referência
                 </div>
               ) : (
                 officials.map((of) => (

@@ -191,6 +191,55 @@ export interface DocumentResponse {
   validade_ate?: string;
 }
 
+export interface DocStatus {
+  doc_type: string;
+  label: string;
+  present: boolean;
+  is_certidao: boolean;
+  expired: boolean;
+  valid_until?: string;
+}
+
+export interface StageCheck {
+  from_etapa: number;
+  to_etapa: number;
+  can_advance: boolean;
+  blocking?: string[];
+  docs: DocStatus[];
+  wait_only: boolean;
+}
+
+export interface SLAInfo {
+  days_in_stage: number;
+  sla_days: number;
+  due_at?: string;
+  breached: boolean;
+}
+
+export interface Occurrence {
+  id: string;
+  contrato_id: string;
+  demanda_id?: string;
+  tipo: string;
+  descricao: string;
+  sla_vence_em?: string;
+  resolvida: boolean;
+  created_at: string;
+}
+
+// Linha da trilha de auditoria (GET /demands/{id}/history) — espelha
+// audit.LogRow no backend. Só leitura; a tabela audit_logs é imutável.
+export interface AuditLogRow {
+  id: string;
+  user_id?: string;
+  action: string;
+  resource_type: string;
+  resource_id: string;
+  metadata: Record<string, unknown>;
+  correlation_id?: string;
+  created_at: string;
+}
+
 export interface DemandResponse {
   id: string;
   contrato_id: string;
@@ -205,4 +254,8 @@ export interface DemandResponse {
   contrato_objeto?: string;
   contratado?: string;
   contrato_valor?: number;
+  /** Checklist da próxima etapa (vem no /kanban) — usado para o cadeado. */
+  next_requirements?: StageCheck;
+  /** Situação de prazo na etapa atual. */
+  sla?: SLAInfo;
 }

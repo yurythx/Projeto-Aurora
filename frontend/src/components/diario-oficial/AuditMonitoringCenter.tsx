@@ -150,6 +150,14 @@ export function AuditMonitoringCenter() {
   const { data: hrEvents } = useApiQuery<HREvent[]>("v1/diario-oficial/rondonopolis/hr-events");
   const { data: contracts } = useApiQuery<PublicContract[]>("v1/diario-oficial/rondonopolis/contracts");
 
+  const activeHrEvents = useMemo(() => {
+    return Array.isArray(hrEvents) ? hrEvents : [];
+  }, [hrEvents]);
+
+  const activeContracts = useMemo(() => {
+    return Array.isArray(contracts) ? contracts : [];
+  }, [contracts]);
+
   // Geração dinâmica de alertas cruzando Alvos Salvos com o Banco/API
   const { alerts, alertCountByTarget } = useMemo(() => {
     const generatedAlerts: AuditAlert[] = [];
@@ -162,8 +170,8 @@ export function AuditMonitoringCenter() {
       const normalizedVal = normalizeText(t.value);
 
       // Checa Atos de Pessoal
-      if (hrEvents) {
-        hrEvents.forEach((ev) => {
+      if (activeHrEvents) {
+        activeHrEvents.forEach((ev) => {
           const cpfDigits = (ev.servidor_cpf || "").replace(/\D/g, "");
           const matDigits = (ev.servidor_matricula || "").replace(/\D/g, "");
           const nameNorm = normalizeText(ev.servidor || "");
@@ -212,8 +220,8 @@ export function AuditMonitoringCenter() {
       }
 
       // Checa Contratos Públicos
-      if (contracts && t.notifyOnContrato) {
-        contracts.forEach((c) => {
+      if (activeContracts && t.notifyOnContrato) {
+        activeContracts.forEach((c) => {
           const fiscalCpfDigits = (c.fiscal_cpf || "").replace(/\D/g, "");
           const suplenteCpfDigits = (c.suplente_cpf || "").replace(/\D/g, "");
           const contractorCnpjDigits = (c.contractor_cnpj || "").replace(/\D/g, "");

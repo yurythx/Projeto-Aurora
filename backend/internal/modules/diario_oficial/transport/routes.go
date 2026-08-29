@@ -54,4 +54,21 @@ func RegisterRoutes(r chi.Router, h *Handlers, logger *slog.Logger, limiter http
 	r.With(
 		auth.RequirePermission(logger, auth.PermDiarioOficialRead),
 	).Get("/diario-oficial/rondonopolis/editions", h.ListRondonopolisEditions)
+	r.With(
+		auth.RequirePermission(logger, auth.PermDiarioOficialRead),
+	).Get("/diario-oficial/rondonopolis/review-queue", h.ListReviewQueue)
+	// Ações da fila de revisão (escrita) — promover corrige+indexa, ack tira
+	// da fila, delete descarta. Mesma permissão de gestão dos termos monitorados.
+	r.With(
+		auth.RequirePermission(logger, auth.PermDiarioOficialManage),
+	).Patch("/diario-oficial/rondonopolis/review-queue/{id}", h.PromoteReviewFinding)
+	r.With(
+		auth.RequirePermission(logger, auth.PermDiarioOficialManage),
+	).Post("/diario-oficial/rondonopolis/review-queue/{id}/ack", h.AckReviewFinding)
+	r.With(
+		auth.RequirePermission(logger, auth.PermDiarioOficialManage),
+	).Delete("/diario-oficial/rondonopolis/review-queue/{id}", h.DiscardReviewFinding)
+	r.With(
+		auth.RequirePermission(logger, auth.PermDiarioOficialRead),
+	).Get("/diario-oficial/search-config", h.GetSearchConfig)
 }

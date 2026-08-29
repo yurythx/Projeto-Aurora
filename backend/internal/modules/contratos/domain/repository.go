@@ -11,9 +11,9 @@ import (
 
 // DashboardStats contém agregadores rápidos para a tela inicial.
 type DashboardStats struct {
-	TotalVigentes       int     `json:"total_vigentes"`
-	ValorTotalVigentes  float64 `json:"valor_total_vigentes"`
-	ProximosVencimento  int     `json:"proximos_vencimento"`
+	TotalVigentes      int     `json:"total_vigentes"`
+	ValorTotalVigentes float64 `json:"valor_total_vigentes"`
+	ProximosVencimento int     `json:"proximos_vencimento"`
 }
 
 // Repository abstrai a persistência do módulo de contratos.
@@ -52,6 +52,16 @@ type Repository interface {
 	// ON CONFLICT (contrato_id, edition_number) DO NOTHING — seguro de
 	// chamar múltiplas vezes para a mesma referência.
 	AddDiarioRef(ctx context.Context, ref DiarioRef) error
+
+	// LinkDiarioRef é o AddDiarioRef do casador automático: mesmo INSERT
+	// idempotente, mas devolve se a linha é NOVA (true) — o worker só
+	// notifica quando de fato vinculou algo.
+	LinkDiarioRef(ctx context.Context, ref DiarioRef) (inserted bool, err error)
+
+	// RecordAlertOnce registra que um alerta (kind + ref_key) já foi
+	// emitido para o contrato. Devolve true só na primeira vez — o worker
+	// usa isso para não repetir a mesma notificação a cada ciclo.
+	RecordAlertOnce(ctx context.Context, contratoID uuid.UUID, kind, refKey string) (firstTime bool, err error)
 
 	// ListByStatus agrupa os contratos por status — usado pela visão
 	// Kanban para retornar as colunas em uma única consulta.

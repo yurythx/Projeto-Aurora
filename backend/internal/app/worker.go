@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	
+
 	"github.com/yurythx/projeto-nova/internal/domain/events"
 
 	contratosWorker "github.com/yurythx/projeto-nova/internal/modules/contratos/worker"
@@ -81,7 +81,32 @@ func NewWorker(deps *Dependencies) (*Worker, error) {
 			supervised("rondonopolis_diario_watcher", deps.Logger, func(ctx context.Context) error {
 				editionRepo := diarioInfra.NewPostgresEditionRepository(deps.DB)
 				rondonopolisClient := diarioInfra.NewRondonopolisClient(deps.Config.DiarioOficial.RondonopolisBaseURL, deps.Config.DiarioOficial.RondonopolisToken, deps.Config.DiarioOficial.Timeout, deps.Logger)
-				syncWorkerPool := diarioWorker.NewSyncWorkerPool(editionRepo, 5, deps.Logger)
+				syncWorkerPool := diarioWorker.NewSyncWorkerPool(editionRepo, 5, deps.Logger).WithTypesenseClient(deps.Typesense)
+
+				// Backfill do Typesense no boot: reconcilia as coleções com os
+				// findings já persistidos no PostgreSQL. Antes disso, edições
+				// ingeridas antes do cliente Typesense existir (ou cuja
+				// indexação best-effort falhou em silêncio) ficavam para sempre
+				// fora do índice — era por isso que as coleções estavam
+				// vazias. Best-effort: não bloqueia o watcher.
+				if deps.Typesense != nil {
+					reindexer := diarioWorker.NewReindexer(editionRepo, deps.Typesense, deps.Logger)
+					if n, err := reindexer.ReindexAll(ctx, false); err != nil {
+						deps.Logger.Warn("diario_oficial: reindex de boot falhou (best-effort)", slog.Any("error", err))
+					} else {
+						deps.Logger.Info("diario_oficial: reindex de boot concluído", slog.Int("docs", n))
+					}
+
+					// Garante já no boot a API key search-only do Typesense para
+					// o frontend (senão só nasce no 1º request a /search-config).
+					keyMgr := diarioInfra.NewTypesenseSearchKeyManager(deps.Typesense, deps.DB)
+					if _, err := keyMgr.EnsureFrontendSearchKey(ctx); err != nil {
+						deps.Logger.Warn("diario_oficial: falha ao garantir search key do Typesense (best-effort)", slog.Any("error", err))
+					} else {
+						deps.Logger.Info("diario_oficial: search key search-only do Typesense pronta")
+					}
+				}
+
 				watcher := diarioWorker.NewWatcher(editionRepo, rondonopolisClient, syncWorkerPool, 15*time.Minute, deps.Logger)
 				watcher.Start(ctx)
 				return nil
@@ -102,8 +127,47 @@ func NewWorker(deps *Dependencies) (*Worker, error) {
 					return nil
 				})
 			}),
+			// Gera a demanda mensal (Etapa 1) de todo contrato vigente que
+			// ainda não tem uma para o mês corrente. Idempotente.
+			supervised("demands.monthly_generator", deps.Logger, periodic(6*time.Hour, func(ctx context.Context) {
+				if _, err := deps.Modules.Demands.Service.EnsureMonthlyDemands(ctx, time.Now().Format("2006-01")); err != nil {
+					deps.Logger.Warn("demands: geração mensal falhou", slog.Any("error", err))
+				}
+			})),
+			// Abre pendência (contract_occurrences) para demandas paradas além
+			// do SLA da etapa.
+			supervised("demands.sla_sweeper", deps.Logger, periodic(6*time.Hour, func(ctx context.Context) {
+				if _, err := deps.Modules.Demands.Service.SweepSLA(ctx); err != nil {
+					deps.Logger.Warn("demands: varredura de SLA falhou", slog.Any("error", err))
+				}
+			})),
+			// Casa contratos com publicações do Diário Oficial (número/CNPJ),
+			// vincula as DiarioRefs e abre alertas de fiscalização.
+			supervised("contratos.diario_matcher", deps.Logger, periodic(6*time.Hour, func(ctx context.Context) {
+				if _, _, err := deps.Modules.Contratos.Service.RunDiarioMatch(ctx); err != nil {
+					deps.Logger.Warn("contratos: casamento com o Diário falhou", slog.Any("error", err))
+				}
+			})),
 		},
 	}, nil
+}
+
+// periodic transforma uma tarefa sem retorno num processor: roda uma vez
+// imediatamente e depois a cada `every`, até ctx ser cancelado.
+func periodic(every time.Duration, fn func(context.Context)) processor {
+	return func(ctx context.Context) error {
+		fn(ctx)
+		t := time.NewTicker(every)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-t.C:
+				fn(ctx)
+			}
+		}
+	}
 }
 
 // supervised envolve um processador para que, se ele retornar antes de

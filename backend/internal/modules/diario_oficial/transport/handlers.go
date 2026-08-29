@@ -198,7 +198,7 @@ func (h *Handlers) Health(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ListRondonopolisHREvents(w http.ResponseWriter, r *http.Request) {
 	eventType := application.HREventType(r.URL.Query().Get("event_type"))
 	search := r.URL.Query().Get("search")
-	
+
 	events, err := h.service.GetRondonopolisHREvents(r.Context(), eventType, search, nil)
 	if err != nil {
 		httputil.WriteError(w, r, h.logger, err)
@@ -237,6 +237,97 @@ func (h *Handlers) ListRondonopolisEditions(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	httputil.WriteOK(w, editions)
+}
+
+// GetSearchConfig trata GET /api/v1/diario-oficial/search-config — devolve a
+// API key do Typesense RESTRITA A BUSCA para o frontend consultar direto, sem
+// a chave admin no navegador.
+func (h *Handlers) GetSearchConfig(w http.ResponseWriter, r *http.Request) {
+	key, err := h.service.GetFrontendSearchKey(r.Context())
+	if err != nil {
+		httputil.WriteError(w, r, h.logger, err)
+		return
+	}
+	httputil.WriteOK(w, map[string]string{"search_key": key})
+}
+
+// ListReviewQueue trata GET /api/v1/diario-oficial/rondonopolis/review-queue —
+// os findings de baixa confiança (fora da busca do usuário) para revisão manual.
+func (h *Handlers) ListReviewQueue(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit <= 0 {
+		limit = 100
+	}
+	items, err := h.service.GetReviewQueue(r.Context(), limit)
+	if err != nil {
+		httputil.WriteError(w, r, h.logger, err)
+		return
+	}
+	httputil.WriteOK(w, items)
+}
+
+func reviewerFromRequest(r *http.Request) *uuid.UUID {
+	if identity, ok := auth.IdentityFromContext(r.Context()); ok {
+		if id, err := uuid.Parse(identity.Subject); err == nil {
+			return &id
+		}
+	}
+	return nil
+}
+
+// PromoteReviewFinding trata PATCH /diario-oficial/rondonopolis/review-queue/{id}
+// — aplica a correção manual do revisor e sobe o finding para a busca.
+func (h *Handlers) PromoteReviewFinding(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httputil.WriteError(w, r, h.logger, apperrors.BadRequest("id do finding inválido"))
+		return
+	}
+	var in domain.FindingReviewInput
+	if err := httputil.DecodeJSON(w, r, &in); err != nil {
+		httputil.WriteError(w, r, h.logger, err)
+		return
+	}
+	updated, err := h.service.PromoteFinding(r.Context(), id, in, reviewerFromRequest(r))
+	if err != nil {
+		httputil.WriteError(w, r, h.logger, err)
+		return
+	}
+	httputil.WriteOK(w, updated)
+}
+
+// AckReviewFinding trata POST /diario-oficial/rondonopolis/review-queue/{id}/ack
+// — tira o finding da fila sem promovê-lo (é low mas legítimo).
+func (h *Handlers) AckReviewFinding(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httputil.WriteError(w, r, h.logger, apperrors.BadRequest("id do finding inválido"))
+		return
+	}
+	var body struct {
+		ReviewNote string `json:"review_note"`
+	}
+	_ = httputil.DecodeJSON(w, r, &body)
+	if err := h.service.AcknowledgeFinding(r.Context(), id, body.ReviewNote, reviewerFromRequest(r)); err != nil {
+		httputil.WriteError(w, r, h.logger, err)
+		return
+	}
+	httputil.WriteOK(w, map[string]string{"message": "finding marcado como revisado"})
+}
+
+// DiscardReviewFinding trata DELETE /diario-oficial/rondonopolis/review-queue/{id}
+// — remove o finding em definitivo (ruído do parser).
+func (h *Handlers) DiscardReviewFinding(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httputil.WriteError(w, r, h.logger, apperrors.BadRequest("id do finding inválido"))
+		return
+	}
+	if err := h.service.DiscardFinding(r.Context(), id, reviewerFromRequest(r)); err != nil {
+		httputil.WriteError(w, r, h.logger, err)
+		return
+	}
+	httputil.WriteOK(w, map[string]string{"message": "finding descartado"})
 }
 
 // RateLimitKey limita a criação de jobs por usuário autenticado (§56),

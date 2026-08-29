@@ -51,6 +51,8 @@ var (
 			"diario_oficial.publication.matched",
 			"integration.status.changed",
 			"demand.etapa_changed",
+			"contrato.diario_ref.linked",
+			"contrato.fiscal_alert",
 		},
 	}
 

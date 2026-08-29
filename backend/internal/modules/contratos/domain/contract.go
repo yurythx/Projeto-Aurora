@@ -84,17 +84,17 @@ func (s Status) CanTransitionTo(next Status) bool {
 // Contrato é a entidade principal do módulo. Representa um contrato
 // administrativo municipal, com seu ciclo de vida de tramitação.
 type Contrato struct {
-	ID                uuid.UUID
-	Numero            string
-	Objeto            string
-	Contratante       string // secretaria/órgão municipal contratante
-	Contratado        string // empresa/fornecedor contratado
-	CNPJ              string
-	Valor             *float64  // nil quando não informado
-	DataAssinatura    *time.Time
+	ID                 uuid.UUID
+	Numero             string
+	Objeto             string
+	Contratante        string // secretaria/órgão municipal contratante
+	Contratado         string // empresa/fornecedor contratado
+	CNPJ               string
+	Valor              *float64 // nil quando não informado
+	DataAssinatura     *time.Time
 	DataVigenciaInicio *time.Time
-	DataVigenciaFim   *time.Time
-	Status            Status
+	DataVigenciaFim    *time.Time
+	Status             Status
 	// DiarioRefs lista as publicações do Diário Oficial vinculadas.
 	// Preenchido somente quando carregado com WithRefs=true.
 	DiarioRefs []DiarioRef
@@ -131,8 +131,8 @@ type Aditivo struct {
 
 // ListParams agrupa os filtros de listagem de contratos.
 type ListParams struct {
-	Status    Status // vazio = todos
-	Busca     string // busca textual em objeto/contratado
-	Page      int
-	PageSize  int
+	Status   Status // vazio = todos
+	Busca    string // busca textual em objeto/contratado
+	Page     int
+	PageSize int
 }

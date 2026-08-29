@@ -64,6 +64,107 @@ function normalizeText(text: string): string {
     .toLowerCase();
 }
 
+export const DEFAULT_HR_EVENTS: HREvent[] = [
+  {
+    type: "NOMEACAO",
+    servidor: "YURI SILVA SANTOS",
+    servidor_cpf: "021.946.881-88",
+    servidor_matricula: "MAT-2025-081",
+    cargo: "Assessor Especial de Governança & TI",
+    das_level: "DAS-2",
+    secretaria: "Secretaria Municipal de Governo (SEMUG)",
+    portaria_number: "PORT-491/2026",
+    edition_number: "6263",
+    publication_date: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
+    context_snippet: "NOMEAR YURI SILVA SANTOS para exercer o cargo em comissão de Assessor Especial de Governança & TI, símbolo DAS-2, lotado na Secretaria Municipal de Governo.",
+    doc_url: "https://www.rondonopolis.mt.gov.br/diario-oficial/",
+  },
+  {
+    type: "MUDANCA_SETOR",
+    servidor: "YURI CARDOSO MENDES",
+    servidor_cpf: "014.882.911-30",
+    servidor_matricula: "MAT-2024-512",
+    cargo: "Engenheiro de Software & Gestor de Dados",
+    das_level: "DAS-1",
+    secretaria: "Secretaria Municipal de Ciência, Tecnologia e Inovação (SECITI)",
+    portaria_number: "PORT-478/2026",
+    edition_number: "6262",
+    publication_date: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
+    context_snippet: "RELOTAR o servidor YURI CARDOSO MENDES para atuar como Coordenador do Centro de Operações da SECITI.",
+    doc_url: "https://www.rondonopolis.mt.gov.br/diario-oficial/",
+  },
+  {
+    type: "NOMEACAO",
+    servidor: "YURI GUIMARÃES RAMOS",
+    servidor_cpf: "033.415.771-02",
+    servidor_matricula: "MAT-2026-099",
+    cargo: "Fiscal de Gestão e Contratos Públicos",
+    das_level: "DAS-3",
+    secretaria: "Secretaria Municipal de Fazenda (SEFAZ)",
+    portaria_number: "PORT-465/2026",
+    edition_number: "6261",
+    publication_date: new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString(),
+    context_snippet: "DESIGNAR o servidor YURI GUIMARÃES RAMOS para a função de Fiscal Titular do Contrato nº 140/2026.",
+    doc_url: "https://www.rondonopolis.mt.gov.br/diario-oficial/",
+  },
+  {
+    type: "EXONERACAO",
+    servidor: "CARLOS EDUARDO OLIVEIRA",
+    servidor_cpf: "419.012.331-00",
+    servidor_matricula: "MAT-2024-112",
+    cargo: "Gerente de Compras e Licitações",
+    das_level: "DAS-3",
+    secretaria: "Secretaria Municipal de Administração (SEMAD)",
+    portaria_number: "PORT-488/2026",
+    edition_number: "6263",
+    publication_date: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
+    context_snippet: "EXONERAR a pedido CARLOS EDUARDO OLIVEIRA do cargo em comissão de Gerente de Compras e Licitações, símbolo DAS-3, lotado na SEMAD.",
+    doc_url: "https://www.rondonopolis.mt.gov.br/diario-oficial/",
+  },
+  {
+    type: "NOMEACAO",
+    servidor: "MARIA FERNANDA ALVES",
+    servidor_cpf: "771.309.112-44",
+    servidor_matricula: "MAT-2026-004",
+    cargo: "Coordenadora Pedagógica de Ensino Fundamental",
+    das_level: "DAS-4",
+    secretaria: "Secretaria Municipal de Educação (SEMED)",
+    portaria_number: "PORT-470/2026",
+    edition_number: "6262",
+    publication_date: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
+    context_snippet: "NOMEAR MARIA FERNANDA ALVES para exercer o cargo em comissão de Coordenadora Pedagógica de Ensino Fundamental, símbolo DAS-4, da Secretaria Municipal de Educação.",
+    doc_url: "https://www.rondonopolis.mt.gov.br/diario-oficial/",
+  },
+  {
+    type: "MUDANCA_SETOR",
+    servidor: "ROBERTO GOMES DA SILVA",
+    servidor_cpf: "302.881.009-55",
+    servidor_matricula: "MAT-2023-490",
+    cargo: "Chefe de Divisão de Fiscalização Ambiental",
+    das_level: "DAS-4",
+    secretaria: "Secretaria Municipal de Meio Ambiente (SEMMA)",
+    portaria_number: "PORT-462/2026",
+    edition_number: "6261",
+    publication_date: new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString(),
+    context_snippet: "RELOTAR o servidor ROBERTO GOMES DA SILVA da Secretaria Municipal de Infraestrutura para a Secretaria Municipal de Meio Ambiente.",
+    doc_url: "https://www.rondonopolis.mt.gov.br/diario-oficial/",
+  },
+  {
+    type: "NOMEACAO",
+    servidor: "ANA PAULA MARTINS",
+    servidor_cpf: "551.492.001-99",
+    servidor_matricula: "MAT-2026-015",
+    cargo: "Diretora de Departamento de Vigilância em Saúde",
+    das_level: "DAS-2",
+    secretaria: "Secretaria Municipal de Saúde (SMS)",
+    portaria_number: "PORT-455/2026",
+    edition_number: "6260",
+    publication_date: new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString(),
+    context_snippet: "NOMEAR ANA PAULA MARTINS para exercer o cargo em comissão de Diretora de Departamento de Vigilância em Saúde, DAS-2, na Secretaria Municipal de Saúde.",
+    doc_url: "https://www.rondonopolis.mt.gov.br/diario-oficial/",
+  },
+];
+
 export function RondonopolisHREventsFeed() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedType, setSelectedType] = useState<string>(ALL);
@@ -79,15 +180,22 @@ export function RondonopolisHREventsFeed() {
   );
   const { showToast } = useToast();
 
-  // Otimização Client-Side ultrarrápida (sub-milissegundo)
+  const displayEvents = useMemo(() => {
+    return Array.isArray(events) ? events : [];
+  }, [events]);
+
+  // Otimização Client-Side ultrarrápida (sub-milissegundo).
+  // IMPORTANTE: usa `displayEvents` (nunca undefined) nas deps, NÃO `events` (que é
+  // undefined durante o carregamento SWR e causava "e.filter is not a function").
   const filteredEvents = useMemo(() => {
-    if (!events) return [];
+    // Guard defensivo duplo: garante array válido em qualquer estado de renderização.
+    const activeList = Array.isArray(displayEvents) ? displayEvents : [];
 
     const normalizedQuery = normalizeText(searchTerm.trim());
     const queryDigits = normalizedQuery.replace(/\D/g, "");
     const isSearching = normalizedQuery.length > 0;
 
-    return events.filter((ev) => {
+    return activeList.filter((ev) => {
       // Filtro por Ano (se selecionado)
       if (selectedYear !== ALL) {
         const evYear = ev.publication_date ? new Date(ev.publication_date).getFullYear().toString() : "2026";
@@ -114,7 +222,7 @@ export function RondonopolisHREventsFeed() {
       // Filtro por termo digitado na barra de pesquisa (Servidor, CPF, Matrícula, Secretaria, Cargo, Portaria, Snippet, Edição)
       if (isSearching) {
         const matchesServidor = normalizeText(ev.servidor || "").includes(normalizedQuery);
-        
+
         const cpfRaw = ev.servidor_cpf || "";
         const cpfDigits = cpfRaw.replace(/\D/g, "");
         const matchesCPF =
@@ -147,19 +255,20 @@ export function RondonopolisHREventsFeed() {
 
       return true;
     });
-  }, [events, searchTerm, selectedType, selectedDas, selectedYear, selectedEdition]);
+  }, [displayEvents, searchTerm, selectedType, selectedDas, selectedYear, selectedEdition]);
 
   // Eventos correlacionados ao mesmo CPF/Servidor selecionado no modal
   const selectedCpfTimeline = useMemo(() => {
-    if (!selectedEvent || !events) return [];
+    if (!selectedEvent) return [];
     const targetCpfDigits = (selectedEvent.servidor_cpf || "").replace(/\D/g, "");
     if (!targetCpfDigits) return [selectedEvent];
 
-    return events.filter((ev) => {
+    const activeList = Array.isArray(displayEvents) ? displayEvents : [];
+    return activeList.filter((ev) => {
       const evCpfDigits = (ev.servidor_cpf || "").replace(/\D/g, "");
       return evCpfDigits === targetCpfDigits || normalizeText(ev.servidor || "") === normalizeText(selectedEvent.servidor || "");
     });
-  }, [selectedEvent, events]);
+  }, [selectedEvent, displayEvents]);
 
   const hasActiveFilters = searchTerm.trim() !== "" || selectedType !== ALL || selectedDas !== ALL || selectedYear !== ALL || selectedEdition !== ALL;
 
@@ -430,7 +539,7 @@ Link do PDF: ${ev.doc_url || "N/A"}`;
         <p className="text-sm text-muted">Carregando diário oficial de Rondonópolis...</p>
       ) : filteredEvents.length === 0 ? (
         <EmptyState
-          title="Nenhum ato de pessoal encontrado"
+          title="Não achamos nenhuma referência"
           description={
             hasActiveFilters
               ? "Tente ajustar a busca ou os filtros de tipo/DAS/Edição para encontrar os registros."

@@ -22,6 +22,72 @@ function normalizeText(text: string): string {
     .toLowerCase();
 }
 
+export const DEFAULT_PUBLIC_CONTRACTS: PublicContract[] = [
+  {
+    id: "contract-demo-1",
+    contract_number: "Contrato nº 140/2026",
+    contract_type: "Tecnologia da Informação",
+    status: "NOVO",
+    value: "R$ 950.000,00",
+    contractor: "TechGov Soluções em Tecnologia LTDA",
+    contractor_cnpj: "03.492.110/0001-99",
+    fiscal_nome: "YURI SILVA SANTOS",
+    fiscal_cpf: "021.946.881-88",
+    fiscal_matricula: "MAT-2025-081",
+    suplente_nome: "CARLOS EDUARDO OLIVEIRA",
+    suplente_cpf: "419.012.331-00",
+    suplente_matricula: "MAT-2024-112",
+    portaria_number: "PORT-491/2026",
+    edition_number: "6263",
+    publication_date: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
+    nomeacao_date: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
+    object: "Contratação de empresa especializada para prestação de serviços continuados de modernização tecnológica, suporte a sistemas de gestão e governança digital municipal.",
+    doc_url: "https://www.rondonopolis.mt.gov.br/diario-oficial/",
+  },
+  {
+    id: "contract-demo-2",
+    contract_number: "Contrato nº 440/2026",
+    contract_type: "Consultoria & Gestão Fiscal",
+    status: "ATIVO",
+    value: "R$ 840.000,00",
+    contractor: "Soluções em Engenharia & Gestão Fiscal LTDA",
+    contractor_cnpj: "18.204.991/0001-10",
+    fiscal_nome: "ANA PAULA MARTINS",
+    fiscal_cpf: "551.492.001-99",
+    fiscal_matricula: "MAT-2026-015",
+    suplente_nome: "ROBERTO GOMES DA SILVA",
+    suplente_cpf: "302.881.009-55",
+    suplente_matricula: "MAT-2023-490",
+    portaria_number: "PORT-455/2026",
+    edition_number: "6262",
+    publication_date: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
+    nomeacao_date: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
+    object: "Serviços de acompanhamento técnico, fiscalização financeira e auditoria de receitas municipais para a Secretaria Municipal de Fazenda.",
+    doc_url: "https://www.rondonopolis.mt.gov.br/diario-oficial/",
+  },
+  {
+    id: "contract-demo-3",
+    contract_number: "Contrato nº 155/2026",
+    contract_type: "Serviços Urbanos & Conservação",
+    status: "ATIVO",
+    value: "R$ 2.450.000,00",
+    contractor: "EcoLimpeza Urbana e Serviços Eireli",
+    contractor_cnpj: "29.118.402/0001-88",
+    fiscal_nome: "ROBERTO GOMES DA SILVA",
+    fiscal_cpf: "302.881.009-55",
+    fiscal_matricula: "MAT-2023-490",
+    suplente_nome: "MARIA FERNANDA ALVES",
+    suplente_cpf: "771.309.112-44",
+    suplente_matricula: "MAT-2026-004",
+    portaria_number: "PORT-462/2026",
+    edition_number: "6261",
+    publication_date: new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString(),
+    nomeacao_date: new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString(),
+    object: "Serviços continuados de conservação, roçada, limpeza de vias públicas e manutenção de áreas verdes do município de Rondonópolis.",
+    doc_url: "https://www.rondonopolis.mt.gov.br/diario-oficial/",
+  },
+];
+
 export function RondonopolisContractsFeed() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedType, setSelectedType] = useState<string>(ALL);
@@ -36,15 +102,19 @@ export function RondonopolisContractsFeed() {
   );
   const { showToast } = useToast();
 
+  const displayContracts = useMemo(() => {
+    return Array.isArray(contracts) ? contracts : [];
+  }, [contracts]);
+
   // Filtragem local otimizada por Nome (Fiscal/Suplente), CPF, Matrícula, CNPJ, Empresa, Portaria e Edição
   const filteredContracts = useMemo(() => {
-    if (!contracts) return [];
+    const activeList = Array.isArray(displayContracts) ? displayContracts : [];
 
     const query = normalizeText(searchTerm.trim());
     const queryDigits = query.replace(/\D/g, "");
     const isSearching = query.length > 0;
 
-    return contracts.filter((c) => {
+    return activeList.filter((c) => {
       // Filtro por Ano (se selecionado)
       if (selectedYear !== ALL) {
         const dateStr = c.nomeacao_date || c.publication_date;
@@ -111,13 +181,13 @@ export function RondonopolisContractsFeed() {
 
   // Contratos relacionados ao mesmo CPF ou CNPJ selecionado no modal
   const selectedRelatedContracts = useMemo(() => {
-    if (!selectedContract || !contracts) return [];
+    if (!selectedContract) return [];
 
     const targetFiscalCpf = (selectedContract.fiscal_cpf || "").replace(/\D/g, "");
     const targetSuplenteCpf = (selectedContract.suplente_cpf || "").replace(/\D/g, "");
     const targetCnpj = (selectedContract.contractor_cnpj || "").replace(/\D/g, "");
 
-    return contracts.filter((c) => {
+    return displayContracts.filter((c) => {
       const fCpf = (c.fiscal_cpf || "").replace(/\D/g, "");
       const sCpf = (c.suplente_cpf || "").replace(/\D/g, "");
       const cnpj = (c.contractor_cnpj || "").replace(/\D/g, "");
@@ -128,12 +198,11 @@ export function RondonopolisContractsFeed() {
         (targetCnpj && cnpj === targetCnpj)
       );
     });
-  }, [selectedContract, contracts]);
+  }, [selectedContract, displayContracts]);
 
   const contractTypes = useMemo(() => {
-    if (!contracts) return [];
-    return Array.from(new Set(contracts.map((c) => c.contract_type).filter(Boolean)));
-  }, [contracts]);
+    return Array.from(new Set(displayContracts.map((c) => c.contract_type).filter(Boolean)));
+  }, [displayContracts]);
 
   const hasActiveFilters = searchTerm.trim() !== "" || selectedType !== ALL || selectedStatus !== ALL || selectedYear !== ALL || selectedEdition !== ALL;
 
@@ -348,7 +417,7 @@ Link do PDF: ${c.doc_url || "N/A"}`;
         <p className="text-sm text-muted">Carregando contratos públicos...</p>
       ) : filteredContracts.length === 0 ? (
         <EmptyState
-          title="Nenhum contrato encontrado"
+          title="Não achamos nenhuma referência"
           description={
             hasActiveFilters
               ? "Nenhum contrato atende aos critérios de busca ou filtros selecionados."

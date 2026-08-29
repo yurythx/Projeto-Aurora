@@ -37,3 +37,11 @@ export async function fetchContratos(
 export async function updateContratoStatus(id: string, status: string): Promise<void> {
   await apiClient.patch(`/v1/contratos/${id}/status`, { status });
 }
+
+// Detalhe completo de um contrato — inclui diario_refs (as publicações do
+// Diário Oficial vinculadas, populadas pelo casador automático) e aditivos.
+export async function getContratoDetail(id: string): Promise<Contrato> {
+  const { data } = await apiClient.get<Contrato>(`/v1/contratos/${id}`);
+  if (!data) throw new Error("Contrato não encontrado");
+  return data;
+}

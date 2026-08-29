@@ -137,13 +137,12 @@ export function MatchedPublicationsFeed() {
       .get<MatchedPublication[]>(pathFor(termFilter, 1))
       .then(({ data, meta: nextMeta }) => {
         if (cancelled) return;
-        setPublications(data && data.length > 0 ? data : FALLBACK_PUBLICATIONS);
+        setPublications(data && data.length > 0 ? data : []);
         setMeta(nextMeta as PaginationMeta | undefined);
       })
       .catch((err) => {
         if (cancelled) return;
-        // Fallback resiliente para exibição coerente
-        setPublications(FALLBACK_PUBLICATIONS);
+        setPublications([]);
         setError(null);
       })
       .finally(() => {
@@ -175,7 +174,7 @@ export function MatchedPublicationsFeed() {
     }
   }
 
-  const listToFilter = publications ?? FALLBACK_PUBLICATIONS;
+  const listToFilter = Array.isArray(publications) ? publications : [];
 
   const orgaoOptions = useMemo(
     () => Array.from(new Set(listToFilter.map((p) => p.tribunal))).sort(),
@@ -276,7 +275,7 @@ export function MatchedPublicationsFeed() {
         <p className="text-sm text-muted">Carregando publicações do Diário Oficial de Rondonópolis…</p>
       ) : filtered.length === 0 ? (
         <EmptyState
-          title="Nenhuma publicação encontrada"
+          title="Não achamos nenhuma referência"
           description="Nenhuma publicação do Diário Oficial de Rondonópolis atende aos filtros selecionados."
         />
       ) : (
