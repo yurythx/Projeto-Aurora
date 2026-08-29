@@ -31,17 +31,50 @@ type Connection struct {
 	done chan struct{}
 }
 
-// Connect disca o RabbitMQ uma vez (falhando rápido se a discagem inicial
-// não funcionar — uma RABBITMQ_URL mal configurada deve parar o startup,
-// não ficar tentando de novo silenciosamente para sempre) e inicia um
+// initialConnectBudget limita quanto tempo Connect insiste na primeira
+// discagem antes de desistir. Cobre a corrida de boot comum (o broker
+// sobe alguns segundos depois da API, ou o healthcheck do RabbitMQ passa
+// no `ping` do nó Erlang antes do listener AMQP na 5672 estar aceitando)
+// sem transformar uma RABBITMQ_URL de fato errada num processo que fica
+// tentando para sempre — passado o orçamento, ainda falha o startup.
+const initialConnectBudget = 45 * time.Second
+
+// Connect disca o RabbitMQ, tolerando um broker que ainda não terminou de
+// subir (retry com backoff até initialConnectBudget), e então inicia um
 // supervisor em background que redisca com backoff exponencial em
-// qualquer desconexão subsequente.
+// qualquer desconexão subsequente. Uma URL de fato inválida ou um broker
+// ausente após o orçamento ainda param o startup (erro retornado).
 func Connect(ctx context.Context, url string, logger *slog.Logger) (*Connection, error) {
-	conn, err := amqp.DialConfig(url, amqp.Config{
-		Heartbeat: 10 * time.Second,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("messaging: initial connect failed: %w", err)
+	dialCtx, cancel := context.WithTimeout(ctx, initialConnectBudget)
+	defer cancel()
+
+	backoff := time.Second
+	const maxBackoff = 5 * time.Second
+	var conn *amqp.Connection
+	var err error
+	for attempt := 1; ; attempt++ {
+		conn, err = amqp.DialConfig(url, amqp.Config{Heartbeat: 10 * time.Second})
+		if err == nil {
+			break
+		}
+		if dialCtx.Err() != nil {
+			return nil, fmt.Errorf("messaging: initial connect failed after %s: %w", initialConnectBudget, err)
+		}
+		if logger != nil {
+			logger.Warn("rabbitmq ainda indisponível na inicialização, tentando de novo",
+				slog.Int("attempt", attempt), slog.Any("error", err), slog.Duration("retry_in", backoff))
+		}
+		select {
+		case <-dialCtx.Done():
+			return nil, fmt.Errorf("messaging: initial connect failed after %s: %w", initialConnectBudget, err)
+		case <-time.After(backoff):
+		}
+		if backoff < maxBackoff {
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		}
 	}
 
 	c := &Connection{

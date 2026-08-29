@@ -46,15 +46,19 @@ services:
     networks:
     - nix_internal
     healthcheck:
+      # `ping` só confirma que o nó Erlang subiu — o listener AMQP na 5672
+      # pode ainda não estar aceitando conexões, e aí backend-api (que
+      # depende de rabbitmq: service_healthy) subia cedo demais e batia
+      # "connection refused". check_port_connectivity confirma os listeners.
       test:
       - CMD
       - rabbitmq-diagnostics
       - -q
-      - ping
+      - check_port_connectivity
       interval: 10s
-      timeout: 5s
+      timeout: 10s
       retries: 5
-      start_period: 20s
+      start_period: 30s
   minio:
     image: minio/minio:latest
     restart: unless-stopped
