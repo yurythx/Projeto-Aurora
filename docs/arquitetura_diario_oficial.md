@@ -146,3 +146,78 @@ Consulte o documento completo com schemas e exemplos cURL:
 👉 **[Guia Completo da Engine de Busca Typesense](typesense_search_engine.md)**
 
 
+
+---
+
+## 🔧 9. Evoluções do pipeline (migrations 000031–000039)
+
+Além da estrutura base (000028), o pipeline ganhou:
+
+### 9.1. Enriquecimento e confiança dos findings
+- **000031** — colunas estruturadas em `diario_oficial_findings`: `secretaria`,
+  `job_role`, `das_level`, `portaria_number`, `pdf_page_number`, `edition_date`
+  (data real de publicação — chave de ordenação cronológica; `created_at` é só
+  o instante da ingestão).
+- **000033** — coluna `confidence` (`high` | `medium` | `low`). A extração por
+  regex sobre prosa tem teto de precisão; em vez de descartar o duvidoso ou
+  poluir a busca, cada finding carrega seu grau. **A busca do usuário
+  (Typesense) recebe só `high`+`medium`**; `low` fica no PostgreSQL para
+  auditoria e para a fila de revisão.
+- **000039** — índices GIN trigram em `raw_content` e `portaria_number` para o
+  casador Contrato↔Diário (ILIKE `%numero%` deixa de ser seq scan).
+
+### 9.2. Retry de edições FAILED
+- **000032** — coluna `retry_count`. O watcher reencaminha edições `FAILED`
+  para `PENDING` enquanto `retry_count < 3` (incrementando-o); depois disso a
+  edição é abandonada com a mensagem de erro preservada.
+
+### 9.3. Fila de revisão manual
+- **000035** — `reviewed_at` / `reviewed_by` / `review_note` +
+  índice parcial `WHERE confidence='low' AND reviewed_at IS NULL`.
+- Endpoints: `GET .../rondonopolis/review-queue` (lista os `low` não
+  revisados), `PATCH .../review-queue/{id}` (**promover** — corrige os campos,
+  sobe a confiança, carimba a revisão, dispara reindex da edição no Typesense),
+  `POST .../review-queue/{id}/ack` (**marcar como revisado** — é low mas
+  legítimo; sai da fila sem entrar na busca), `DELETE .../review-queue/{id}`
+  (**descartar** — ruído do parser). Escrita exige `diario_oficial:manage` +
+  rate limit por usuário. Tela: `/diario/revisao`.
+
+### 9.4. Indexação no Typesense (reindexador)
+- `worker/reindex.go` — reconstrói `diorondon_personnel_acts` /
+  `diorondon_articles` a partir da fonte da verdade (as linhas de
+  `diario_oficial_findings` no PostgreSQL). Antes disso o Typesense só era
+  escrito no instante da ingestão; edições já `COMPLETED` antes do cliente
+  existir ficavam fora do índice.
+- **Backfill no boot**: o worker reconcilia as coleções na inicialização.
+- **Reindex por edição**: após promover um finding na fila de revisão, só
+  aquela edição é reindexada (delete-by-filter + reimport).
+- Comando one-shot: `worker reindex-diario [--recreate]` (Makefile:
+  `make diario-reindex`).
+
+### 9.5. Chave de busca *search-only* (000034)
+- A busca do frontend vai **direto ao Typesense** do navegador. A chave admin
+  nunca é exposta: `TypesenseSearchKeyManager` cria uma *scoped search-only
+  key* (`actions: ["documents:search"]`, restrita às duas coleções), guardada
+  em `diario_oficial_kv` (migration 000034) e servida por
+  `GET /api/v1/diario-oficial/search-config` (autenticado). O container
+  Typesense sobe com `--cors-domains` restrito. Ver
+  `docs/typesense_search_engine.md` §7.
+
+### 9.6. Casador automático Contrato ↔ Diário Oficial
+- Worker `contratos.diario_matcher` (boot + a cada 6h): casa cada contrato
+  não-rascunho por **número** (no `portaria_number` ou no texto) ou por
+  **CNPJ**, vincula uma `contrato_diario_refs` por edição (idempotente) e abre
+  alertas de fiscalização — `MOVIMENTACAO_PESSOAL` (fiscal exonerado/relotado)
+  e `SEM_VINCULO_DIARIO` (contrato vigente sem nenhuma publicação vinculada),
+  deduplicados em `contrato_diario_alertas` (migration 000036).
+- **Atomicidade (Transactional Outbox)**: para cada contrato, os `INSERT` das
+  refs/alertas e os eventos `contrato.diario_ref.linked` / `contrato.fiscal_alert`
+  são gravados na **mesma transação** (`database.WithTx`); os eventos chegam ao
+  `NotificationCenter` do frontend via o Hub de WebSocket.
+
+### 9.7. Telas de consulta
+- `/pessoal` — inteligência de atos de pessoal (Typesense, com facetas de
+  secretaria/DAS/tipo de ato, filtro por período, export CSV, permalink).
+- `/diario` — busca full-text nos extratos/artigos (mesmos filtro/período/CSV/
+  permalink). O trecho de destaque é renderizado com `SafeHighlight`
+  (escapa tudo, só o `<mark>` vira elemento) — **nunca** `dangerouslySetInnerHTML`.

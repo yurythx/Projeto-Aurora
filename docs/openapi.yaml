@@ -32,7 +32,7 @@ info:
     sozinhas depois de um curto intervalo) ou `FEATURE_DISABLED` (um
     administrador desligou a integração via feature flag — ver
     `/api/v1/admin/feature-flags`, não se resolve sozinho).
-  version: "1.0.0"
+  version: "1.1.0"
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
@@ -67,6 +67,30 @@ tags:
     description: Emissão de ticket para notificações em tempo real.
   - name: admin
     description: "Operações administrativas restritas ao papel nix-admin, ex.: feature flags."
+  - name: contratos
+    description: >
+      Cadastro e ciclo de vida dos contratos administrativos municipais.
+      Leitura exige `contratos:read`; escrita `contratos:manage`. O detalhe
+      de um contrato (`GET /contratos/{id}`) traz as publicações do Diário
+      Oficial vinculadas automaticamente pelo casador (worker
+      `contratos.diario_matcher`, a cada 6h).
+  - name: demands
+    description: >
+      Kanban de 6 etapas da liquidação de pagamento mensal (IN SCL
+      01/2019): Elaborar OF → Tramitar Planejamento → Emitir OS → Execução
+      e Recepção → Relatório Pgto/Certidões → Contabilidade. Ver o card,
+      o checklist da próxima etapa e o histórico exige `demands:read`;
+      mover o card e anexar documentos de compliance são ações fiscais e
+      exigem `demands:manage` (papel `nova-fiscal` recebe as duas). As
+      escritas passam por rate limiting por usuário.
+  - name: diario-oficial-rondonopolis
+    description: >
+      Feeds e busca do Diário Oficial de Rondonópolis (DIORONDON): atos de
+      pessoal, extratos de contrato, feed cru e catálogo de edições
+      ingeridas. A fila de revisão expõe os findings de baixa confiança
+      para triagem manual (promover/marcar/descartar). `search-config`
+      entrega ao frontend uma chave do Typesense RESTRITA a
+      `documents:search` — a chave admin nunca chega ao navegador.
 
 security:
   - bearerAuth: []
@@ -1260,6 +1284,499 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  # ─────────────────────────── CONTRATOS ───────────────────────────
+  /api/v1/contratos:
+    get:
+      tags: [contratos]
+      summary: Lista paginada de contratos
+      operationId: listContratos
+      security: [{ bearerAuth: [contratos:read] }]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [rascunho, em_analise, aprovado, vigente, encerrado, cancelado] } }
+        - { name: busca, in: query, schema: { type: string }, description: "Busca textual em objeto/contratado." }
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: "Envelope com `{ data: Contrato[], total, page, pages }`."
+          content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [contratos]
+      summary: Cria um contrato (status inicial rascunho)
+      operationId: createContrato
+      security: [{ bearerAuth: [contratos:manage] }]
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [numero, objeto, contratante, contratado]
+              properties:
+                numero: { type: string, example: "012/2026" }
+                objeto: { type: string }
+                contratante: { type: string }
+                contratado: { type: string }
+                cnpj: { type: string }
+                valor: { type: number }
+                data_assinatura: { type: string, format: date }
+                data_vigencia_inicio: { type: string, format: date }
+                data_vigencia_fim: { type: string, format: date }
+      responses:
+        "201":
+          description: Contrato criado.
+          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/Contrato" } } }] } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { description: "Validação de negócio (campo obrigatório vazio)." }
+
+  /api/v1/contratos/kanban:
+    get:
+      tags: [contratos]
+      summary: Visão Kanban dos contratos por status
+      operationId: contratosKanban
+      security: [{ bearerAuth: [contratos:read] }]
+      parameters: [{ name: limit, in: query, schema: { type: integer, default: 20 }, description: "Máx. de contratos por coluna." }]
+      responses:
+        "200": { description: "Colunas por status com os contratos.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/contratos/dashboard:
+    get:
+      tags: [contratos]
+      summary: Estatísticas macro (vigentes, valor total, próximos do vencimento)
+      operationId: contratosDashboard
+      security: [{ bearerAuth: [contratos:read] }]
+      responses:
+        "200":
+          description: "`{ total_vigentes, valor_total_vigentes, proximos_vencimento }`."
+          content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/contratos/{id}:
+    get:
+      tags: [contratos]
+      summary: Detalhe de um contrato (com diario_refs e aditivos)
+      operationId: getContrato
+      security: [{ bearerAuth: [contratos:read] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200":
+          description: >
+            Contrato completo. `diario_refs` são as publicações do Diário
+            Oficial vinculadas automaticamente pelo casador (número/CNPJ).
+          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/Contrato" } } }] } } }
+        "400": { description: "id não é um UUID válido." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "Contrato não encontrado." }
+
+  /api/v1/contratos/{id}/status:
+    patch:
+      tags: [contratos]
+      summary: Move o contrato de status (máquina de estados)
+      operationId: updateContratoStatus
+      security: [{ bearerAuth: [contratos:manage] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [status], properties: { status: { type: string, enum: [rascunho, em_analise, aprovado, vigente, encerrado, cancelado] } } } } }
+      responses:
+        "200": { description: "Status atualizado.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "Contrato não encontrado." }
+        "422": { description: "Transição de status não permitida." }
+
+  /api/v1/contratos/{id}/diario-refs:
+    post:
+      tags: [contratos]
+      summary: Vincula manualmente uma publicação do Diário Oficial ao contrato
+      operationId: addContratoDiarioRef
+      security: [{ bearerAuth: [contratos:manage] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/DiarioRef" } } }
+      responses:
+        "200": { description: "Referência vinculada (idempotente por edição).", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ─────────────────────────── DEMANDS ────────────────────────────
+  /api/v1/demands:
+    post:
+      tags: [demands]
+      summary: Cria uma demanda mensal (Etapa 1) para um contrato
+      operationId: createDemand
+      security: [{ bearerAuth: [demands:manage] }]
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [contrato_id, ano_mes], properties: { contrato_id: { type: string, format: uuid }, ano_mes: { type: string, example: "2026-08" }, observacoes: { type: string } } } } }
+      responses:
+        "201": { description: "Demanda criada.", content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/DemandResponse" } } }] } } } }
+        "400": { description: "contrato_id/ano_mes ausentes." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { description: "Rate limit por usuário excedido." }
+
+  /api/v1/demands/kanban:
+    get:
+      tags: [demands]
+      summary: Quadro completo das 6 etapas
+      operationId: demandsKanban
+      security: [{ bearerAuth: [demands:read] }]
+      description: >
+        Cada card traz `next_requirements` (checklist da próxima etapa,
+        para o cadeado preventivo) e `sla` (dias na etapa vs. prazo).
+      responses:
+        "200": { description: "`{ columns: KanbanColumn[] }`.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/demands/dashboard:
+    get:
+      tags: [demands]
+      summary: Painel — funil por etapa, SLA estourado, pendências, certidões a vencer
+      operationId: demandsDashboard
+      security: [{ bearerAuth: [demands:read] }]
+      responses:
+        "200":
+          description: Modelo de leitura do painel de Demandas Mensais.
+          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/DemandsDashboard" } } }] } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/demands/occurrences:
+    get:
+      tags: [demands]
+      summary: Pendências abertas (contract_occurrences não resolvidas)
+      operationId: demandsOccurrences
+      security: [{ bearerAuth: [demands:read] }]
+      responses:
+        "200":
+          description: "Lista de Occurrence."
+          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/Occurrence" } } } }] } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/demands/{id}:
+    get:
+      tags: [demands]
+      summary: Detalhe de uma demanda
+      operationId: getDemand
+      security: [{ bearerAuth: [demands:read] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/DemandResponse" } } }] } } }, description: Demanda. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "Demanda não encontrada." }
+
+  /api/v1/demands/{id}/requirements:
+    get:
+      tags: [demands]
+      summary: Checklist da próxima etapa (o que falta / o que está vencido)
+      operationId: demandNextRequirements
+      security: [{ bearerAuth: [demands:read] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: StageCheck., content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/StageCheck" } } }] } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "Demanda não encontrada." }
+
+  /api/v1/demands/{id}/history:
+    get:
+      tags: [demands]
+      summary: Trilha de auditoria da demanda (criação, mudanças de etapa)
+      operationId: demandHistory
+      security: [{ bearerAuth: [demands:read] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200":
+          description: "Lista de AuditLogRow, mais recente primeiro."
+          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/AuditLogRow" } } } }] } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/demands/{id}/package.zip:
+    get:
+      tags: [demands]
+      summary: Baixa um .zip com os anexos + os documentos oficiais gerados
+      operationId: demandPackage
+      security: [{ bearerAuth: [demands:read] }]
+      description: >
+        Junta os anexos do MinIO na ordem das etapas, um `00 - INDICE.txt`
+        e — conforme a etapa alcançada — os PDFs Ofício / OS / Anexo I
+        gerados na hora (`90/91/92 - GERADO - *.pdf`). Um anexo ausente no
+        storage não derruba o pacote (vai para `99 - ARQUIVOS-COM-ERRO.txt`).
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: "application/zip (Content-Disposition: attachment).", content: { application/zip: { schema: { type: string, format: binary } } } }
+        "400": { description: "A demanda não tem nenhum documento anexado." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "Demanda não encontrada." }
+
+  /api/v1/demands/{id}/oficio.pdf:
+    get:
+      tags: [demands]
+      summary: PDF do Ofício ao Planejamento (Etapa ≥ 1)
+      operationId: demandOficioPdf
+      security: [{ bearerAuth: [demands:read] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: "application/pdf (inline).", content: { application/pdf: { schema: { type: string, format: binary } } } }
+        "400": { description: "Etapa da demanda abaixo da mínima do documento." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "Demanda não encontrada." }
+        "429": { description: "Rate limit por usuário excedido." }
+
+  /api/v1/demands/{id}/ordem-servico.pdf:
+    get:
+      tags: [demands]
+      summary: PDF da Ordem de Serviço (Etapa ≥ 3)
+      operationId: demandOrdemServicoPdf
+      security: [{ bearerAuth: [demands:read] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: "application/pdf (inline).", content: { application/pdf: { schema: { type: string, format: binary } } } }
+        "400": { description: "Etapa abaixo da 3." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "Demanda não encontrada." }
+        "429": { description: "Rate limit por usuário excedido." }
+
+  /api/v1/demands/{id}/relatorio.pdf:
+    get:
+      tags: [demands]
+      summary: PDF do Relatório Mensal de Fiscalização — Anexo I (Etapa ≥ 5)
+      operationId: demandRelatorioPdf
+      security: [{ bearerAuth: [demands:read] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: "application/pdf (inline).", content: { application/pdf: { schema: { type: string, format: binary } } } }
+        "400": { description: "Etapa abaixo da 5." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "Demanda não encontrada." }
+        "429": { description: "Rate limit por usuário excedido." }
+
+  /api/v1/demands/{id}/etapa:
+    patch:
+      tags: [demands]
+      summary: Move o card de etapa (máquina de estados / guardrail de compliance)
+      operationId: moveKanbanCard
+      security: [{ bearerAuth: [demands:manage] }]
+      description: >
+        Bloqueia o avanço se faltar documento obrigatório da etapa OU se
+        alguma certidão exigida estiver vencida (IN SCL 01/2019).
+        Regressão de etapa é sempre permitida. Etapas 2 e 6 são de espera
+        externa (sem documento novo).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [target_etapa], properties: { target_etapa: { type: integer, minimum: 1, maximum: 6 } } } } }
+      responses:
+        "200": { description: "Transição efetivada.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { description: "Transição bloqueada — o corpo do erro lista o que falta / o que está vencido." }
+        "429": { description: "Rate limit por usuário excedido." }
+
+  /api/v1/demands/{id}/documents/upload-url:
+    get:
+      tags: [demands]
+      summary: URL pré-assinada do MinIO para upload direto de um documento
+      operationId: demandUploadUrl
+      security: [{ bearerAuth: [demands:manage] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: doc_type, in: query, required: true, schema: { type: string } }
+        - { name: file_name, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: "`{ upload_url, file_path }` — PUT direto no MinIO, 15 min de validade.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { description: "Rate limit por usuário excedido." }
+
+  /api/v1/demands/{id}/documents:
+    post:
+      tags: [demands]
+      summary: Confirma o upload de um documento (grava a prova no banco)
+      operationId: demandConfirmUpload
+      security: [{ bearerAuth: [demands:manage] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [doc_type, file_path, file_name], properties: { doc_type: { type: string }, file_path: { type: string }, file_name: { type: string }, validade_ate: { type: string, format: date, description: "Prazo da certidão (bloqueia a demanda quando vencida)." } } } } }
+      responses:
+        "200": { description: "Documento anexado.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "400": { description: "validade_ate fora do formato AAAA-MM-DD." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { description: "Rate limit por usuário excedido." }
+
+  # ─────────────────── DIÁRIO OFICIAL — RONDONÓPOLIS ───────────────────
+  /api/v1/diario-oficial/search-config:
+    get:
+      tags: [diario-oficial-rondonopolis]
+      summary: Chave do Typesense restrita a documents:search (para busca client-side)
+      operationId: getSearchConfig
+      security: [{ bearerAuth: [diario_oficial:read] }]
+      responses:
+        "200": { description: "`{ search_key }` — escopada a diorondon_personnel_acts e diorondon_articles.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/diario-oficial/rondonopolis/hr-events:
+    get:
+      tags: [diario-oficial-rondonopolis]
+      summary: Atos de pessoal extraídos do DIORONDON (fallback do Typesense)
+      operationId: listRondonopolisHREvents
+      security: [{ bearerAuth: [diario_oficial:read] }]
+      parameters:
+        - { name: event_type, in: query, schema: { type: string, enum: [NOMEACAO_EFETIVO, NOMEACAO_COMISSIONADO, CONTRATACAO_TEMPORARIA, EXONERACAO, RESCISAO, RELOTACAO, DESIGNACAO_FUNCAO] } }
+        - { name: search, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: "Lista de HREvent."
+          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/HREvent" } } } }] } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/diario-oficial/rondonopolis/contracts:
+    get:
+      tags: [diario-oficial-rondonopolis]
+      summary: Extratos de contrato + designação de fiscal extraídos do DIORONDON
+      operationId: listRondonopolisContracts
+      security: [{ bearerAuth: [diario_oficial:read] }]
+      parameters: [{ name: search, in: query, schema: { type: string } }]
+      responses:
+        "200":
+          description: "Lista de PublicContract."
+          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/PublicContract" } } } }] } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/diario-oficial/rondonopolis/raw-feed:
+    get:
+      tags: [diario-oficial-rondonopolis]
+      summary: Feed cru de matérias do DIORONDON (sem classificação)
+      operationId: listRondonopolisRawFeed
+      security: [{ bearerAuth: [diario_oficial:read] }]
+      responses:
+        "200": { description: "Lista de itens de texto por edição/página.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/diario-oficial/rondonopolis/editions:
+    get:
+      tags: [diario-oficial-rondonopolis]
+      summary: Catálogo das edições ingeridas e seu status de ETL
+      operationId: listRondonopolisEditions
+      security: [{ bearerAuth: [diario_oficial:read] }]
+      responses:
+        "200": { description: "Edições com status PENDING/PROCESSING/COMPLETED/FAILED, retry_count, records_count.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/diario-oficial/rondonopolis/review-queue:
+    get:
+      tags: [diario-oficial-rondonopolis]
+      summary: Findings de baixa confiança pendentes de revisão manual
+      operationId: listReviewQueue
+      security: [{ bearerAuth: [diario_oficial:read] }]
+      parameters: [{ name: limit, in: query, schema: { type: integer, default: 100 } }]
+      responses:
+        "200":
+          description: "Lista de ReviewFinding (confidence=low, reviewed_at nulo)."
+          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/ReviewFinding" } } } }] } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/diario-oficial/rondonopolis/review-queue/{id}:
+    patch:
+      tags: [diario-oficial-rondonopolis]
+      summary: Promover — corrige os campos e sobe o finding para a busca
+      operationId: promoteReviewFinding
+      security: [{ bearerAuth: [diario_oficial:manage] }]
+      description: >
+        Sobrescreve os campos extraídos com a versão corrigida, ajusta a
+        confiança (`high`|`medium`), carimba `reviewed_at`/`reviewed_by` e
+        dispara o reindex da edição no Typesense.
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [act_type, confidence]
+              properties:
+                act_type: { type: string }
+                confidence: { type: string, enum: [high, medium] }
+                servidor_nome: { type: string, nullable: true }
+                cpf: { type: string, nullable: true }
+                matricula: { type: string, nullable: true }
+                empresa_nome: { type: string, nullable: true }
+                cnpj: { type: string, nullable: true }
+                valor: { type: number, nullable: true }
+                secretaria: { type: string, nullable: true }
+                job_role: { type: string, nullable: true }
+                das_level: { type: string, nullable: true }
+                portaria_number: { type: string, nullable: true }
+                review_note: { type: string }
+      responses:
+        "200": { description: "Finding atualizado.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "400": { description: "act_type/confidence inválidos, ou sem servidor_nome nem empresa_nome." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "Finding não encontrado." }
+        "429": { description: "Rate limit por usuário excedido." }
+    delete:
+      tags: [diario-oficial-rondonopolis]
+      summary: Descartar — remove o finding em definitivo (ruído do parser)
+      operationId: discardReviewFinding
+      security: [{ bearerAuth: [diario_oficial:manage] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: "Finding descartado.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "Finding não encontrado." }
+        "429": { description: "Rate limit por usuário excedido." }
+
+  /api/v1/diario-oficial/rondonopolis/review-queue/{id}/ack:
+    post:
+      tags: [diario-oficial-rondonopolis]
+      summary: Marcar como revisado — tira da fila sem promover (é low mas legítimo)
+      operationId: ackReviewFinding
+      security: [{ bearerAuth: [diario_oficial:manage] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: false
+        content: { application/json: { schema: { type: object, properties: { review_note: { type: string } } } } }
+      responses:
+        "200": { description: "Finding marcado como revisado.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "400": { description: "Corpo presente e malformado." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "Finding não encontrado." }
+        "429": { description: "Rate limit por usuário excedido." }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1783,3 +2300,242 @@ components:
         payload:
           type: object
       required: [id, type, version, source, occurred_at, correlation_id, payload]
+
+    # ─── Contratos & Demandas (Kanban IN SCL 01/2019) ───
+    DiarioRef:
+      type: object
+      description: Publicação do Diário Oficial vinculada a um contrato.
+      properties:
+        edition_number: { type: string }
+        tipo_evento: { type: string, description: "CONTRATO | RESCISAO | RELOTACAO | FISCALIZACAO | NOMEACAO | ADITIVO | MENCAO" }
+        publicado_em: { type: string, format: date, nullable: true }
+        contexto: { type: string, description: "Trecho do texto centrado no número do contrato." }
+        doc_url: { type: string, description: "URL do PDF oficial, com âncora #page=N quando conhecida." }
+
+    Aditivo:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        numero: { type: string, nullable: true }
+        objeto: { type: string, nullable: true }
+        valor_adicional: { type: number, nullable: true }
+        data_assinatura: { type: string, format: date, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    Contrato:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        numero: { type: string }
+        objeto: { type: string }
+        contratante: { type: string }
+        contratado: { type: string }
+        cnpj: { type: string, nullable: true }
+        valor: { type: number, nullable: true }
+        data_assinatura: { type: string, format: date, nullable: true }
+        data_vigencia_inicio: { type: string, format: date, nullable: true }
+        data_vigencia_fim: { type: string, format: date, nullable: true }
+        status: { type: string, enum: [rascunho, em_analise, aprovado, vigente, encerrado, cancelado] }
+        status_label: { type: string }
+        diario_refs:
+          type: array
+          items: { $ref: "#/components/schemas/DiarioRef" }
+          description: "Só em GET /contratos/{id} (detalhe)."
+        aditivos:
+          type: array
+          items: { $ref: "#/components/schemas/Aditivo" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [id, numero, objeto, contratante, contratado, status]
+
+    DocStatus:
+      type: object
+      description: Situação de UM documento exigido para avançar de etapa.
+      properties:
+        doc_type: { type: string }
+        label: { type: string }
+        present: { type: boolean }
+        is_certidao: { type: boolean }
+        expired: { type: boolean }
+        valid_until: { type: string, format: date-time, nullable: true }
+
+    StageCheck:
+      type: object
+      description: Resultado de avaliar a transição para a etapa seguinte.
+      properties:
+        from_etapa: { type: integer }
+        to_etapa: { type: integer }
+        can_advance: { type: boolean }
+        blocking:
+          type: array
+          items: { type: string }
+        docs:
+          type: array
+          items: { $ref: "#/components/schemas/DocStatus" }
+        wait_only: { type: boolean, description: "Etapa de espera externa (2 e 6): sem documento novo." }
+
+    SLAInfo:
+      type: object
+      properties:
+        days_in_stage: { type: integer }
+        sla_days: { type: integer }
+        due_at: { type: string, format: date-time, nullable: true }
+        breached: { type: boolean }
+
+    DemandDocument:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        doc_type: { type: string }
+        file_path: { type: string }
+        file_name: { type: string }
+        uploaded_at: { type: string, format: date-time }
+        validade_ate: { type: string, format: date, nullable: true }
+
+    DemandResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        contrato_id: { type: string, format: uuid }
+        ano_mes: { type: string, example: "2026-08" }
+        etapa: { type: integer, minimum: 1, maximum: 6 }
+        status_etapa: { type: string }
+        observacoes: { type: string }
+        etapa_started_at: { type: string, format: date-time }
+        documents:
+          type: array
+          items: { $ref: "#/components/schemas/DemandDocument" }
+        contrato_numero: { type: string }
+        contrato_objeto: { type: string }
+        contratado: { type: string }
+        contrato_valor: { type: number, nullable: true }
+        next_requirements:
+          allOf: [{ $ref: "#/components/schemas/StageCheck" }]
+          description: "Só no /kanban — checklist da próxima etapa para o cadeado."
+        sla:
+          allOf: [{ $ref: "#/components/schemas/SLAInfo" }]
+          description: "Situação de prazo na etapa atual."
+
+    Occurrence:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        contrato_id: { type: string, format: uuid }
+        demanda_id: { type: string, format: uuid, nullable: true }
+        tipo: { type: string, example: "SLA_ETAPA_ESTOURADO" }
+        descricao: { type: string }
+        sla_vence_em: { type: string, format: date, nullable: true }
+        resolvida: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    DemandsDashboard:
+      type: object
+      properties:
+        funnel:
+          type: array
+          items:
+            type: object
+            properties:
+              etapa: { type: integer }
+              label: { type: string }
+              total: { type: integer }
+        total_em_andamento: { type: integer, description: "Etapas 1..5." }
+        total_arquivadas: { type: integer, description: "Etapa 6." }
+        sla_breached: { type: integer }
+        sla_breached_items:
+          type: array
+          items:
+            type: object
+            properties:
+              demanda_id: { type: string }
+              contrato_numero: { type: string }
+              etapa: { type: integer }
+              days_in_stage: { type: integer }
+              sla_days: { type: integer }
+        open_occurrences: { type: integer }
+        certidoes_expired: { type: integer }
+        certidoes_expiring_30d: { type: integer }
+        certidoes_items:
+          type: array
+          items:
+            type: object
+            properties:
+              demanda_id: { type: string }
+              contrato_numero: { type: string }
+              doc_type: { type: string }
+              label: { type: string }
+              validade_ate: { type: string, format: date }
+              expired: { type: boolean }
+
+    AuditLogRow:
+      type: object
+      description: Linha da trilha imutável audit_logs (só leitura).
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid, nullable: true }
+        action: { type: string, example: "demand.etapa_changed" }
+        resource_type: { type: string }
+        resource_id: { type: string }
+        metadata: { type: object }
+        correlation_id: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    # ─── DIÁRIO OFICIAL — Rondonópolis ───
+    HREvent:
+      type: object
+      description: Ato de pessoal extraído do DIORONDON.
+      properties:
+        type: { type: string, enum: [NOMEACAO_EFETIVO, NOMEACAO_COMISSIONADO, CONTRATACAO_TEMPORARIA, EXONERACAO, RESCISAO, RELOTACAO, DESIGNACAO_FUNCAO] }
+        servidor: { type: string }
+        servidor_cpf: { type: string, nullable: true }
+        servidor_matricula: { type: string, nullable: true }
+        secretaria: { type: string, nullable: true }
+        cargo: { type: string, nullable: true }
+        das_level: { type: string, nullable: true }
+        portaria_number: { type: string }
+        edition_number: { type: string }
+        context_snippet: { type: string }
+        doc_url: { type: string }
+        publication_date: { type: string, format: date }
+
+    PublicContract:
+      type: object
+      description: Extrato de contrato / designação de fiscal extraído do DIORONDON.
+      properties:
+        id: { type: string }
+        contract_number: { type: string }
+        contract_type: { type: string }
+        portaria_number: { type: string }
+        object: { type: string }
+        contractor: { type: string }
+        contractor_cnpj: { type: string }
+        value: { type: string }
+        fiscal_nome: { type: string }
+        fiscal_matricula: { type: string }
+        suplente_nome: { type: string }
+        edition_number: { type: string }
+        publication_date: { type: string, format: date }
+        doc_url: { type: string, nullable: true }
+        status: { type: string }
+
+    ReviewFinding:
+      type: object
+      description: Finding de baixa confiança na fila de revisão.
+      properties:
+        id: { type: string, format: uuid }
+        act_type: { type: string }
+        servidor_nome: { type: string, nullable: true }
+        empresa_nome: { type: string, nullable: true }
+        cpf: { type: string, nullable: true }
+        matricula: { type: string, nullable: true }
+        cnpj: { type: string, nullable: true }
+        valor: { type: number, nullable: true }
+        secretaria: { type: string, nullable: true }
+        job_role: { type: string, nullable: true }
+        das_level: { type: string, nullable: true }
+        portaria_number: { type: string, nullable: true }
+        raw_content: { type: string }
+        pdf_page_number: { type: integer }
+        edition_number: { type: string, nullable: true }
+        pdf_url: { type: string, nullable: true }
+        confidence: { type: string, enum: [high, medium, low] }
