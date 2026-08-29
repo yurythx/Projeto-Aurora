@@ -50,13 +50,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<{ data: T; 
   // 401 do proxy BFF = sessão morta/expirada (ver lib/auth/tokenState.ts).
   // Sem isto, uma tela com polling SWR só acumulava erros silenciosos e o
   // usuário nunca era levado de volta ao login. RBAC negado usa 403, não
-  // 401, então redirecionar aqui é seguro.
-  if (res.status === 401 && typeof window !== "undefined") {
-    const { pathname, search } = window.location;
-    if (pathname !== "/login") {
-      const callbackUrl = encodeURIComponent(pathname + search);
-      window.location.assign(`/login?callbackUrl=${callbackUrl}`);
-    }
+  // 401, então redirecionar aqui é seguro. Navegação DURA de propósito
+  // (location.replace, não router.push): descarta todo o estado de cliente
+  // da tela expirada e reexecuta o middleware; replace() não deixa a tela
+  // morta no histórico do back.
+  if (res.status === 401 && typeof window !== "undefined" && window.location.pathname !== "/login") {
+    const target = new URL("/login", window.location.origin);
+    target.searchParams.set("callbackUrl", window.location.pathname + window.location.search);
+    window.location.replace(target.toString());
   }
 
   let json: Envelope<T>;

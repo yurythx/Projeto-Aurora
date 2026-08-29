@@ -27,7 +27,6 @@ const PROTECTED_PREFIXES = [
   "/dashboard",
   "/integracoes",
   "/configuracao",
-  "/seguranca",
   "/diario",
   "/diario-oficial",
   "/pessoal",
