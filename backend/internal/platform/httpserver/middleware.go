@@ -266,9 +266,26 @@ func RateLimit(logger *slog.Logger, limiter Limiter, keyFunc func(*http.Request)
 	}
 }
 
-// ClientIPKey é um keyFunc padrão para RateLimit, usando o RemoteAddr da
-// requisição.
+// ClientIPKey extrai só o IP de r.RemoteAddr (que vem como "host:porta").
+// Dois motivos para não devolver o RemoteAddr cru:
+//   - a auditoria grava isto na coluna ip_address (tipo `inet`), e
+//     "172.19.0.8:40752"::inet estoura ("invalid input syntax for type
+//     inet") — toda escrita de auditoria com IP falhava no Postgres.
+//   - como chave de rate limiter, a porta efêmera muda a cada conexão
+//     TCP, então cada conexão ganhava um bucket novo e o limite por IP
+//     não segurava nada.
+//
+// Não confia em X-Forwarded-For de propósito: sem um proxy reverso de
+// confiança à frente terminando esse header, um cliente poderia forjá-lo
+// para escapar do rate limiter. Quando houver esse proxy, é ele que deve
+// popular o RemoteAddr real (ou trocar esta função por uma que valide a
+// cadeia XFF contra a lista de proxies confiáveis).
 func ClientIPKey(r *http.Request) string {
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	// RemoteAddr sem porta (raro, mas possível em testes/execução fora de
+	// um servidor HTTP real) — usa como está.
 	return r.RemoteAddr
 }
 

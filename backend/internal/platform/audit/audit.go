@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -110,10 +111,31 @@ func (w *Writer) Record(ctx context.Context, entry Entry) error {
 	`
 	_, err = w.db.Exec(ctx, q,
 		uuid.New(), entry.UserID, entry.Action, entry.ResourceType, entry.ResourceID,
-		metadataJSON, entry.CorrelationID, entry.IPAddress,
+		metadataJSON, entry.CorrelationID, sanitizeIP(entry.IPAddress),
 	)
 	if err != nil {
 		return fmt.Errorf("audit: insert entry for action %s: %w", entry.Action, err)
 	}
 	return nil
+}
+
+// sanitizeIP normaliza o que vem em Entry.IPAddress para algo que a coluna
+// `inet` aceite: aceita um IP puro, tira a porta de um "host:porta" e, se
+// mesmo assim não for um IP válido, devolve "" (a query grava NULL). Um
+// valor inválido nunca deve derrubar o INSERT de auditoria — que pode
+// estar rodando dentro da transação de negócio e a levaria junto no
+// rollback.
+func sanitizeIP(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	if ip := net.ParseIP(raw); ip != nil {
+		return ip.String()
+	}
+	if host, _, err := net.SplitHostPort(raw); err == nil {
+		if ip := net.ParseIP(host); ip != nil {
+			return ip.String()
+		}
+	}
+	return ""
 }
