@@ -110,10 +110,10 @@ func (p *PDFParser) parsePage(pageText string, pageNum int, editionNumber string
 	//    salário, secretaria, cargo). Blocos que o classificador não
 	//    reconhece (ActOutros) são descartados: sem verbo de ato identificado
 	//    o "nome" extraído é quase sempre cabeçalho ("DIÁRIO OFICIAL…").
-	blockActs := gazette.ParsePersonnelActs(pageText, edNumInt, "ORDINARIA", now, int32(pageNum), "")
+	blockActs := gazette.ParsePersonnelActs(pageText, edNumInt, gazette.EditionTypeFromNumber(editionNumber), now, int32(pageNum), "")
 	// Contratações temporárias ("EXTRATO DO CONTRATO INDIVIDUAL DE TRABALHO"):
 	// formato rotulado próprio, antes iam parar na coleção de artigos.
-	blockActs = append(blockActs, gazette.ParseTemporaryHires(pageText, edNumInt, "ORDINARIA", now, int32(pageNum), "")...)
+	blockActs = append(blockActs, gazette.ParseTemporaryHires(pageText, edNumInt, gazette.EditionTypeFromNumber(editionNumber), now, int32(pageNum), "")...)
 
 	// Designação de fiscal titular + SUPLENTE de contrato num mesmo Art. 1º —
 	// o parser de blocos só pegava o titular. Emite os dois e marca o nome do

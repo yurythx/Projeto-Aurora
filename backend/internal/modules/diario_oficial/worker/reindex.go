@@ -172,14 +172,6 @@ func pdfURLForFinding(f domain.Finding) string {
 	return u
 }
 
-func editionTypeFromNumber(editionNumber string) string {
-	up := strings.ToUpper(strings.TrimSpace(editionNumber))
-	if strings.HasSuffix(up, "S") || strings.HasSuffix(up, "E") || strings.Contains(up, "SUPLEMENT") || strings.Contains(up, "EXTRA") {
-		return "SUPLEMENTAR"
-	}
-	return "ORDINARIA"
-}
-
 func pubDateUnix(f domain.Finding) int64 {
 	if !f.EditionDate.IsZero() {
 		return f.EditionDate.Unix()
@@ -211,7 +203,7 @@ func personnelDocFromFinding(f domain.Finding) typesense.DiorondonPersonnelAct {
 	return typesense.DiorondonPersonnelAct{
 		ID:              "act-" + f.ID.String(),
 		EditionNumber:   gazette.LeadingInt32(f.EditionNumber),
-		EditionType:     editionTypeFromNumber(f.EditionNumber),
+		EditionType:     gazette.EditionTypeFromNumber(f.EditionNumber),
 		PublicationDate: pubDateUnix(f),
 		ActType:         gazette.NormalizeActType(f.ActType),
 		PersonName:      deref(f.ServidorNome),
@@ -249,7 +241,7 @@ func articleDocFromFinding(f domain.Finding) typesense.DiorondonArticle {
 	return typesense.DiorondonArticle{
 		ID:              "art-" + f.ID.String(),
 		EditionNumber:   gazette.LeadingInt32(f.EditionNumber),
-		EditionType:     editionTypeFromNumber(f.EditionNumber),
+		EditionType:     gazette.EditionTypeFromNumber(f.EditionNumber),
 		PublicationDate: pubDateUnix(f),
 		PageNumber:      page,
 		ContractNumbers: contractNumbers,
