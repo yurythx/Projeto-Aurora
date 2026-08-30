@@ -216,19 +216,43 @@ h2 {
   background: transparent;
 }
 
-/* Fade-in curto para overlays de modal (antes `animate-in fade-in` era
-   classe morta — dependia de tailwindcss-animate, que não está
-   instalado). */
-@keyframes nova-fade-in {
-  from {
+/* Entrada/saída dos modais <dialog> (ModalShell / Dialog) — transição
+   nativa via @starting-style, sem JS nem biblioteca. `allow-discrete`
+   mantém o elemento no top layer durante o fade de saída. O bloco de
+   prefers-reduced-motion abaixo zera a duração pra quem pediu. */
+dialog {
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease,
+    overlay 150ms ease allow-discrete,
+    display 150ms ease allow-discrete;
+  opacity: 0;
+  transform: translateY(4px) scale(0.985);
+}
+dialog[open] {
+  opacity: 1;
+  transform: none;
+}
+@starting-style {
+  dialog[open] {
     opacity: 0;
-  }
-  to {
-    opacity: 1;
+    transform: translateY(4px) scale(0.985);
   }
 }
-.nova-fade-in {
-  animation: nova-fade-in 150ms ease-out;
+dialog::backdrop {
+  opacity: 0;
+  transition:
+    opacity 150ms ease,
+    overlay 150ms ease allow-discrete,
+    display 150ms ease allow-discrete;
+}
+dialog[open]::backdrop {
+  opacity: 1;
+}
+@starting-style {
+  dialog[open]::backdrop {
+    opacity: 0;
+  }
 }
 
 /* Quality floor: respeita quem pediu menos movimento no SO. */

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
+import { ModalShell } from "@/components/ui/ModalShell";
 import { useApiQuery } from "@/lib/api/swr";
 import type { HREvent } from "@/types/api";
 
@@ -664,14 +665,20 @@ Link do PDF: ${ev.doc_url || "N/A"}`;
 
       {/* Modal de Detalhes do Registro do Diário Oficial */}
       {selectedEvent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm nova-fade-in">
-          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-surface-border bg-surface shadow-2xl">
-            {/* Cabeçalho do Modal */}
-            <div className="flex items-center justify-between border-b border-surface-border p-4 bg-surface-border/10">
+        <ModalShell
+          open
+          onClose={() => setSelectedEvent(null)}
+          size="lg"
+          labelledBy="hr-event-detail-title"
+        >
+          {/* Cabeçalho do Modal */}
+          <div className="flex shrink-0 items-center justify-between border-b border-surface-border bg-surface-border/10 p-4">
               <div className="flex items-center gap-2">
                 <ShieldCheck size={20} className="text-primary" />
                 <div>
-                  <h2 className="text-base font-bold text-foreground">Ficha de Auditoria do Servidor Público</h2>
+                  <h2 id="hr-event-detail-title" className="text-base font-bold text-foreground">
+                    Ficha de Auditoria do Servidor Público
+                  </h2>
                   <p className="text-xs text-muted">Diário Oficial do Município de Rondonópolis - MT</p>
                 </div>
               </div>
@@ -769,7 +776,7 @@ Link do PDF: ${ev.doc_url || "N/A"}`;
             </div>
 
             {/* Rodapé de Ações do Modal */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-surface-border p-4 bg-surface-border/10">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-surface-border bg-surface-border/10 p-4">
               <Button
                 variant="secondary"
                 size="sm"
@@ -798,8 +805,7 @@ Link do PDF: ${ev.doc_url || "N/A"}`;
                 </a>
               </div>
             </div>
-          </div>
-        </div>
+        </ModalShell>
       )}
     </div>
   );

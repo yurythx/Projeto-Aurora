@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { type ReactNode } from "react";
 
-type DialogSize = "sm" | "md" | "lg" | "xl";
+import { ModalShell, type ModalSize } from "@/components/ui/ModalShell";
 
 export interface DialogProps {
   open: boolean;
@@ -11,7 +11,7 @@ export interface DialogProps {
   description?: string;
   /** Largura máxima do modal. `md` (padrão) serve pra confirmações; `lg`/`xl`
    *  pra modais com formulário, tabela ou lista. */
-  size?: DialogSize;
+  size?: ModalSize;
   /** Rodapé fixo (não rola com o corpo) — ex.: botões de ação. O modal já
    *  põe o fio de separação e o espaçamento; o alinhamento fica com quem
    *  chama (ex.: `ml-auto` num botão pra jogá-lo à direita). */
@@ -19,23 +19,10 @@ export interface DialogProps {
   children?: ReactNode;
 }
 
-const sizeClass: Record<DialogSize, string> = {
-  sm: "max-w-sm",
-  md: "max-w-md",
-  lg: "max-w-2xl",
-  xl: "max-w-3xl",
-};
-
 /**
- * Construído sobre o elemento nativo <dialog>: captura de foco,
- * fechar-com-Escape e o backdrop vêm todos do navegador em vez de serem
- * reimplementados — menos bugs de acessibilidade para errar.
- *
- * Dimensões (§ correção 2026-08): antes o <dialog> não tinha largura e o
- * conteúdo era espremido num wrapper interno de `max-w-md` fixo, então
- * qualquer modal com um <select> + botão lado a lado (ContratoModal)
- * estourava. Agora a largura é `min(100vw-2rem, size)` e o corpo rola
- * dentro de uma altura máxima em vez de vazar pra fora da tela.
+ * Modal estruturado (título + descrição + corpo rolável + rodapé fixo)
+ * sobre a ModalShell — que dá Esc, clique-no-backdrop, captura de foco,
+ * fundo `inert` e trava de scroll de graça, via <dialog> nativo.
  */
 export function Dialog({
   open,
@@ -46,27 +33,15 @@ export function Dialog({
   footer,
   children,
 }: DialogProps) {
-  const ref = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    if (open && !el.open) el.showModal();
-    if (!open && el.open) el.close();
-  }, [open]);
-
   return (
-    <dialog
-      ref={ref}
+    <ModalShell
+      open={open}
       onClose={onClose}
-      onCancel={onClose}
-      aria-labelledby="dialog-title"
-      aria-describedby={description ? "dialog-description" : undefined}
-      className={`m-auto w-[calc(100vw-2rem)] ${sizeClass[size]} max-h-[calc(100dvh-4rem)]
-        overflow-hidden rounded-xl border border-surface-border bg-surface p-0 text-foreground
-        shadow-lg backdrop:bg-black/40`}
+      size={size}
+      labelledBy="dialog-title"
+      describedBy={description ? "dialog-description" : undefined}
     >
-      <div className="flex max-h-[calc(100dvh-4rem)] flex-col p-5">
+      <div className="flex max-h-[calc(100dvh-2rem)] flex-col p-5">
         <h2 id="dialog-title" className="shrink-0 text-base font-semibold">
           {title}
         </h2>
@@ -82,6 +57,6 @@ export function Dialog({
           </div>
         )}
       </div>
-    </dialog>
+    </ModalShell>
   );
 }

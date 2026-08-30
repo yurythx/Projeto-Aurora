@@ -17,6 +17,7 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
+import { ModalShell } from "@/components/ui/ModalShell";
 import { useToast } from "@/components/notifications/ToastProvider";
 import { apiClient } from "@/lib/api/client";
 import { fetchContratos } from "@/lib/api/contratos";
@@ -470,16 +471,22 @@ function NewOfficialModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md rounded-xl border border-surface-border bg-surface shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between border-b border-surface-border px-6 py-4">
-          <h2 className="text-base font-bold text-foreground">Vincular Fiscal & Portaria</h2>
-          <button onClick={onClose} className="rounded p-1 text-muted hover:bg-surface-hover">
-            <X size={18} />
-          </button>
-        </div>
+    <ModalShell open onClose={onClose} size="md" labelledBy="link-fiscal-title">
+      <div className="flex shrink-0 items-center justify-between border-b border-surface-border px-6 py-4">
+        <h2 id="link-fiscal-title" className="text-base font-bold text-foreground">
+          Vincular Fiscal &amp; Portaria
+        </h2>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Fechar modal"
+          className="rounded p-1 text-muted hover:bg-surface-hover"
+        >
+          <X size={18} />
+        </button>
+      </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+      <form onSubmit={handleSubmit} className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6 text-xs">
           <div>
             <label className="block font-medium text-foreground mb-1">Contrato *</label>
             <select
@@ -524,14 +531,13 @@ function NewOfficialModal({
             </select>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-surface-border">
+          <div className="flex items-center justify-end gap-3 border-t border-surface-border pt-4">
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancelar
             </Button>
             <Button type="submit">Cadastrar Fiscal</Button>
           </div>
         </form>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
