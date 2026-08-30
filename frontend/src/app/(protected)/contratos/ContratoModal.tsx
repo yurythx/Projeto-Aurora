@@ -89,11 +89,51 @@ export function ContratoModal({ demand, onClose, onDemandUpdated }: Props) {
   };
   
   return (
-    <Dialog 
-      open={true} 
+    <Dialog
+      open={true}
       onClose={onClose}
       title={`Demanda: ${demand.ano_mes}`}
       description={`Contrato ${demand.contrato_numero} • ${demand.contratado}`}
+      size="lg"
+      footer={
+        <>
+          <div className="flex flex-wrap gap-2">
+            <a href={`/api/backend/v1/demands/${demand.id}/oficio.pdf`} target="_blank" rel="noreferrer">
+              <Button variant="secondary" className="gap-2">
+                <Printer className="h-4 w-4" />
+                Ofício (PDF)
+              </Button>
+            </a>
+            {demand.etapa >= 3 && (
+              <a
+                href={`/api/backend/v1/demands/${demand.id}/ordem-servico.pdf`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Button variant="secondary" className="gap-2">
+                  <Printer className="h-4 w-4" />
+                  Ordem de Serviço (PDF)
+                </Button>
+              </a>
+            )}
+            {demand.etapa >= 5 && (
+              <a
+                href={`/api/backend/v1/demands/${demand.id}/relatorio.pdf`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Button variant="secondary" className="gap-2">
+                  <Printer className="h-4 w-4" />
+                  Relatório / Anexo I (PDF)
+                </Button>
+              </a>
+            )}
+          </div>
+          <Button variant="secondary" className="ml-auto" onClick={onClose}>
+            Fechar
+          </Button>
+        </>
+      }
     >
         <div className="grid gap-6 py-2">
           <div className="flex flex-col gap-2">
@@ -182,36 +222,6 @@ export function ContratoModal({ demand, onClose, onDemandUpdated }: Props) {
               )}
             </div>
           </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-4 mt-4">
-          <div className="flex flex-wrap gap-2">
-            <a href={`/api/backend/v1/demands/${demand.id}/oficio.pdf`} target="_blank" rel="noreferrer">
-              <Button variant="secondary" className="gap-2">
-                <Printer className="h-4 w-4" />
-                Ofício (PDF)
-              </Button>
-            </a>
-            {demand.etapa >= 3 && (
-              <a href={`/api/backend/v1/demands/${demand.id}/ordem-servico.pdf`} target="_blank" rel="noreferrer">
-                <Button variant="secondary" className="gap-2">
-                  <Printer className="h-4 w-4" />
-                  Ordem de Serviço (PDF)
-                </Button>
-              </a>
-            )}
-            {demand.etapa >= 5 && (
-              <a href={`/api/backend/v1/demands/${demand.id}/relatorio.pdf`} target="_blank" rel="noreferrer">
-                <Button variant="secondary" className="gap-2">
-                  <Printer className="h-4 w-4" />
-                  Relatório / Anexo I (PDF)
-                </Button>
-              </a>
-            )}
-          </div>
-          <Button variant="secondary" onClick={onClose}>
-            Fechar
-          </Button>
         </div>
     </Dialog>
   );

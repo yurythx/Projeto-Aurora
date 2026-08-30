@@ -90,9 +90,9 @@ export function NewDemandModal({ onClose, onCreated }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-lg rounded-xl border border-surface-border bg-surface shadow-2xl overflow-hidden">
+      <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-surface-border bg-surface shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-surface-border px-6 py-4">
+        <div className="flex shrink-0 items-center justify-between border-b border-surface-border px-6 py-4">
           <div>
             <h2 className="text-lg font-semibold">Nova Demanda de Liquidação</h2>
             <p className="text-xs text-muted">Inicia o fluxo de 6 etapas da IN SCL 01/2019 para o contrato.</p>
@@ -108,7 +108,8 @@ export function NewDemandModal({ onClose, onCreated }: Props) {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6">
           {/* Seleção do Contrato */}
           <div>
             <label className="block text-xs font-medium text-muted uppercase tracking-wider mb-1.5">
@@ -172,9 +173,10 @@ export function NewDemandModal({ onClose, onCreated }: Props) {
               />
             </div>
           </div>
+          </div>
 
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-surface-border">
+          {/* Actions — rodapé fixo */}
+          <div className="flex shrink-0 items-center justify-end gap-3 border-t border-surface-border px-6 py-4">
             <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
               Cancelar
             </Button>
