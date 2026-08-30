@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import useSWR from "swr";
 import { AlertTriangle, Check, FileText, RefreshCw, Trash2, ArrowUpCircle } from "lucide-react";
 import { apiClient } from "@/lib/api/client";
 import { pdfUrlWithPage } from "@/lib/typesense-client";
@@ -82,33 +83,39 @@ const orNull = (s: string) => {
 
 export default function RevisaoPage() {
   const { showToast } = useToast();
-  const [items, setItems] = useState<ReviewFinding[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [busy, setBusy] = useState<string | null>(null);
 
-  const load = async () => {
-    setLoading(true);
-    setErr(null);
-    try {
-      const res = await apiClient.get<ReviewFinding[]>(
-        "v1/diario-oficial/rondonopolis/review-queue?limit=200",
-      );
-      const list = Array.isArray(res.data) ? res.data : [];
-      setItems(list);
-      setDrafts(Object.fromEntries(list.map((f) => [f.id, toDraft(f)])));
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Falha ao carregar a fila de revisão.");
-    } finally {
-      setLoading(false);
-    }
+  // Fila via SWR (busca no mount + `load()` = mutate). `items`/`drafts`
+  // continuam locais: o promote/ack/discard remove o item na hora
+  // (optimista) e `drafts` é o formulário editável por finding — seedado
+  // do fetch por ajuste de estado no render (padrão do React).
+  const {
+    data: fetched,
+    error: swrError,
+    isLoading: loading,
+    mutate,
+  } = useSWR("review-queue", () =>
+    apiClient
+      .get<ReviewFinding[]>("v1/diario-oficial/rondonopolis/review-queue?limit=200")
+      .then((r) => (Array.isArray(r.data) ? r.data : [])),
+  );
+  const err = swrError
+    ? swrError instanceof Error
+      ? swrError.message
+      : "Falha ao carregar a fila de revisão."
+    : null;
+  const load = () => {
+    void mutate();
   };
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca de dados no mount/na mudança de filtro; migração pra SWR (useApiQuery) é item à parte (audit-2026-08, item 4).
-    load();
-  }, []);
+  const [items, setItems] = useState<ReviewFinding[]>([]);
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [syncedFetch, setSyncedFetch] = useState<ReviewFinding[] | undefined>(undefined);
+  if (fetched && fetched !== syncedFetch) {
+    setSyncedFetch(fetched);
+    setItems(fetched);
+    setDrafts(Object.fromEntries(fetched.map((f) => [f.id, toDraft(f)])));
+  }
 
   const patchDraft = (id: string, part: Partial<Draft>) =>
     setDrafts((cur) => {

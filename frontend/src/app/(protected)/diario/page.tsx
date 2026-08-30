@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import useSWR from "swr";
 import { Newspaper, Search, Calendar, Download, Link2 } from "lucide-react";
 import { searchGazetteArticles, pdfUrlWithPage, GazetteArticle, TypesenseSearchResponse } from "@/lib/typesense-client";
 import { Input } from "@/components/ui/Input";
@@ -23,14 +24,17 @@ export default function DiarioSearchPage() {
   const [editionType, setEditionType] = useState(initial.edition_type ?? "");
   const [dateFrom, setDateFrom] = useState(initial.from ?? "");
   const [dateTo, setDateTo] = useState(initial.to ?? "");
-  const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [results, setResults] = useState<TypesenseSearchResponse<GazetteArticle>>({
+  // `query` só dispara busca quando "confirmado" (Enter / botão); os
+  // filtros abaixo entram direto na key do SWR e buscam ao mudar.
+  const [committedQuery, setCommittedQuery] = useState(initial.q ?? "");
+
+  const EMPTY: TypesenseSearchResponse<GazetteArticle> = {
     found: 0,
     page: 1,
     hits: [],
     facet_counts: [],
-  });
+  };
 
   const searchArgs = () => ({
     query,
@@ -39,18 +43,26 @@ export default function DiarioSearchPage() {
     dateTo: dateInputToUnix(dateTo, true),
   });
 
-  const handleSearch = async () => {
-    setLoading(true);
-    writeSearchState({ q: query, edition_type: editionType, from: dateFrom, to: dateTo });
-    try {
-      const res = await searchGazetteArticles({ ...searchArgs(), page: 1, perPage: 20 });
-      setResults(res);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Busca via SWR: a key encoda todos os parâmetros efetivos, então
+  // trocar filtro ou confirmar a busca refaz sozinho — sem
+  // useEffect+setState. `keepPreviousData` evita a lista piscar.
+  const { data: results = EMPTY, isLoading: loading } = useSWR(
+    ["diario-search", committedQuery, editionType, dateFrom, dateTo] as const,
+    ([, q, et, from, to]) => {
+      writeSearchState({ q, edition_type: et, from, to });
+      return searchGazetteArticles({
+        query: q,
+        editionType: et || undefined,
+        dateFrom: dateInputToUnix(from),
+        dateTo: dateInputToUnix(to, true),
+        page: 1,
+        perPage: 20,
+      });
+    },
+    { keepPreviousData: true },
+  );
+
+  const handleSearch = () => setCommittedQuery(query);
 
   const handleExportCSV = async () => {
     setExporting(true);
@@ -98,12 +110,6 @@ export default function DiarioSearchPage() {
       showToast({ title: "Não foi possível copiar o link", tone: "danger" });
     }
   };
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca de dados no mount/na mudança de filtro; migração pra SWR (useApiQuery) é item à parte (audit-2026-08, item 4).
-    handleSearch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editionType, dateFrom, dateTo]);
 
   return (
     <div className="flex flex-col gap-6">

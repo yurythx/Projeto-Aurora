@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import useSWR from "swr";
 import { Search, Filter, UserCheck, Calendar, Download, Link2 } from "lucide-react";
 import { searchPersonnelActs, pdfUrlWithPage, PersonnelAct, TypesenseSearchResponse } from "@/lib/typesense-client";
 import { Input } from "@/components/ui/Input";
@@ -36,14 +37,17 @@ export default function PessoalSearchPage() {
   const [dasLevel, setDasLevel] = useState(initial.das ?? "");
   const [dateFrom, setDateFrom] = useState(initial.from ?? "");
   const [dateTo, setDateTo] = useState(initial.to ?? "");
-  const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [results, setResults] = useState<TypesenseSearchResponse<PersonnelAct>>({
+  // `query` só busca quando confirmado (Enter / botão); os filtros
+  // entram direto na key do SWR.
+  const [committedQuery, setCommittedQuery] = useState(initial.q ?? "");
+
+  const EMPTY: TypesenseSearchResponse<PersonnelAct> = {
     found: 0,
     page: 1,
     hits: [],
     facet_counts: [],
-  });
+  };
 
   const searchArgs = () => ({
     query,
@@ -54,18 +58,25 @@ export default function PessoalSearchPage() {
     dateTo: dateInputToUnix(dateTo, true),
   });
 
-  const handleSearch = async () => {
-    setLoading(true);
-    writeSearchState({ q: query, act_type: actType, secretaria, das: dasLevel, from: dateFrom, to: dateTo });
-    try {
-      const res = await searchPersonnelActs({ ...searchArgs(), page: 1, perPage: 25 });
-      setResults(res);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: results = EMPTY, isLoading: loading } = useSWR(
+    ["pessoal-search", committedQuery, actType, secretaria, dasLevel, dateFrom, dateTo] as const,
+    ([, q, at, sec, das, from, to]) => {
+      writeSearchState({ q, act_type: at, secretaria: sec, das, from, to });
+      return searchPersonnelActs({
+        query: q,
+        actType: at || undefined,
+        secretaria: sec || undefined,
+        dasLevel: das || undefined,
+        dateFrom: dateInputToUnix(from),
+        dateTo: dateInputToUnix(to, true),
+        page: 1,
+        perPage: 25,
+      });
+    },
+    { keepPreviousData: true },
+  );
+
+  const handleSearch = () => setCommittedQuery(query);
 
   const handleExportCSV = async () => {
     setExporting(true);
@@ -122,12 +133,6 @@ export default function PessoalSearchPage() {
     }
   };
 
-  // Busca ao montar (usando o estado vindo da URL) e sempre que um filtro muda.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca de dados no mount/na mudança de filtro; migração pra SWR (useApiQuery) é item à parte (audit-2026-08, item 4).
-    handleSearch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actType, secretaria, dasLevel, dateFrom, dateTo]);
 
   // Extrai facetas de secretarias e DAS do Typesense
   const secretariaFacets = results.facet_counts?.find((f) => f.field_name === "secretaria")?.counts || [];
