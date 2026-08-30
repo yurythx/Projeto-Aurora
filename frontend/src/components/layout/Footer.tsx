@@ -12,8 +12,10 @@ export function Footer() {
 
   return (
     <footer className="mt-auto border-t border-surface-border bg-surface text-xs text-muted">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+      {/* Mesmo px do <main> (px-4 sm:px-8) para o rodapé alinhar coluna a
+          coluna com o conteúdo acima; sem max-w próprio, que o desalinhava. */}
+      <div className="px-4 py-8 sm:px-8">
+        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
           {/* Coluna 1: Nome da Aplicação e Orgão */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 font-bold text-foreground text-sm">

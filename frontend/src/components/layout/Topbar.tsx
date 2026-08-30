@@ -34,9 +34,9 @@ export function Topbar({
   const [logoError, setLogoError] = useState(false);
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 flex flex-col border-b border-surface-border bg-surface shadow-sm">
+    <header className="fixed inset-x-0 top-0 z-50 flex h-[var(--topbar-h)] flex-col border-b border-surface-border bg-surface shadow-sm">
       {/* 1. Barra e-MAG de Acessibilidade Governamental Oficial (#14284B) */}
-      <div className="flex h-7 items-center justify-between bg-header-topbar px-4 text-[11px] font-medium text-white/90">
+      <div className="flex h-7 shrink-0 items-center justify-between bg-header-topbar px-4 text-[11px] font-medium text-white/90">
         <div className="flex items-center gap-3">
           <span className="hidden sm:inline-block font-semibold uppercase tracking-wider text-white/80">
             {branding.orgName}
@@ -70,7 +70,7 @@ export function Topbar({
       </div>
 
       {/* 2. Topbar Principal de Navegação */}
-      <div className="flex h-14 items-center justify-between px-4">
+      <div className="flex min-h-0 flex-1 items-center justify-between px-4">
         <div className="flex items-center gap-3">
           <button
             type="button"

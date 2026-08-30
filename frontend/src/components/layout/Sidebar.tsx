@@ -87,7 +87,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
           painel aberto; invisível e fora do fluxo de layout no desktop. */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 top-14 z-40 bg-black/40 md:hidden"
+          className="fixed inset-x-0 bottom-0 top-[var(--topbar-h)] z-40 bg-black/40 md:hidden"
           onClick={onCloseMobile}
           aria-hidden="true"
         />
@@ -95,9 +95,9 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
 
       <nav
         aria-label="Principal"
-        className={`fixed left-0 top-14 bottom-0 z-40 flex flex-col overflow-hidden border-r border-surface-border bg-surface
-          transition-transform duration-200 md:translate-x-0
-          ${collapsed ? "md:w-16" : "md:w-60"}
+        className={`fixed left-0 bottom-0 top-[var(--topbar-h)] z-40 flex flex-col overflow-y-auto overflow-x-hidden border-r border-surface-border bg-surface
+          transition-[transform,width] duration-200 md:translate-x-0
+          ${collapsed ? "md:w-[var(--sidebar-w-collapsed)]" : "md:w-[var(--sidebar-w)]"}
           ${mobileOpen ? "translate-x-0" : "-translate-x-full"} w-72`}
       >
         {!collapsed && (
@@ -105,7 +105,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
             Principal
           </div>
         )}
-        <ul className="flex flex-col gap-0.5 px-2 pt-2">
+        <ul className={`flex flex-col gap-0.5 px-2 pb-3 ${collapsed ? "pt-3" : "pt-2"}`}>
           {links.map((link) => {
             const Icon = link.icon;
             // Só UM item acende: o de href mais específico que casa com a

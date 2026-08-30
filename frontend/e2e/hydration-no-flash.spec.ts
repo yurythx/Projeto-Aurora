@@ -60,10 +60,13 @@ test.describe("Sem flash de hidratação (branding + Sidebar)", () => {
     // aba do navegador, não a barra superior, e não pisca.)
     expect(html, "SSR deve trazer o nome novo — senão a Topbar pisca").toContain(newName);
 
-    // Sidebar recolhida => w-16 / pl-24; expandida => w-60 / pl-72
-    expect(html, "SSR deve trazer a Sidebar recolhida").toContain("md:w-16");
-    expect(html).not.toContain("md:w-60");
-    expect(html).toContain("md:pl-24");
+    // Sidebar recolhida usa a largura recolhida (--sidebar-w-collapsed) no
+    // <nav> e no padding-left do conteúdo; expandida usaria --sidebar-w.
+    expect(html, "SSR deve trazer a Sidebar recolhida").toContain(
+      "md:w-[var(--sidebar-w-collapsed)]",
+    );
+    expect(html).not.toContain("md:w-[var(--sidebar-w)]");
+    expect(html).toContain("md:pl-[var(--sidebar-w-collapsed)]");
 
     expect(html, "SSR deve carimbar data-high-contrast no <html>").toMatch(
       /<html[^>]*data-high-contrast="true"/,

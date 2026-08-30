@@ -81,9 +81,14 @@ export function DashboardShell({
           />
           <Sidebar collapsed={collapsed} mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />
 
+          {/* Offset do shell: pt = altura da Topbar, pl (md+) = largura EXATA
+              da Sidebar — assim o conteúdo e o rodapé encostam na Sidebar sem
+              faixa morta. O respiro lateral vem do px do <main>/<Footer>, não
+              de um pl extra. min-h-dvh (não screen) mantém o rodapé colado no
+              fim da viewport em telas curtas, sem sobra. */}
           <div
-            className={`flex flex-col min-h-screen pt-24 transition-[padding] duration-200
-              ${collapsed ? "md:pl-24" : "md:pl-72"}`}
+            className={`flex min-h-dvh flex-col pt-[var(--topbar-h)] transition-[padding] duration-200
+              ${collapsed ? "md:pl-[var(--sidebar-w-collapsed)]" : "md:pl-[var(--sidebar-w)]"}`}
           >
             <main id="main-content" className="flex-1 overflow-x-auto px-4 pb-8 sm:px-8 sm:pb-10">
               {children}

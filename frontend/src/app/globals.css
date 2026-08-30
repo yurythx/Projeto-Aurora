@@ -43,6 +43,14 @@
   --border-hover: var(--muted);
   --card: var(--surface);
   --muted-foreground: var(--muted);
+
+  /* Métricas do shell do dashboard — FONTE ÚNICA. Topbar.tsx, Sidebar.tsx
+     e DashboardShell.tsx derivam altura/largura/offset daqui, então
+     alinhar o conteúdo à Sidebar (e ao rodapé) é mudar um valor só.
+     --topbar-h = faixa e-MAG (h-7 = 1.75rem) + barra principal (h-14 = 3.5rem). */
+  --topbar-h: 5.25rem;
+  --sidebar-w: 15rem;
+  --sidebar-w-collapsed: 4rem;
 }
 
 @theme inline {
