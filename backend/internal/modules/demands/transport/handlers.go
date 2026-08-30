@@ -132,14 +132,14 @@ func (h *Handlers) KanbanView(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) GetUploadURL(w http.ResponseWriter, r *http.Request) {
 	demandID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		httputil.WriteError(w, r, h.logger, fmt.Errorf("uuid inválido: %w", err))
+		httputil.WriteError(w, r, h.logger, apperrors.BadRequest("id da demanda inválido"))
 		return
 	}
 
 	docType := r.URL.Query().Get("doc_type")
 	fileName := r.URL.Query().Get("file_name")
 	if docType == "" || fileName == "" {
-		httputil.WriteError(w, r, h.logger, fmt.Errorf("doc_type e file_name são obrigatórios"))
+		httputil.WriteError(w, r, h.logger, apperrors.BadRequest("doc_type e file_name são obrigatórios"))
 		return
 	}
 
@@ -159,7 +159,7 @@ func (h *Handlers) GetUploadURL(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ConfirmUpload(w http.ResponseWriter, r *http.Request) {
 	demandID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		httputil.WriteError(w, r, h.logger, fmt.Errorf("uuid inválido: %w", err))
+		httputil.WriteError(w, r, h.logger, apperrors.BadRequest("id da demanda inválido"))
 		return
 	}
 
@@ -301,7 +301,7 @@ func (h *Handlers) GetHistory(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) GetByID(w http.ResponseWriter, r *http.Request) {
 	demandID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		httputil.WriteError(w, r, h.logger, fmt.Errorf("uuid inválido: %w", err))
+		httputil.WriteError(w, r, h.logger, apperrors.BadRequest("id da demanda inválido"))
 		return
 	}
 

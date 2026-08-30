@@ -32,11 +32,33 @@ type ContractLister interface {
 	ListVigentes(ctx context.Context) ([]ContratoRef, error)
 }
 
+// TxRunner executa fn dentro de uma transação de banco (Unit of Work). O
+// adaptador de produção (poolTxRunner) envolve o *pgxpool.Pool; os testes
+// injetam um runner em memória — assim MoveKanbanCard fica testável sem
+// Postgres.
+type TxRunner interface {
+	WithTx(ctx context.Context, fn func(ctx context.Context, tx pgx.Tx) error) error
+}
+
+// OutboxWriter é o mínimo que o Service usa do outbox transacional. *outbox.Writer
+// satisfaz; os testes usam um fake que só registra o que foi escrito.
+type OutboxWriter interface {
+	Write(ctx context.Context, tx pgx.Tx, eventType, aggregateType, aggregateID string, correlationID uuid.UUID, payload any) error
+}
+
+// poolTxRunner adapta o *pgxpool.Pool ao TxRunner via database.WithTx
+// (mesmo rollback-on-panic / commit no fim).
+type poolTxRunner struct{ pool *pgxpool.Pool }
+
+func (p poolTxRunner) WithTx(ctx context.Context, fn func(ctx context.Context, tx pgx.Tx) error) error {
+	return database.WithTx(ctx, p.pool, fn)
+}
+
 // Service coordena os fluxos das Demandas Mensais.
 type Service struct {
-	db        *pgxpool.Pool
+	tx        TxRunner
 	repo      domain.Repository
-	outbox    *outbox.Writer
+	outbox    OutboxWriter
 	storage   storage.Provider
 	audit     *audit.Writer
 	auditLog  *audit.Reader
@@ -67,9 +89,19 @@ func (s *Service) DemandHistory(ctx context.Context, demandID uuid.UUID) ([]audi
 	return s.auditLog.ListByResource(ctx, "demand", demandID.String(), 200)
 }
 
-// NewService constrói o Service.
+// NewService constrói o Service. Continua recebendo o *pgxpool.Pool e o
+// *outbox.Writer concretos (a fiação em app/modules.go não muda) —
+// internamente eles viram TxRunner/OutboxWriter, que os testes trocam por
+// fakes.
 func NewService(db *pgxpool.Pool, repo domain.Repository, outboxWriter *outbox.Writer, storageProvider storage.Provider, auditWriter *audit.Writer, bucket string, logger *slog.Logger) *Service {
-	return &Service{db: db, repo: repo, outbox: outboxWriter, storage: storageProvider, audit: auditWriter, bucket: bucket, logger: logger}
+	return &Service{tx: poolTxRunner{pool: db}, repo: repo, outbox: outboxWriter, storage: storageProvider, audit: auditWriter, bucket: bucket, logger: logger}
+}
+
+// NewServiceWithDeps constrói o Service a partir das colaborações já como
+// interfaces — usado pelos testes de transporte/aplicação para injetar
+// fakes (TxRunner/OutboxWriter/Repository em memória).
+func NewServiceWithDeps(tx TxRunner, repo domain.Repository, outboxWriter OutboxWriter, storageProvider storage.Provider, auditWriter *audit.Writer, bucket string, logger *slog.Logger) *Service {
+	return &Service{tx: tx, repo: repo, outbox: outboxWriter, storage: storageProvider, audit: auditWriter, bucket: bucket, logger: logger}
 }
 
 // MoveKanbanCard tenta mover o card da demanda de uma etapa para outra.
@@ -105,7 +137,7 @@ func (s *Service) MoveKanbanCard(ctx context.Context, demandID uuid.UUID, target
 
 	// 4. Salva a transição e publica o evento atomica e confiavelmente (Outbox)
 	correlationID := uuid.New()
-	err = database.WithTx(ctx, s.db, func(ctx context.Context, tx pgx.Tx) error {
+	err = s.tx.WithTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		// Precisamos converter s.repo para uma interface que aceita Tx,
 		// ou fazer cast para PostgresRepository localmente.
 		// Para simplificar no Go, se o repo suportar transação:
