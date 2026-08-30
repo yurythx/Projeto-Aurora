@@ -1,9 +1,10 @@
 "use client";
 
+import useSWR from "swr";
+
 import { Badge } from "@/components/ui/Badge";
 import { useApiQuery } from "@/lib/api/swr";
 import type { SourceHealth } from "@/types/api";
-import { useEffect, useState } from "react";
 import { getTypesenseHealth } from "@/lib/typesense-client";
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -27,24 +28,19 @@ export function SourceHealthPanel() {
   const { data: health, isLoading, mutate } = useApiQuery<SourceHealth>("v1/diario-oficial/health");
   const activeHealth = health || DEFAULT_HEALTH;
 
-  const [typesenseHealth, setTypesenseHealth] = useState<TypesenseHealthState | null>(null);
-  const [checkingTypesense, setCheckingTypesense] = useState(false);
-
-  const checkTypesense = async () => {
-    setCheckingTypesense(true);
-    const tsHealth = await getTypesenseHealth();
-    setTypesenseHealth(tsHealth);
-    setCheckingTypesense(false);
-  };
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca de dados no mount/na mudança de filtro; migração pra SWR (useApiQuery) é item à parte (audit-2026-08, item 4).
-    checkTypesense();
-  }, []);
+  // getTypesenseHealth não é um GET simples (faz várias chamadas ao
+  // cluster), mas SWR aceita qualquer fetcher: a busca no mount, o estado
+  // de carregamento e o mutate() do botão saem de graça, sem
+  // useEffect+setState.
+  const {
+    data: typesenseHealth,
+    isLoading: checkingTypesense,
+    mutate: mutateTypesense,
+  } = useSWR<TypesenseHealthState>("typesense-health", () => getTypesenseHealth());
 
   const handleRefreshAll = () => {
     void mutate();
-    void checkTypesense();
+    void mutateTypesense();
   };
 
   return (

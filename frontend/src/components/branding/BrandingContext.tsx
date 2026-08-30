@@ -1,32 +1,19 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useSyncExternalStore } from "react";
 
-export interface SystemBrandingConfig {
-  appName: string;
-  appDescription: string;
-  orgName: string;
-  logoUrl: string;
-  faviconUrl: string;
-  supportEmail: string;
-  supportPhone: string;
-  supportHours: string;
-  highContrast: boolean;
-}
+import { DEFAULT_BRANDING, type SystemBrandingConfig } from "./brandingConfig";
+import {
+  getBrandingServerSnapshot,
+  getBrandingSnapshot,
+  resetBrandingStore,
+  subscribeBranding,
+  updateBrandingStore,
+} from "./brandingStore";
 
-export const DEFAULT_BRANDING: SystemBrandingConfig = {
-  appName: "Projeto Nova",
-  appDescription: "Sistema de Gestão de Contratos Administrativos e Liquidação Financeira",
-  orgName: "Prefeitura Municipal de Rondonópolis",
-  logoUrl: "",
-  faviconUrl: "",
-  supportEmail: "suporte.contratos@rondonopolis.mt.gov.br",
-  supportPhone: "(66) 3411-5000",
-  supportHours: "Segunda a Sexta, das 08h às 17h",
-  highContrast: false,
-};
-
-const BRANDING_STORAGE_KEY = "nova_system_branding_v1";
+// Re-export para não quebrar imports antigos (BrandingSettingsForm etc.).
+export { DEFAULT_BRANDING };
+export type { SystemBrandingConfig };
 
 interface BrandingContextType {
   branding: SystemBrandingConfig;
@@ -38,66 +25,35 @@ interface BrandingContextType {
 const BrandingContext = createContext<BrandingContextType | undefined>(undefined);
 
 export function BrandingProvider({ children }: { children: React.ReactNode }) {
-  const [branding, setBranding] = useState<SystemBrandingConfig>(DEFAULT_BRANDING);
+  // Estado vive fora do React (localStorage) — useSyncExternalStore em vez
+  // de useState + useEffect de hidratação. Ver brandingStore.ts.
+  const branding = useSyncExternalStore(
+    subscribeBranding,
+    getBrandingSnapshot,
+    getBrandingServerSnapshot,
+  );
 
-  // Hidrata do localStorage no cliente, depois do 1º paint (mantém o HTML
-  // do SSR = DEFAULT_BRANDING, sem mismatch). O fix "de livro" seria
-  // useSyncExternalStore com snapshot de servidor — refatoração à parte.
+  // Sincroniza o atributo e-MAG de Alto Contraste no <html> — este SIM é
+  // um uso legítimo de useEffect (sincronizar com um sistema externo, o
+  // DOM), e não chama setState.
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(BRANDING_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setBranding((prev) => ({ ...prev, ...parsed }));
-      }
-    } catch {
-      // fallback para os padrões
-    }
-  }, []);
-
-  // Aplica o atributo e-MAG de Alto Contraste no elemento <html>
-  useEffect(() => {
-    if (typeof document !== "undefined") {
-      const root = document.documentElement;
-      if (branding.highContrast) {
-        root.setAttribute("data-high-contrast", "true");
-      } else {
-        root.removeAttribute("data-high-contrast");
-      }
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    if (branding.highContrast) {
+      root.setAttribute("data-high-contrast", "true");
+    } else {
+      root.removeAttribute("data-high-contrast");
     }
   }, [branding.highContrast]);
 
-  const updateBranding = (newConfig: Partial<SystemBrandingConfig>) => {
-    setBranding((prev) => {
-      const updated = { ...prev, ...newConfig };
-      try {
-        localStorage.setItem(BRANDING_STORAGE_KEY, JSON.stringify(updated));
-      } catch {
-        // ignora erro de armazenamento
-      }
-      return updated;
-    });
+  const value: BrandingContextType = {
+    branding,
+    updateBranding: updateBrandingStore,
+    resetBranding: resetBrandingStore,
+    toggleHighContrast: () => updateBrandingStore({ highContrast: !branding.highContrast }),
   };
 
-  const resetBranding = () => {
-    setBranding(DEFAULT_BRANDING);
-    try {
-      localStorage.removeItem(BRANDING_STORAGE_KEY);
-    } catch {
-      // ignora
-    }
-  };
-
-  const toggleHighContrast = () => {
-    updateBranding({ highContrast: !branding.highContrast });
-  };
-
-  return (
-    <BrandingContext.Provider value={{ branding, updateBranding, resetBranding, toggleHighContrast }}>
-      {children}
-    </BrandingContext.Provider>
-  );
+  return <BrandingContext.Provider value={value}>{children}</BrandingContext.Provider>;
 }
 
 export function useBranding() {

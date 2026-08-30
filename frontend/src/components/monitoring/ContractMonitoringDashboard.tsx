@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useState, useMemo } from "react";
+import useSWR from "swr";
 import {
   AlertTriangle,
   Clock,
@@ -34,55 +35,48 @@ export interface ContractOfficial {
   created_at: string;
 }
 
+const OFFICIALS_STORAGE_KEY = "nova_contract_officials_v1";
+
+function readStoredOfficials(): ContractOfficial[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(OFFICIALS_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as ContractOfficial[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function ContractMonitoringDashboard() {
-  const [contratos, setContratos] = useState<Contrato[]>([]);
-  const [kanban, setKanban] = useState<KanbanResponse | null>(null);
-  const [officials, setOfficials] = useState<ContractOfficial[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<"vencimentos" | "fiscais" | "certidoes">("vencimentos");
   const [isOfficialModalOpen, setIsOfficialModalOpen] = useState(false);
+  // Fiscais nominais vivem só no localStorage deste dispositivo — init
+  // preguiçoso (SSR-safe), sem useEffect+setState.
+  const [officials, setOfficials] = useState<ContractOfficial[]>(readStoredOfficials);
 
   const { showToast } = useToast();
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [resContratos, resKanban] = await Promise.all([
-        // fetchContratos desembrulha o envelope paginado ({ data, total, ... }) —
-        // usar apiClient direto aqui deixava contractsList sempre vazio (o
-        // painel não mostrava nenhum contrato).
-        fetchContratos(1, 500).catch(() => ({ data: [] as Contrato[] })),
-        apiClient.get<KanbanResponse>("v1/demands/kanban").catch(() => ({ data: null })),
-      ]);
-
-      const contractsList = Array.isArray(resContratos.data) ? resContratos.data : [];
-
-      setContratos(contractsList);
-      if (resKanban && resKanban.data) {
-        setKanban(resKanban.data);
-      }
-
-      // Dados gravados no localStorage para Fiscais Nominal
-      const savedOfficials = localStorage.getItem("nova_contract_officials_v1");
-      if (savedOfficials) {
-        try {
-          setOfficials(JSON.parse(savedOfficials));
-        } catch {
-          // fallback
-        }
-      }
-    } catch (err) {
-      console.error("Monitoring load error:", err);
-    } finally {
-      setLoading(false);
-    }
+  // Contratos + quadro Kanban numa única consulta SWR: busca no mount,
+  // `loading` e `mutate` ("Recarregar Dados") saem de graça.
+  const { data, isLoading: loading, mutate } = useSWR("monitoring-dashboard", async () => {
+    const [resContratos, resKanban] = await Promise.all([
+      // fetchContratos desembrulha o envelope paginado ({ data, total, ... }).
+      fetchContratos(1, 500).catch(() => ({ data: [] as Contrato[] })),
+      apiClient.get<KanbanResponse>("v1/demands/kanban").catch(() => ({ data: null })),
+    ]);
+    return {
+      contratos: Array.isArray(resContratos.data) ? resContratos.data : [],
+      kanban: resKanban?.data ?? null,
+    };
+  });
+  // useMemo para não virar referência nova a cada render (os useMemo de
+  // métricas/filtro abaixo dependem dele).
+  const contratos = useMemo(() => data?.contratos ?? [], [data]);
+  const kanban = data?.kanban ?? null;
+  const loadData = () => {
+    void mutate();
   };
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca de dados no mount/na mudança de filtro; migração pra SWR (useApiQuery) é item à parte (audit-2026-08, item 4).
-    loadData();
-  }, []);
 
   // Cálculos das estatísticas de SLAs e vencimentos
   const metrics = useMemo(() => {
@@ -424,7 +418,12 @@ export function ContractMonitoringDashboard() {
           onCreated={(newOfficial) => {
             const updated = [newOfficial, ...officials];
             setOfficials(updated);
-            localStorage.setItem("nova_contract_officials_v1", JSON.stringify(updated));
+            try {
+              localStorage.setItem(OFFICIALS_STORAGE_KEY, JSON.stringify(updated));
+            } catch {
+              // localStorage indisponível (modo privado etc.) — o estado em
+              // memória segue valendo nesta sessão.
+            }
             showToast({
               title: "Fiscal Cadastrado com Sucesso",
               description: `Portaria de nomeação vinculada a ${newOfficial.nome}.`,
