@@ -2,6 +2,7 @@ package application
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -13,6 +14,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	pdfapi "github.com/pdfcpu/pdfcpu/pkg/api"
+	pdfmodel "github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 
 	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
 	"github.com/yurythx/projeto-nova/internal/modules/demands/domain"
@@ -70,14 +73,26 @@ func slugify(s string) string {
 	return s
 }
 
-// PackageFileName devolve o nome sugerido do .zip de uma demanda
-// (demanda-<contrato>-<ano_mes>.zip), sem tocar no storage.
-func PackageFileName(d domain.MonthlyDemand) string {
+// packageBaseName é "demanda-<contrato>-<ano_mes>" — o tronco comum dos
+// nomes de arquivo do .zip e do .pdf unificado.
+func packageBaseName(d domain.MonthlyDemand) string {
 	num := d.ContratoNumero
 	if num == "" {
 		num = d.ContratoID.String()
 	}
-	return fmt.Sprintf("demanda-%s-%s.zip", slugify(num), slugify(d.AnoMes))
+	return fmt.Sprintf("demanda-%s-%s", slugify(num), slugify(d.AnoMes))
+}
+
+// PackageFileName devolve o nome sugerido do .zip de uma demanda
+// (demanda-<contrato>-<ano_mes>.zip), sem tocar no storage.
+func PackageFileName(d domain.MonthlyDemand) string {
+	return packageBaseName(d) + ".zip"
+}
+
+// PackagePDFFileName devolve o nome sugerido do PDF unificado de uma demanda
+// (demanda-<contrato>-<ano_mes>.pdf).
+func PackagePDFFileName(d domain.MonthlyDemand) string {
+	return packageBaseName(d) + ".pdf"
 }
 
 // blobGetter é o subconjunto de storage.Provider que o compilador de pacote
@@ -106,8 +121,20 @@ func readObject(ctx context.Context, getter blobGetter, bucket, key string) ([]b
 // A demanda precisa vir com Documents carregados; use LoadDemandForPackage
 // antes, na camada HTTP, para responder 400 quando não há nada a compactar.
 func (s *Service) WriteDemandPackage(ctx context.Context, d domain.MonthlyDemand, out io.Writer) error {
-	// Documentos oficiais gerados na hora, conforme a etapa alcançada:
-	// o Ofício sempre; a OS a partir da etapa 3; o Anexo I a partir da 5.
+	return writePackageZip(ctx, s.storage, s.bucket, d, out, generatedDemandDocs(d), s.logger)
+}
+
+// generatedDoc é um documento oficial renderizado em tempo real (não vem do
+// storage) para entrar no pacote (.zip ou PDF unificado).
+type generatedDoc struct {
+	name   string
+	render func(io.Writer) error
+}
+
+// generatedDemandDocs lista os documentos oficiais gerados na hora conforme a
+// etapa alcançada: o Ofício sempre; a OS a partir da etapa 3; o Anexo I a
+// partir da 5. Mesma sequência para o .zip e para o PDF unificado.
+func generatedDemandDocs(d domain.MonthlyDemand) []generatedDoc {
 	var generated []generatedDoc
 	for _, k := range []PDFKind{PDFOficio, PDFOrdemServico, PDFRelatorio} {
 		if d.Etapa < pdfKindMinEtapa[k] {
@@ -119,17 +146,12 @@ func (s *Service) WriteDemandPackage(ctx context.Context, d domain.MonthlyDemand
 			render: func(w io.Writer) error { return RenderDemandPDF(kind, d, w) },
 		})
 	}
-	return writePackageZip(ctx, s.storage, s.bucket, d, out, generated, s.logger)
+	return generated
 }
 
-// generatedDoc é um documento oficial renderizado em tempo real (não vem do
-// storage) para entrar no pacote .zip.
-type generatedDoc struct {
-	name   string
-	render func(io.Writer) error
-}
-
-func writePackageZip(ctx context.Context, getter blobGetter, bucket string, d domain.MonthlyDemand, out io.Writer, generated []generatedDoc, logger *slog.Logger) error {
+// sortedDemandDocs devolve os anexos de `d` na ordem canônica das etapas
+// (documentWorkflowOrder), desempatando por data de upload.
+func sortedDemandDocs(d domain.MonthlyDemand) []domain.DemandDocument {
 	docs := append([]domain.DemandDocument(nil), d.Documents...)
 	sort.SliceStable(docs, func(i, j int) bool {
 		si, sj := docSortIndex(docs[i].DocType), docSortIndex(docs[j].DocType)
@@ -138,6 +160,11 @@ func writePackageZip(ctx context.Context, getter blobGetter, bucket string, d do
 		}
 		return docs[i].UploadedAt.Before(docs[j].UploadedAt)
 	})
+	return docs
+}
+
+func writePackageZip(ctx context.Context, getter blobGetter, bucket string, d domain.MonthlyDemand, out io.Writer, generated []generatedDoc, logger *slog.Logger) error {
+	docs := sortedDemandDocs(d)
 
 	zw := zip.NewWriter(out)
 
@@ -228,6 +255,81 @@ func writePackageZip(ctx context.Context, getter blobGetter, bucket string, d do
 		return fmt.Errorf("demands package: fechar zip: %w", err)
 	}
 	return nil
+}
+
+// WriteDemandPackagePDF baixa os anexos da demanda `d`, gera os documentos
+// oficiais devidos à etapa (Ofício / OS / Anexo I) e concatena TUDO num
+// único PDF em `out`, na ordem canônica das etapas — o maço pronto para
+// despacho ao fornecedor. Diferente do .zip, não há índice nem errata
+// embutidos: é só o PDF unificado.
+//
+// Cada anexo é lido inteiro para memória (mesmo motivo do .zip: o cliente
+// MinIO só falha no primeiro Read). Anexos que já são PDF entram como estão;
+// imagens (JPEG/PNG) viram uma página cada via pdfcpu; qualquer outro tipo
+// (ou um anexo ilegível no storage) é pulado e registrado no log — nunca
+// derruba o pacote. Erra com BadRequest se, no fim, não sobrar nada
+// unificável.
+func (s *Service) WriteDemandPackagePDF(ctx context.Context, d domain.MonthlyDemand, out io.Writer) error {
+	return writePackagePDF(ctx, s.storage, s.bucket, d, out, generatedDemandDocs(d), s.logger)
+}
+
+func writePackagePDF(ctx context.Context, getter blobGetter, bucket string, d domain.MonthlyDemand, out io.Writer, generated []generatedDoc, logger *slog.Logger) error {
+	parts := make([]io.ReadSeeker, 0, len(d.Documents)+3)
+	var skipped []string
+
+	for i, doc := range sortedDemandDocs(d) {
+		label := fmt.Sprintf("%02d - %s", i+1, doc.DocType.Label())
+		content, err := readObject(ctx, getter, bucket, doc.FilePath)
+		if err != nil {
+			skipped = append(skipped, fmt.Sprintf("%s (%s): %v", label, doc.FilePath, err))
+			continue
+		}
+		switch {
+		case bytes.HasPrefix(content, []byte("%PDF")):
+			parts = append(parts, bytes.NewReader(content))
+		case isSupportedImage(content):
+			var page bytes.Buffer
+			if err := pdfapi.ImportImages(nil, &page, []io.Reader{bytes.NewReader(content)}, nil, nil); err != nil {
+				skipped = append(skipped, fmt.Sprintf("%s: imagem não convertida: %v", label, err))
+				continue
+			}
+			parts = append(parts, bytes.NewReader(page.Bytes()))
+		default:
+			skipped = append(skipped, fmt.Sprintf("%s: tipo não suportado no PDF unificado", label))
+		}
+	}
+
+	for _, g := range generated {
+		var buf bytes.Buffer
+		if err := g.render(&buf); err != nil {
+			skipped = append(skipped, fmt.Sprintf("%s: %v", g.name, err))
+			continue
+		}
+		parts = append(parts, bytes.NewReader(buf.Bytes()))
+	}
+
+	if logger != nil && len(skipped) > 0 {
+		logger.Warn("demands package pdf: itens fora do PDF unificado",
+			"demanda_id", d.ID.String(), "pulados", len(skipped))
+	}
+	if len(parts) == 0 {
+		return apperrors.BadRequest("nenhum anexo em PDF ou imagem para unificar num só PDF")
+	}
+
+	conf := pdfmodel.NewDefaultConfiguration()
+	conf.ValidationMode = pdfmodel.ValidationRelaxed
+	if err := pdfapi.MergeRaw(parts, out, false, conf); err != nil {
+		return fmt.Errorf("demands package pdf: merge: %w", err)
+	}
+	return nil
+}
+
+// isSupportedImage sniffa a assinatura de bytes de JPEG e PNG — os formatos
+// que pdfcpu.ImportImages aceita e que aparecem como anexo (certidões
+// escaneadas, prints).
+func isSupportedImage(b []byte) bool {
+	return bytes.HasPrefix(b, []byte{0xFF, 0xD8, 0xFF}) || // JPEG
+		bytes.HasPrefix(b, []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}) // PNG
 }
 
 // LoadDemandForPDF busca a demanda, valida que ela alcançou a etapa mínima

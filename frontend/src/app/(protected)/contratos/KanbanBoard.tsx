@@ -28,7 +28,7 @@ import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/notifications/ToastProvider";
 import { SectionTabs } from "@/components/layout/SectionTabs";
 import { CONTRATOS_TABS } from "@/lib/nav/sectionTabs";
-import { Building2, Calendar, Lock, Plus, CheckCircle2, Clock, AlertTriangle, FileArchive, ChevronLeft, ChevronRight } from "lucide-react";
+import { Building2, Calendar, Lock, Plus, CheckCircle2, Clock, AlertTriangle, FileArchive, FileText, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { ContratoModal } from "./ContratoModal";
 import { NewDemandModal } from "./NewDemandModal";
@@ -470,17 +470,30 @@ function DemandCard({ demand, isOverlay, onClick }: { demand: DemandResponse; is
           )}
 
           {(demand.documents?.length ?? 0) > 0 && (
-            <a
-              href={`/api/backend/v1/demands/${demand.id}/package.zip`}
-              download
-              onClick={(e) => e.stopPropagation()}
-              onPointerDown={(e) => e.stopPropagation()}
-              className="mt-1 inline-flex items-center gap-1.5 self-start rounded px-1.5 py-0.5 text-xs text-muted hover:bg-surface-hover hover:text-foreground"
-              title={`Baixar pacote (.zip) com os ${demand.documents?.length} documentos anexados, na ordem das etapas`}
-            >
-              <FileArchive className="h-3.5 w-3.5" />
-              Baixar pacote ({demand.documents?.length})
-            </a>
+            <div className="mt-1 flex flex-wrap items-center gap-1">
+              <a
+                href={`/api/backend/v1/demands/${demand.id}/package.zip`}
+                download
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1.5 self-start rounded px-1.5 py-0.5 text-xs text-muted hover:bg-surface-hover hover:text-foreground"
+                title={`Baixar pacote (.zip) com os ${demand.documents?.length} documentos anexados, na ordem das etapas`}
+              >
+                <FileArchive className="h-3.5 w-3.5" />
+                Pacote .zip ({demand.documents?.length})
+              </a>
+              <a
+                href={`/api/backend/v1/demands/${demand.id}/package.pdf`}
+                download
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1.5 self-start rounded px-1.5 py-0.5 text-xs text-muted hover:bg-surface-hover hover:text-foreground"
+                title="Baixar tudo num único PDF (anexos + documentos gerados, na ordem das etapas) — pronto para despacho ao fornecedor"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                PDF unificado
+              </a>
+            </div>
           )}
         </div>
       </CardContent>

@@ -1,9 +1,11 @@
 package transport
 
 import (
+	"bytes"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -268,6 +270,44 @@ func (h *Handlers) DownloadPackage(w http.ResponseWriter, r *http.Request) {
 		// para trocar por um 500 JSON. Só registra; o cliente recebe um
 		// zip truncado e tenta de novo.
 		h.logger.Error("falha ao gerar pacote da demanda",
+			slog.String("demanda_id", demandID.String()), slog.Any("error", err))
+	}
+}
+
+// DownloadPackagePDF transmite um único PDF com os anexos da demanda + os
+// documentos oficiais gerados, concatenados na ordem das etapas — o maço
+// pronto para despacho ao fornecedor (GET /demands/{id}/package.pdf).
+func (h *Handlers) DownloadPackagePDF(w http.ResponseWriter, r *http.Request) {
+	demandID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		httputil.WriteError(w, r, h.logger, apperrors.BadRequest("id da demanda inválido"))
+		return
+	}
+
+	// Carrega e valida (>=1 anexo) ANTES de escrever cabeçalhos, para poder
+	// responder 400/404 em JSON em vez de um PDF quebrado. O merge em si só
+	// pode falhar depois — aí resta logar (ver abaixo).
+	demand, err := h.service.LoadDemandForPackage(r.Context(), demandID)
+	if err != nil {
+		httputil.WriteError(w, r, h.logger, err)
+		return
+	}
+
+	// O merge pode ainda descobrir que nenhum anexo é PDF/imagem — roda num
+	// buffer primeiro para que esse caso vire 400 JSON, não um PDF vazio.
+	var buf bytes.Buffer
+	if err := h.service.WriteDemandPackagePDF(r.Context(), demand, &buf); err != nil {
+		httputil.WriteError(w, r, h.logger, err)
+		return
+	}
+
+	fileName := application.PackagePDFFileName(demand)
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, fileName))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
+	if _, err := buf.WriteTo(w); err != nil {
+		h.logger.Error("falha ao enviar PDF unificado da demanda",
 			slog.String("demanda_id", demandID.String()), slog.Any("error", err))
 	}
 }

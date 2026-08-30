@@ -78,10 +78,10 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
     );
   }
 
-  // Respostas binárias (hoje: GET .../package.zip — o compilador de
-  // pacote de uma demanda) NÃO podem passar por .text(): o decode UTF-8
-  // troca cada byte inválido por U+FFFD e corrompe o .zip. Encaminha os
-  // bytes crus nesse caso; texto (JSON, CSV) sobrevive igual a um
+  // Respostas binárias (GET .../package.zip e .../package.pdf — o
+  // compilador de pacote de uma demanda) NÃO podem passar por .text(): o decode UTF-8
+  // troca cada byte inválido por U+FFFD e corrompe o binário. Encaminha
+  // os bytes crus nesse caso; texto (JSON, CSV) sobrevive igual a um
   // round-trip por ArrayBuffer, então o galho binário serve os dois.
   const upstreamContentType = backendResponse.headers.get("content-type") ?? "application/json";
   const isTextual =

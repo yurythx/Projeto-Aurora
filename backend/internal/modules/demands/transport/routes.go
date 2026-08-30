@@ -34,6 +34,9 @@ func RegisterRoutes(r chi.Router, h *Handlers, logger *slog.Logger, limiter http
 	r.With(read).Get("/demands/{id}/requirements", h.NextRequirements)
 	r.With(read).Get("/demands/{id}/history", h.GetHistory)
 	r.With(read).Get("/demands/{id}/package.zip", h.DownloadPackage)
+	// O PDF unificado concatena anexos + docs gerados via pdfcpu — mais
+	// pesado que o .zip, então entra com rate limit como os outros PDFs.
+	r.With(read, rate).Get("/demands/{id}/package.pdf", h.DownloadPackagePDF)
 	// PDFs são gerados na hora (fpdf monta o doc em memória): leitura, mas
 	// com rate limit para não virar vetor de CPU.
 	r.With(read, rate).Get("/demands/{id}/oficio.pdf", h.DownloadPDF(application.PDFOficio))

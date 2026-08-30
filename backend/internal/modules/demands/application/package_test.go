@@ -11,9 +11,26 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	pdfapi "github.com/pdfcpu/pdfcpu/pkg/api"
 
 	"github.com/yurythx/projeto-nova/internal/modules/demands/domain"
 )
+
+// realPDF renderiza um PDF oficial de verdade (fpdf) e devolve seus bytes —
+// insumo para os testes do PDF unificado, que precisam de PDFs válidos para
+// o pdfcpu concatenar.
+func realPDF(t *testing.T) []byte {
+	t.Helper()
+	d := domain.MonthlyDemand{
+		ID: uuid.New(), ContratoNumero: "1/2026", AnoMes: "2026-08",
+		Etapa: domain.Etapa1ElaborarOF, Contratado: "ACME LTDA",
+	}
+	var buf bytes.Buffer
+	if err := RenderDemandPDF(PDFOficio, d, &buf); err != nil {
+		t.Fatalf("RenderDemandPDF: %v", err)
+	}
+	return buf.Bytes()
+}
 
 // fakeGetter serve bytes canônicos por object path; um path em `missing`
 // devolve erro (simula anexo sumido do bucket).
@@ -157,6 +174,75 @@ func TestWritePackageZip_IncludesGeneratedDocs(t *testing.T) {
 	}
 	if !strings.Contains(files["00 - INDICE.txt"], "GERADO - oficio.pdf") {
 		t.Errorf("índice não menciona o documento gerado")
+	}
+}
+
+func TestWritePackagePDF_MergesAttachmentsAndGeneratedDocs(t *testing.T) {
+	pdfBytes := string(realPDF(t))
+	d := domain.MonthlyDemand{
+		ID: uuid.New(), ContratoNumero: "012/2026", AnoMes: "2026-08",
+		Etapa: domain.Etapa3EmitirOS, Contratado: "ACME LTDA",
+		Documents: []domain.DemandDocument{
+			pkgDoc(domain.DocEmpenhoAssinado, "empenho.pdf", "obj/empenho.pdf", time.Now()),
+			pkgDoc(domain.DocOFPreEmpenho, "of.pdf", "obj/of.pdf", time.Now()),
+			// anexo não-PDF/imagem: deve ser pulado sem derrubar o merge
+			pkgDoc(domain.DocOficioPlanej, "planilha.xlsx", "obj/planilha.xlsx", time.Now()),
+		},
+	}
+	g := fakeGetter{blobs: map[string]string{
+		"obj/empenho.pdf":   pdfBytes,
+		"obj/of.pdf":        pdfBytes,
+		"obj/planilha.xlsx": "PK\x03\x04not-a-pdf",
+	}}
+	gen := []generatedDoc{
+		{name: "GERADO - oficio.pdf", render: func(w io.Writer) error { return RenderDemandPDF(PDFOficio, d, w) }},
+	}
+
+	var buf bytes.Buffer
+	if err := writePackagePDF(context.Background(), g, "bkt", d, &buf, gen, nil); err != nil {
+		t.Fatalf("writePackagePDF: %v", err)
+	}
+	if !bytes.HasPrefix(buf.Bytes(), []byte("%PDF")) {
+		t.Fatalf("saída não é PDF: começa com %q", buf.Bytes()[:min(8, buf.Len())])
+	}
+	conf := pdfapi.LoadConfiguration()
+	if err := pdfapi.Validate(bytes.NewReader(buf.Bytes()), conf); err != nil {
+		t.Fatalf("PDF unificado inválido: %v", err)
+	}
+	n, err := pdfapi.PageCount(bytes.NewReader(buf.Bytes()), conf)
+	if err != nil {
+		t.Fatalf("PageCount: %v", err)
+	}
+	// 2 anexos PDF + 1 doc gerado, cada Ofício com >=1 página → >=3.
+	if n < 3 {
+		t.Errorf("esperava >=3 páginas (2 anexos + 1 gerado), veio %d", n)
+	}
+}
+
+func TestWritePackagePDF_NoUnifiablePartsReturnsBadRequest(t *testing.T) {
+	d := domain.MonthlyDemand{
+		ID: uuid.New(), ContratoNumero: "1/26", AnoMes: "2026-08",
+		Etapa: 0, // abaixo da etapa 1 → nenhum documento oficial gerado
+		Documents: []domain.DemandDocument{
+			pkgDoc(domain.DocOFPreEmpenho, "of.txt", "obj/of.txt", time.Now()),
+		},
+	}
+	g := fakeGetter{blobs: map[string]string{"obj/of.txt": "só texto, não é PDF"}}
+
+	var buf bytes.Buffer
+	err := writePackagePDF(context.Background(), g, "bkt", d, &buf, nil, nil)
+	if err == nil {
+		t.Fatal("esperava erro quando nenhum anexo é PDF/imagem")
+	}
+	if !strings.Contains(err.Error(), "unificar") {
+		t.Errorf("erro inesperado: %v", err)
+	}
+}
+
+func TestPackagePDFFileName(t *testing.T) {
+	d := domain.MonthlyDemand{ContratoNumero: "012/2026", AnoMes: "2026-08"}
+	if got := PackagePDFFileName(d); got != "demanda-012-2026-2026-08.pdf" {
+		t.Errorf("PackagePDFFileName = %q", got)
 	}
 }
 
