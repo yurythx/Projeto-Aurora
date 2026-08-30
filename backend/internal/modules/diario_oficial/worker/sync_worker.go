@@ -2,7 +2,10 @@ package worker
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -140,10 +143,29 @@ func (p *SyncWorkerPool) processJob(ctx context.Context, job EditionJob) {
 		return
 	}
 
-	// 2. Extração em Stream via pdftotext (zero-disk)
-	pdfText, err := p.parser.ExtractTextStream(ctx, resp.Body)
+	// 2. Extração em Stream via pdftotext (zero-disk). O TeeReader calcula o
+	// SHA-256 dos bytes brutos do PDF conforme o pdftotext os consome — sem
+	// segunda leitura nem buffer do arquivo inteiro.
+	hasher := sha256.New()
+	pdfText, err := p.parser.ExtractTextStream(ctx, io.TeeReader(resp.Body, hasher))
 	if err != nil {
 		p.failEdition(ctx, ed, err.Error())
+		return
+	}
+	pdfHash := hex.EncodeToString(hasher.Sum(nil))
+
+	// Idempotência estrita (CLAUDE.md §1): se estes bytes exatos já foram
+	// integralmente ingeridos numa passagem anterior (hash gravado só após
+	// SaveFindingsTx), pular pdftotext-parser-persist-reindex e apenas
+	// reconfirmar COMPLETED. Hash diferente = republicação com conteúdo
+	// alterado, segue a re-ingestão normal.
+	if ed.PDFSHA256 != "" && ed.PDFSHA256 == pdfHash {
+		if p.logger != nil {
+			p.logger.Info("Diário: edição inalterada (hash idêntico), ingestão pulada",
+				"edition_number", ed.EditionNumber, "pdf_sha256", pdfHash)
+		}
+		metrics.DiarioEditionsIngestedTotal.WithLabelValues("skipped_unchanged").Inc()
+		_ = p.repo.UpdateEditionStatus(ctx, ed.ID, domain.EditionStatusCompleted, ed.RecordsCount, nil)
 		return
 	}
 
@@ -154,6 +176,14 @@ func (p *SyncWorkerPool) processJob(ctx context.Context, job EditionJob) {
 	if err := p.repo.SaveFindingsTx(ctx, ed.ID, findings); err != nil {
 		p.failEdition(ctx, ed, err.Error())
 		return
+	}
+
+	// Carimba o hash só agora: sua presença passa a significar "estes bytes
+	// exatos foram integralmente processados". Falha aqui não invalida a
+	// ingestão — só custa um reprocesso completo no próximo ciclo.
+	if err := p.repo.SetEditionPDFHash(ctx, ed.ID, pdfHash); err != nil && p.logger != nil {
+		p.logger.Warn("Diário: falha ao gravar hash do PDF (best-effort)",
+			"edition_number", ed.EditionNumber, "error", err)
 	}
 	for _, f := range findings {
 		conf := f.Confidence

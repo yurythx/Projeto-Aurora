@@ -83,14 +83,16 @@ func (r *PostgresEditionRepository) SaveEdition(ctx context.Context, ed *domain.
 	return nil
 }
 
-const editionSelectCols = `id, edition_number, edition_date, pdf_url, status, records_count, retry_count, error_message, created_at, updated_at`
+const editionSelectCols = `id, edition_number, edition_date, pdf_url, status, records_count, retry_count, error_message, pdf_sha256, created_at, updated_at`
 
 func scanEdition(row pgx.Row, ed *domain.Edition) error {
 	// edition_date virou nullable (000031): NULL não entra num time.Time direto.
 	var edDate *time.Time
+	// pdf_sha256 (000040) é NULL até a 1ª ingestão completa.
+	var pdfSHA256 *string
 	if err := row.Scan(
 		&ed.ID, &ed.EditionNumber, &edDate, &ed.PdfURL, &ed.Status,
-		&ed.RecordsCount, &ed.RetryCount, &ed.ErrorMessage, &ed.CreatedAt, &ed.UpdatedAt,
+		&ed.RecordsCount, &ed.RetryCount, &ed.ErrorMessage, &pdfSHA256, &ed.CreatedAt, &ed.UpdatedAt,
 	); err != nil {
 		return err
 	}
@@ -98,6 +100,11 @@ func scanEdition(row pgx.Row, ed *domain.Edition) error {
 		ed.EditionDate = *edDate
 	} else {
 		ed.EditionDate = time.Time{}
+	}
+	if pdfSHA256 != nil {
+		ed.PDFSHA256 = strings.TrimSpace(*pdfSHA256)
+	} else {
+		ed.PDFSHA256 = ""
 	}
 	return nil
 }
@@ -179,6 +186,18 @@ func (r *PostgresEditionRepository) UpdateEditionStatus(ctx context.Context, edi
 	_, err := r.pool.Exec(ctx, query, status, recordsCount, errMsg, editionID)
 	if err != nil {
 		return fmt.Errorf("postgres_edition_repository update edition status: %w", err)
+	}
+	return nil
+}
+
+// SetEditionPDFHash grava o SHA-256 dos bytes brutos do PDF já processado.
+func (r *PostgresEditionRepository) SetEditionPDFHash(ctx context.Context, editionID int64, sha256Hex string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE diario_oficial_editions SET pdf_sha256 = $1, updated_at = NOW() WHERE id = $2`,
+		sha256Hex, editionID,
+	)
+	if err != nil {
+		return fmt.Errorf("postgres_edition_repository set edition pdf hash: %w", err)
 	}
 	return nil
 }

@@ -26,8 +26,12 @@ type Edition struct {
 	RecordsCount  int           `json:"records_count"`
 	RetryCount    int           `json:"retry_count"`
 	ErrorMessage  *string       `json:"error_message,omitempty"`
-	CreatedAt     time.Time     `json:"created_at"`
-	UpdatedAt     time.Time     `json:"updated_at"`
+	// PDFSHA256 é o SHA-256 (hex minúsculo, 64 chars) dos bytes brutos do PDF,
+	// gravado só após a ingestão completa. Vazio = ainda não ingerida sob a
+	// idempotência por hash binário (ver migration 000040 e SyncWorkerPool).
+	PDFSHA256 string    `json:"pdf_sha256,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // Finding representa um ato administrativo (pessoal ou contrato) extraído do texto do PDF.
@@ -79,6 +83,13 @@ type EditionRepository interface {
 	// reencaminhadas. Chamado pelo watcher a cada ciclo.
 	RequeueFailedEditions(ctx context.Context, maxRetries int) (int, error)
 	UpdateEditionStatus(ctx context.Context, editionID int64, status EditionStatus, recordsCount int, errMsg *string) error
+
+	// SetEditionPDFHash grava o SHA-256 dos bytes brutos do PDF já ingerido.
+	// Chamado só depois de SaveFindingsTx ter sucesso — o hash é o carimbo de
+	// "estes bytes exatos já foram integralmente processados" que habilita o
+	// atalho de idempotência estrita numa reprocessagem.
+	SetEditionPDFHash(ctx context.Context, editionID int64, sha256Hex string) error
+
 	SaveFindingsTx(ctx context.Context, editionID int64, findings []Finding) error
 	SearchFindings(ctx context.Context, query string, actType string, limit, offset int) ([]Finding, int, error)
 
