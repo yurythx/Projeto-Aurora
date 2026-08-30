@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { FileText, Building2, Tag, Search } from "lucide-react";
+import { FileText, Tag, Search } from "lucide-react";
 
 import { useToast } from "@/components/notifications/ToastProvider";
 import { Button } from "@/components/ui/Button";
@@ -20,93 +20,6 @@ function pathFor(termId: string, page: number) {
     : `v1/diario-oficial/publications?page=${page}&page_size=${PAGE_SIZE}`;
 }
 
-// Fallback de publicações recentes coerentes de Rondonópolis
-const FALLBACK_PUBLICATIONS: MatchedPublication[] = [
-  {
-    id: "pub-000a",
-    tribunal: "Secretaria Municipal de Administração",
-    orgao: "Gabinete do Prefeito",
-    tipo_comunicacao: "Extrato de Portaria",
-    texto: "PORTARIA Nº 42.500/2026 - Nomeia JOÃO PEDRO ALMEIDA CASTRO para o cargo de Coordenador Geral de Governança Digital (DAS-1) com exercício na Secretaria Municipal de Administração.",
-    process_number: "Portaria 42.500",
-    process_number_masked: "Edição Nº 6.263 · 26/08/2026",
-    availability_date: "2026-08-26",
-    link: "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-    monitored_term_id: "t0a",
-    monitored_term_label: "Nomeações",
-    matched_at: "2026-08-26T14:30:00Z",
-  },
-  {
-    id: "pub-000b",
-    tribunal: "Secretaria Municipal de Governo",
-    orgao: "Gabinete do Prefeito",
-    tipo_comunicacao: "Extrato de Portaria",
-    texto: "PORTARIA Nº 42.501/2026 - Nomeia RAFAELA SANTOS MENDONÇA para o cargo de Assessora Especial de TI (DAS-2) com exercício no Gabinete do Prefeito.",
-    process_number: "Portaria 42.501",
-    process_number_masked: "Edição Nº 6.263 · 26/08/2026",
-    availability_date: "2026-08-26",
-    link: "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-    monitored_term_id: "t0b",
-    monitored_term_label: "Nomeações",
-    matched_at: "2026-08-26T14:25:00Z",
-  },
-  {
-    id: "pub-001",
-    tribunal: "Secretaria Municipal de Administração",
-    orgao: "Gabinete do Prefeito",
-    tipo_comunicacao: "Extrato de Portaria",
-    texto: "PORTARIA Nº 41.754/2026 - Exonera, a pedido, VANETE BARBOSA DO REGO do cargo em comissão de Agente Administrativo da Família.",
-    process_number: "Portaria 41.754",
-    process_number_masked: "Edição Nº 6.262 · 24/08/2026",
-    availability_date: "2026-08-24",
-    link: "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-    monitored_term_id: "t1",
-    monitored_term_label: "Exonerações",
-    matched_at: "2026-08-24T14:00:00Z",
-  },
-  {
-    id: "pub-002",
-    tribunal: "Secretaria Municipal de Promoção Social",
-    orgao: "Gabinete do Prefeito",
-    tipo_comunicacao: "Extrato de Portaria",
-    texto: "PORTARIA Nº 41.808/2026 - Nomeia MARILEIDE GONÇALVES DE OLIVEIRA para o cargo em comissão de Agente Administrativo da Família (DAS-4).",
-    process_number: "Portaria 41.808",
-    process_number_masked: "Edição Nº 6.253 · 11/08/2026",
-    availability_date: "2026-08-11",
-    link: "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-    monitored_term_id: "t2",
-    monitored_term_label: "Nomeações",
-    matched_at: "2026-08-11T13:30:00Z",
-  },
-  {
-    id: "pub-003",
-    tribunal: "Secretaria Municipal de Infraestrutura",
-    orgao: "Gabinete do Prefeito",
-    tipo_comunicacao: "Extrato de Portaria",
-    texto: "PORTARIA Nº 41.830/2026 - Nomeia VINICIUS MARTINS GALHARDO LOPES para o cargo em comissão de Assessor de Engenharia e Arquitetura (DAS-2).",
-    process_number: "Portaria 41.830",
-    process_number_masked: "Edição Nº 6.260 · 20/08/2026",
-    availability_date: "2026-08-20",
-    link: "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-    monitored_term_id: "t3",
-    monitored_term_label: "Engenharia & Arquitetura",
-    matched_at: "2026-08-20T11:15:00Z",
-  },
-  {
-    id: "pub-004",
-    tribunal: "Secretaria Municipal de Fazenda",
-    orgao: "Departamento de Licitações e Contratos",
-    tipo_comunicacao: "Designação de Fiscais",
-    texto: "PORTARIA Nº 440/2026 - Designa fiscais titulares e suplentes para o acompanhamento e fiscalização do Contrato Nº 440/2026 de Gestão e Arrecadação Fiscal.",
-    process_number: "Portaria 440/2026",
-    process_number_masked: "Edição Nº 6.260 · 20/08/2026",
-    availability_date: "2026-08-20",
-    link: "https://www.rondonopolis.mt.gov.br/media/docs/edicoes/2026/August/2478a56e-28ce-4c67-b76e-f889f700cb62.pdf",
-    monitored_term_id: "t4",
-    monitored_term_label: "Fiscalização de Contratos",
-    matched_at: "2026-08-20T09:45:00Z",
-  },
-];
 
 export function MatchedPublicationsFeed() {
   const { data: terms } = useApiQuery<MonitoredTerm[]>("v1/diario-oficial/monitored-terms");
@@ -140,7 +53,7 @@ export function MatchedPublicationsFeed() {
         setPublications(data && data.length > 0 ? data : []);
         setMeta(nextMeta as PaginationMeta | undefined);
       })
-      .catch((err) => {
+      .catch(() => {
         if (cancelled) return;
         setPublications([]);
         setError(null);

@@ -72,7 +72,7 @@ export function ContractMonitoringDashboard() {
           // fallback
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error("Monitoring load error:", err);
     } finally {
       setLoading(false);

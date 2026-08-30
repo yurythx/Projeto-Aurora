@@ -6,8 +6,6 @@ import { serverApiGet } from "@/lib/api/server";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { KanbanBoard } from "./KanbanBoard";
 import type { KanbanResponse } from "@/types/api";
-import { Button } from "@/components/ui/Button";
-import { Plus } from "lucide-react";
 
 import { getServerToken } from "@/lib/auth/serverToken";
 
@@ -25,8 +23,8 @@ export default async function ContratosPage() {
   try {
     const { data } = await serverApiGet<KanbanResponse>("v1/demands/kanban");
     kanbanData = data;
-  } catch (err: any) {
-    errorMessage = err.message || "Falha ao carregar as demandas do Kanban";
+  } catch (err) {
+    errorMessage = err instanceof Error ? err.message : "Falha ao carregar as demandas do Kanban";
   }
 
   return (

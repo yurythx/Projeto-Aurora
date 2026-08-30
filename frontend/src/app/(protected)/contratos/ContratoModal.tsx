@@ -76,10 +76,13 @@ export function ContratoModal({ demand, onClose, onDemandUpdated }: Props) {
       
       if (onDemandUpdated) onDemandUpdated();
       
-    } catch (err: any) {
+    } catch (err) {
       showToast({
         title: "Erro no Upload",
-        description: err.message || "Não foi possível enviar o documento para o storage.",
+        description:
+          err instanceof Error
+            ? err.message
+            : "Não foi possível enviar o documento para o storage.",
         tone: "danger",
       });
     } finally {

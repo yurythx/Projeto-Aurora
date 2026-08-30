@@ -130,10 +130,13 @@ export function KanbanBoard({ initialData }: Props) {
         tone: "success",
       });
       refreshKanban();
-    } catch (err: any) {
+    } catch (err) {
       showToast({
         title: "Avanço Bloqueado (Compliance)",
-        description: err.message || "Faltam documentos obrigatórios para esta etapa.",
+        description:
+          err instanceof Error
+            ? err.message
+            : "Faltam documentos obrigatórios para esta etapa.",
         tone: "danger",
       });
       setColumns(prevColumns);
@@ -173,7 +176,7 @@ export function KanbanBoard({ initialData }: Props) {
 
     if (contractTypeFilter !== "TODOS") {
       filteredItems = filteredItems.filter(
-        (item) => (item as any).tipo_contrato === contractTypeFilter
+        (item) => (item as { tipo_contrato?: string }).tipo_contrato === contractTypeFilter,
       );
     }
 

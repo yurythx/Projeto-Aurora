@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/Badge";
-import { ApiError, useApiQuery } from "@/lib/api/swr";
+import { useApiQuery } from "@/lib/api/swr";
 import type { SourceHealth } from "@/types/api";
 import { useEffect, useState } from "react";
 import { getTypesenseHealth } from "@/lib/typesense-client";

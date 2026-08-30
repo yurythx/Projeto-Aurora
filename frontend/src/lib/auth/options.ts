@@ -69,7 +69,7 @@ async function refreshAccessToken(token: JWT): Promise<JWT> {
       refreshToken: refreshed.refresh_token ?? token.refreshToken,
       error: undefined,
     };
-  } catch (err) {
+  } catch {
     // Marca o erro na sessão em vez de lançar — o chamador (callback jwt)
     // segue com um token expirado + error="RefreshAccessTokenError", e é
     // esse campo que o middleware/proxy.ts usa para decidir redirecionar
@@ -236,7 +236,7 @@ export const authOptions: NextAuthOptions = {
 
     async session({ session, token }): Promise<Session> {
       session.user = session.user ?? {};
-      (session.user as any).roles = token.roles || [];
+      session.user.roles = token.roles ?? [];
       session.error = token.error as string | undefined;
       return session;
     },

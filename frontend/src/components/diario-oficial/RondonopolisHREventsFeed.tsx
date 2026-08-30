@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, FileText, CheckCircle2, UserMinus, UserPlus, RefreshCw, Calendar, Eye, Copy, ExternalLink, X, ShieldCheck, Download } from "lucide-react";
+import { Search, FileText, UserMinus, UserPlus, RefreshCw, Calendar, Eye, Copy, ExternalLink, X, ShieldCheck, Download } from "lucide-react";
 
 import { useToast } from "@/components/notifications/ToastProvider";
 import { Badge } from "@/components/ui/Badge";
@@ -635,7 +635,7 @@ Link do PDF: ${ev.doc_url || "N/A"}`;
                   </div>
 
                   <p className="rounded-md bg-surface-border/20 p-2.5 text-xs italic text-foreground/90 border border-surface-border/50">
-                    "{ev.context_snippet}"
+                    &ldquo;{ev.context_snippet}&rdquo;
                   </p>
 
                   <div className="flex items-center justify-between pt-1 text-xs" onClick={(e) => e.stopPropagation()}>
@@ -755,7 +755,7 @@ Link do PDF: ${ev.doc_url || "N/A"}`;
                           {item.publication_date ? new Date(item.publication_date).toLocaleDateString("pt-BR") : "Data recente"}
                         </span>
                       </div>
-                      <p className="text-muted italic">"{item.context_snippet}"</p>
+                      <p className="text-muted italic">&ldquo;{item.context_snippet}&rdquo;</p>
                       <div className="flex items-center justify-between text-[11px] text-muted pt-1 border-t border-surface-border/40">
                         <span>Portaria Nº {item.portaria_number || "N/A"} · Edição Nº {item.edition_number || "N/A"}</span>
                       </div>
@@ -770,7 +770,7 @@ Link do PDF: ${ev.doc_url || "N/A"}`;
                   Transcrição Oficial do Atos no Diário Oficial:
                 </span>
                 <p className="rounded bg-surface p-3 text-xs italic font-serif text-foreground/90 border border-surface-border/60 leading-relaxed">
-                  "{selectedEvent.context_snippet}"
+                  &ldquo;{selectedEvent.context_snippet}&rdquo;
                 </p>
               </div>
             </div>

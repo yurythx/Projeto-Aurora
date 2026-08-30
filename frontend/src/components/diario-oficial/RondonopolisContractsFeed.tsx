@@ -665,7 +665,7 @@ Link do PDF: ${c.doc_url || "N/A"}`;
                   Objeto Detalhado do Contrato:
                 </span>
                 <p className="rounded bg-surface p-3 text-xs italic text-foreground/90 border border-surface-border/60 leading-relaxed">
-                  "{selectedContract.object}"
+                  &ldquo;{selectedContract.object}&rdquo;
                 </p>
               </div>
             </div>

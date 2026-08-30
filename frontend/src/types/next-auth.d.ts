@@ -1,3 +1,4 @@
+import type { DefaultSession } from "next-auth";
 import "next-auth";
 import "next-auth/jwt";
 
@@ -11,6 +12,11 @@ declare module "next-auth" {
     // access token falha (ver refreshAccessToken em lib/auth/options.ts)
     // — proxy.ts usa este campo para decidir redirecionar para /login.
     error?: string;
+    // Roles RBAC extraídas do access token pelo callback jwt() e
+    // repassadas à sessão (ver lib/auth/options.ts).
+    user?: {
+      roles?: string[];
+    } & DefaultSession["user"];
   }
 
   // O que authorize() do CredentialsProvider local retorna (ver
@@ -35,5 +41,8 @@ declare module "next-auth/jwt" {
     // fullSignOut() em components/layout/UserMenu.tsx.
     idToken?: string;
     error?: string;
+    // Roles agregadas do payload do access token (realm_access,
+    // resource_access[clientId], claim `roles`) — ver o callback jwt().
+    roles?: string[];
   }
 }

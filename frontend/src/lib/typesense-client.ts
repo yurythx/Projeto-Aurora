@@ -108,6 +108,14 @@ function normalizeText(text: string | undefined): string {
     .toLowerCase();
 }
 
+// `any` intencional nas 4 assinaturas abaixo (filterHREvents/filterContracts
+// e as duas chamadas de fallback à API): a resposta do endpoint
+// `rondonopolis/hr-events` e `rondonopolis/contracts` é um superconjunto
+// solto dos tipos HREvent/PublicContract de types/api.ts (traz
+// edition_type, salary_value, pdf_page_number, confidence e valores de
+// `type` normalizados que não estão no enum). Tipar isso de verdade exige
+// alinhar o contrato da API primeiro — fica como dívida à parte.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function filterHREvents(events: any[], query?: string, actType?: string, secretaria?: string, dasLevel?: string) {
   const safeEvents = Array.isArray(events) ? events : [];
   const qNorm = normalizeText(query);
@@ -132,6 +140,7 @@ function filterHREvents(events: any[], query?: string, actType?: string, secreta
   });
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function filterContracts(contracts: any[], query?: string) {
   const safeContracts = Array.isArray(contracts) ? contracts : [];
   const qNorm = normalizeText(query);
@@ -198,6 +207,7 @@ export async function searchPersonnelActs(params: {
     if (query) queryParams.set("search", query);
     if (actType) queryParams.set("event_type", actType);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const apiRes = await apiClient.get<any[]>(`v1/diario-oficial/rondonopolis/hr-events?${queryParams.toString()}`);
     let rawEvents = Array.isArray(apiRes.data) ? apiRes.data : [];
 
@@ -280,7 +290,7 @@ export async function searchPersonnelActs(params: {
         },
       ],
     };
-  } catch (backendErr) {
+  } catch {
     return emptyTypesenseResponse();
   }
 }
@@ -335,6 +345,7 @@ export async function searchGazetteArticles(params: {
     const queryParams = new URLSearchParams();
     if (query) queryParams.set("search", query);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const apiRes = await apiClient.get<any[]>(`v1/diario-oficial/rondonopolis/contracts?${queryParams.toString()}`);
     let contracts = Array.isArray(apiRes.data) ? apiRes.data : [];
 
@@ -378,7 +389,7 @@ export async function searchGazetteArticles(params: {
         },
       ],
     };
-  } catch (backendErr) {
+  } catch {
     return emptyTypesenseResponse();
   }
 }
@@ -405,7 +416,10 @@ export async function getTypesenseHealth(): Promise<{ healthy: boolean; message:
     } catch {}
 
     return { healthy: true, message: "Motor de busca Typesense operacional", docCount };
-  } catch (err: any) {
-    return { healthy: false, message: err.message || "Falha na conexão com o Typesense" };
+  } catch (err) {
+    return {
+      healthy: false,
+      message: err instanceof Error ? err.message : "Falha na conexão com o Typesense",
+    };
   }
 }

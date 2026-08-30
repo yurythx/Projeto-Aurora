@@ -352,7 +352,7 @@ export default function PessoalSearchPage() {
 
                     {/* Trecho destacado (Snippet) */}
                     <div className="rounded-md bg-surface-hover/50 p-3 text-xs text-muted font-sans border-l-2 border-primary">
-                      <p className="line-clamp-3">"{doc.full_act_text}"</p>
+                      <p className="line-clamp-3">&ldquo;{doc.full_act_text}&rdquo;</p>
                     </div>
 
                     {doc.pdf_storage_url && (

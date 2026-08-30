@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { useToast } from "@/components/notifications/ToastProvider";
-import { Building2, Image as ImageIcon, Save, RotateCcw, CheckCircle2, ShieldCheck } from "lucide-react";
+import { Building2, Save, RotateCcw, ShieldCheck } from "lucide-react";
 
 export function BrandingSettingsForm() {
   const { branding, updateBranding, resetBranding } = useBranding();
@@ -19,7 +19,7 @@ export function BrandingSettingsForm() {
     setForm(branding);
   }, [branding]);
 
-  const handleChange = (field: keyof SystemBrandingConfig, value: any) => {
+  const handleChange = (field: keyof SystemBrandingConfig, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     if (field === "logoUrl") setLogoPreviewError(false);
   };
@@ -121,6 +121,8 @@ export function BrandingSettingsForm() {
               <div className="rounded-lg border border-surface-border bg-surface-hover/30 p-4 flex flex-col items-center justify-center min-h-[100px]">
                 <span className="text-[10px] uppercase font-bold text-muted mb-2">Pré-visualização da Logomarca</span>
                 {form.logoUrl && !logoPreviewError ? (
+                  // URL externa digitada pelo órgão; next/image exige domínio pré-configurado.
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={form.logoUrl}
                     alt="Preview da Logo"

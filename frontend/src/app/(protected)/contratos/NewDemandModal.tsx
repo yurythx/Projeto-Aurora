@@ -36,7 +36,7 @@ export function NewDemandModal({ onClose, onCreated }: Props) {
         if (list.length > 0 && list[0]) {
           setSelectedContratoId(list[0].id);
         }
-      } catch (err) {
+      } catch {
         showToast({
           title: "Erro ao carregar contratos",
           description: "Não foi possível carregar a lista de contratos cadastrados.",
@@ -78,10 +78,11 @@ export function NewDemandModal({ onClose, onCreated }: Props) {
       });
       onCreated();
       onClose();
-    } catch (err: any) {
+    } catch (err) {
       showToast({
         title: "Falha ao criar demanda",
-        description: err.message || "Ocorreu um erro ao registrar a demanda mensal.",
+        description:
+          err instanceof Error ? err.message : "Ocorreu um erro ao registrar a demanda mensal.",
         tone: "danger",
       });
     } finally {

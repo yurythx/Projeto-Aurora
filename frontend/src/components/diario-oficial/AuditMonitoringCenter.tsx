@@ -8,17 +8,10 @@ import {
   Trash2,
   CheckCircle2,
   AlertTriangle,
-  UserCheck,
-  Building2,
-  FileText,
   ShieldCheck,
   Pause,
   Play,
-  RefreshCw,
-  Copy,
   ExternalLink,
-  Calendar,
-  Filter,
   Check,
 } from "lucide-react";
 
@@ -664,7 +657,7 @@ export function AuditMonitoringCenter() {
 
                   <h4 className="text-sm font-bold text-foreground">{a.title}</h4>
                   <p className="text-xs text-foreground/90 bg-surface p-2.5 rounded border border-surface-border/50 italic leading-relaxed">
-                    "{a.snippet}"
+                    &ldquo;{a.snippet}&rdquo;
                   </p>
 
                   <div className="flex items-center justify-between pt-1 text-xs">

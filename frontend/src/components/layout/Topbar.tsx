@@ -84,6 +84,8 @@ export function Topbar({
           {/* Logomarca Dinâmica com Fallback Vetorial Seguro */}
           <Link href="/dashboard" className="flex items-center gap-2.5 group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-md p-1">
             {branding.logoUrl && !logoError ? (
+              // URL externa arbitrária (white-label); next/image exige domínio pré-configurado.
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={branding.logoUrl}
                 alt={`Logomarca de ${branding.appName}`}
