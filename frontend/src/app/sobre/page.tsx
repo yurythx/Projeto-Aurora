@@ -139,7 +139,7 @@ export default async function AboutPage() {
               {owaspMapping.map((item) => (
                 <TableRow key={item.code}>
                   <TableCell className="whitespace-nowrap align-top font-medium text-foreground">
-                    <span className="font-mono text-xs text-primary">{item.code}</span>{" "}
+                    <span className="font-mono text-xs font-semibold text-seal">{item.code}</span>{" "}
                     {item.risk}
                   </TableCell>
                   <TableCell className="text-muted">{item.today}</TableCell>
@@ -166,7 +166,7 @@ export default async function AboutPage() {
             O backend possui workers orquestrados que realizam scraping, parse de texto avançado (regex + semântica) e ingestão no Outbox Transacional.
           </p>
           <p className="text-muted">
-            <strong>Frontend em Next.js:</strong> React com TypeScript, server components, TailwindCSS e websockets para push de dados em tempo real. Ambos containerizados, seguros e construídos pensando em altíssima performance para uso da equipe administrativa.
+            <strong>Frontend em Next.js:</strong> React com TypeScript, server components, Tailwind CSS e WebSocket para atualização em tempo real. Backend e frontend são containerizados e feitos para o uso diário da equipe administrativa.
           </p>
         </section>
       </main>

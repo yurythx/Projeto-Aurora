@@ -2,7 +2,12 @@
 
 /* Paleta Institucional Governamental (Projeto Nova — White-Label)
    Cores inspiradas em portais municipais oficiais: Azul Escuro Institucional,
-   elementos neutros Slate de alto contraste, suporte a e-MAG (Alto Contraste). */
+   elementos neutros Slate de alto contraste, suporte a e-MAG (Alto Contraste).
+
+   Vocabulário de cor: use os tokens `surface` / `surface-border` / `muted`
+   como base. Os aliases `border` / `card` / `muted-foreground` existem só
+   porque parte do código nasceu com a nomenclatura shadcn/ui — apontam para
+   os mesmos valores e seguem o tema sozinhos (são `var()` preguiçosos). */
 :root {
   --header-topbar: #14284b;
   --background: #f8fafc;
@@ -21,11 +26,23 @@
 
   --brand-panel: #0f1e36;
 
+  /* Assinatura visual: tinta de carimbo oficial. Usada com MUITA parcimônia
+     — só no selo da marca, em elementos de autenticidade e no destaque do
+     motivo "documento oficial". Nunca como cor de UI genérica. */
+  --seal: #8a1c1c;
+
   --status-online: #059669;
   --status-offline: #dc2626;
   --status-degraded: #d97706;
   --status-disabled: #64748b;
   --status-unknown: #94a3b8;
+
+  /* Aliases (ver nota acima) — resolvidos no ponto de uso, então seguem
+     qualquer redefinição de tema das variáveis de origem. */
+  --border: var(--surface-border);
+  --border-hover: var(--muted);
+  --card: var(--surface);
+  --muted-foreground: var(--muted);
 }
 
 @theme inline {
@@ -44,6 +61,12 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-brand-panel: var(--brand-panel);
+  --color-seal: var(--seal);
+
+  --color-border: var(--border);
+  --color-border-hover: var(--border-hover);
+  --color-card: var(--card);
+  --color-muted-foreground: var(--muted-foreground);
 
   --color-status-online: var(--status-online);
   --color-status-offline: var(--status-offline);
@@ -51,8 +74,16 @@
   --color-status-disabled: var(--status-disabled);
   --color-status-unknown: var(--status-unknown);
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Tipografia deliberada (§ redesenho 2026-08):
+     - display  → Newsreader: serifada de notícia/editorial, o registro do
+                  Diário Oficial. Só em h1/h2 (título de página e de seção).
+     - sans     → Inter: neutra e densa, para toda a UI e dados.
+     - mono     → Geist Mono: só onde o monoespaçado carrega significado
+                  (nº de contrato, matrícula, competência, código de
+                  autenticidade). */
+  --font-display: var(--font-newsreader), Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
 }
 
 /* Modo Escuro Padrão */
@@ -70,6 +101,7 @@
     --primary-foreground: #0f172a;
     --accent: #38bdf8;
     --brand-panel: #070d18;
+    --seal: #d1524a;
   }
 }
 
@@ -86,6 +118,7 @@
   --primary-foreground: #0f172a;
   --accent: #38bdf8;
   --brand-panel: #070d18;
+  --seal: #d1524a;
 }
 
 :root[data-theme="light"]:not([data-high-contrast="true"]) {
@@ -101,6 +134,7 @@
   --primary-foreground: #ffffff;
   --accent: #0284c7;
   --brand-panel: #0f1e36;
+  --seal: #8a1c1c;
 }
 
 /* Modo e-MAG Alto Contraste (Acessibilidade Governamental) */
@@ -120,10 +154,91 @@
   --success: #00ff00;
   --warning: #ffff00;
   --brand-panel: #000000;
+  /* No modo e-MAG a assinatura de marca cede à paleta rígida de alto
+     contraste: a tinta de carimbo vira o mesmo amarelo dos outros
+     acentos (19:1 sobre preto), em vez de um coral que ficaria abaixo
+     do AAA para texto pequeno como a numeração de etapa. */
+  --seal: #ffff00;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+}
+
+/* Registro tipográfico: as serifadas ficam RESERVADAS ao topo da
+   hierarquia (título de página e de seção). h3 pra baixo — inclusive
+   CardTitle e cabeçalho de coluna do Kanban — seguem a sans, o que
+   mantém os componentes densos calmos. */
+h1,
+h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Eyebrow com cara de dateline de jornal oficial (ex.: "COMPETÊNCIA ·
+   AGOSTO/2026"). Fio curto à esquerda + versalete espaçado. */
+.dateline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.dateline::before {
+  content: "";
+  width: 1.5rem;
+  height: 2px;
+  background: var(--seal);
+}
+
+/* Scrollbar fina para as colunas do Kanban (antes `scrollbar-thin` era
+   uma classe morta — nenhum plugin a definia). */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-border) transparent;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--surface-border);
+  border-radius: 9999px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Fade-in curto para overlays de modal (antes `animate-in fade-in` era
+   classe morta — dependia de tailwindcss-animate, que não está
+   instalado). */
+@keyframes nova-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.nova-fade-in {
+  animation: nova-fade-in 150ms ease-out;
+}
+
+/* Quality floor: respeita quem pediu menos movimento no SO. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Menu, Building2, SunMoon, Eye, Settings, ShieldCheck } from "lucide-react";
+import { Menu, Eye, Settings, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
 import { NotificationBell } from "@/components/notifications/NotificationBell";
@@ -100,7 +100,9 @@ export function Topbar({
               <span className="text-sm font-bold text-foreground leading-tight tracking-tight group-hover:text-primary transition-colors">
                 {branding.appName}
               </span>
-              <span className="text-[10px] text-muted font-mono leading-none">Enterprise</span>
+              <span className="text-[10px] text-muted font-mono uppercase tracking-[0.12em] leading-none">
+                Fiscalização de contratos
+              </span>
             </span>
           </Link>
 

@@ -227,12 +227,11 @@ export default function ContratosCadastroPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-surface-border pb-4">
         <div>
-          <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-            <FileSignature className="h-6 w-6 text-primary" />
-            Contratos Municipais — Cadastro
-          </h1>
-          <p className="text-xs text-muted mt-1">
-            Cada contrato mostra as publicações do Diário Oficial vinculadas automaticamente (número / CNPJ).
+          <p className="dateline">Cadastro de contratos</p>
+          <h1 className="mt-2 text-2xl font-semibold text-foreground">Contratos municipais</h1>
+          <p className="mt-1 text-sm text-muted">
+            Cada contrato mostra as publicações do Diário Oficial vinculadas automaticamente por
+            número e CNPJ.
           </p>
         </div>
         <Button size="sm" variant="ghost" onClick={load} disabled={loading} className="inline-flex items-center gap-2">

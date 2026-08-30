@@ -8,7 +8,7 @@ import { serverApiGet } from "@/lib/api/server";
 import type { Integration } from "@/types/api";
 
 // Integrações (§ menu próprio, separado de Configurações): lista toda
-// integração que o NIX Platform tem hoje e vai ganhando com o tempo —
+// integração que o Projeto Nova tem hoje e vai ganhando com o tempo —
 // cada card leva pra uma página de detalhe genérica
 // (integracoes/[key]/page.tsx) onde de fato se configura/testa aquela
 // integração. A lista em si é só pra navegar; testar acontece na página
@@ -26,10 +26,10 @@ export default async function IntegracoesPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold">Integrações</h1>
-        <p className="text-sm text-muted">
-          Sistemas externos aos quais o Projeto-Nova se conecta — clique em uma para configurar e
-          testar.
+        <p className="dateline">Sistemas externos</p>
+        <h1 className="mt-2 text-2xl font-semibold">Integrações</h1>
+        <p className="mt-1 text-sm text-muted">
+          Sistemas aos quais o Projeto Nova se conecta — clique em um para configurar e testar.
         </p>
       </div>
 

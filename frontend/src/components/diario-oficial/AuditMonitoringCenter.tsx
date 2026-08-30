@@ -311,7 +311,7 @@ export function AuditMonitoringCenter() {
     setTargets((prev) => [newTarget, ...prev]);
     setNewValue("");
     setNewLabel("");
-    showToast({ title: "Alvo Adicionado ao Monitoramento", description: `Agora o NIX monitora continuamente: ${newTarget.value}` });
+    showToast({ title: "Alvo Adicionado ao Monitoramento", description: `Agora o Projeto Nova monitora continuamente: ${newTarget.value}` });
   }
 
   function handleToggleTarget(id: string) {

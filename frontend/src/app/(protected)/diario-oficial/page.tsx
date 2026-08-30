@@ -16,9 +16,11 @@ export default function DiarioOficialPage() {
     <div className="flex flex-col gap-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-surface-border pb-4">
         <div>
-          <h1 className="text-xl font-semibold">Diário Oficial de Rondonópolis</h1>
-          <p className="text-sm text-muted">
-            Portal de monitoramento, consultas de atos de pessoal, contratos públicos e fiscalização (DIORONDON-E).
+          <p className="dateline">DIORONDON-E</p>
+          <h1 className="mt-2 text-2xl font-semibold">Diário Oficial de Rondonópolis</h1>
+          <p className="mt-1 text-sm text-muted">
+            Monitoramento das edições, consultas de atos de pessoal, contratos públicos e
+            fiscalização.
           </p>
         </div>
 

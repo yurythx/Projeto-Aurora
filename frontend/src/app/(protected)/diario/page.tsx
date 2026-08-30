@@ -109,12 +109,11 @@ export default function DiarioSearchPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-surface-border pb-4">
         <div>
-          <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-            <Newspaper className="h-6 w-6 text-primary" />
-            Pesquisa Avançada no Diário Oficial (DIORONDON)
-          </h1>
-          <p className="text-xs text-muted mt-1">
-            Motor de busca em texto integral para encontrar Contratos, Editais, Leis, Portarias e Decretos da Administração Municipal.
+          <p className="dateline">DIORONDON · Busca em texto integral</p>
+          <h1 className="mt-2 text-2xl font-semibold text-foreground">Pesquisa no Diário Oficial</h1>
+          <p className="mt-1 text-sm text-muted">
+            Contratos, editais, leis, portarias e decretos da Administração Municipal, no texto
+            completo de cada edição.
           </p>
         </div>
       </div>

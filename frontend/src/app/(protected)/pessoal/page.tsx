@@ -137,12 +137,13 @@ export default function PessoalSearchPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-surface-border pb-4">
         <div>
-          <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-            <UserCheck className="h-6 w-6 text-primary" />
-            Inteligência de Atos de Pessoal (DIORONDON-E)
+          <p className="dateline">DIORONDON-E · Atos de pessoal</p>
+          <h1 className="mt-2 text-2xl font-semibold text-foreground">
+            Inteligência de atos de pessoal
           </h1>
-          <p className="text-xs text-muted mt-1">
-            Pesquisa em tempo real via Typesense 27+ para Nomeações, Exonerações, Remunerações/DAS e Movimentações da Prefeitura de Rondonópolis.
+          <p className="mt-1 text-sm text-muted">
+            Busca instantânea de nomeações, exonerações, remunerações/DAS e movimentações
+            publicadas no Diário Oficial de Rondonópolis.
           </p>
         </div>
       </div>

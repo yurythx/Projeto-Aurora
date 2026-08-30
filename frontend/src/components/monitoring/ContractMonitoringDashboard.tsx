@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useMemo } from "react";
 import {
-  ShieldAlert,
   AlertTriangle,
   Clock,
   Building2,
@@ -10,11 +9,7 @@ import {
   UserCheck,
   Plus,
   Search,
-  ExternalLink,
-  Calendar,
-  DollarSign,
   User,
-  FileText,
   X,
   CheckCircle2,
 } from "lucide-react";
@@ -148,15 +143,13 @@ export function ContractMonitoringDashboard() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-xl border border-surface-border bg-surface p-6 shadow-sm">
+      {/* Header — mesmo padrão das outras páginas: sem caixa, só o divisor. */}
+      <div className="flex flex-col justify-between gap-4 border-b border-surface-border pb-4 md:flex-row md:items-start">
         <div>
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-bold text-foreground">Central de Monitoramento Operacional & SLAs</h1>
-          </div>
-          <p className="text-xs text-muted mt-1">
-            Acompanhamento em tempo real de vigências de contratos, controle de fiscais nomeados por portaria e conformidade fiscal (IN SCL 01/2019).
+          <p className="dateline">IN SCL 01/2019 · Monitoramento</p>
+          <h1 className="mt-2 text-2xl font-semibold text-foreground">Monitoramento operacional e SLAs</h1>
+          <p className="mt-1 text-sm text-muted">
+            Vigências de contratos, fiscais nomeados por portaria e conformidade fiscal, em tempo real.
           </p>
         </div>
 

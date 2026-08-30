@@ -1,8 +1,10 @@
 "use client";
 
 import { useBranding } from "@/components/branding/BrandingContext";
-import { Mail, Phone, Clock, ShieldCheck, ExternalLink } from "lucide-react";
+import { Mail, Phone, Clock } from "lucide-react";
 import Link from "next/link";
+
+import { Logo } from "@/components/ui/Logo";
 
 export function Footer() {
   const { branding } = useBranding();
@@ -15,7 +17,7 @@ export function Footer() {
           {/* Coluna 1: Nome da Aplicação e Orgão */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 font-bold text-foreground text-sm">
-              <ShieldCheck className="h-5 w-5 text-primary" />
+              <Logo size={20} />
               <span>{branding.appName}</span>
             </div>
             <p className="text-muted leading-relaxed">{branding.appDescription}</p>
@@ -45,26 +47,14 @@ export function Footer() {
 
           {/* Coluna 3: Conformidade & Links Institucionais */}
           <div className="space-y-2.5">
-            <h4 className="font-bold text-foreground text-xs uppercase tracking-wider">Conformidade & Transparência</h4>
+            <h4 className="font-bold text-foreground text-xs uppercase tracking-wider">Conformidade</h4>
             <ul className="space-y-1.5">
+              <li>Lei de Acesso à Informação (LAI 12.527/2011)</li>
+              <li>Lei Geral de Proteção de Dados (LGPD 13.709/2018)</li>
+              <li>Instrução Normativa SCL nº 01/2019</li>
               <li>
-                <a href="#" className="hover:text-primary transition-colors inline-flex items-center gap-1">
-                  Lei de Acesso à Informação (LAI)
-                </a>
-              </li>
-              <li>
-                <a href="#" className="hover:text-primary transition-colors inline-flex items-center gap-1">
-                  Proteção de Dados Pessoais (LGPD)
-                </a>
-              </li>
-              <li>
-                <a href="#" className="hover:text-primary transition-colors inline-flex items-center gap-1">
-                  Instrução Normativa SCL nº 01/2019
-                </a>
-              </li>
-              <li>
-                <Link href="/sobre" className="hover:text-primary transition-colors inline-flex items-center gap-1">
-                  Sobre a Plataforma
+                <Link href="/sobre" className="hover:text-primary transition-colors">
+                  Sobre a plataforma e a API →
                 </Link>
               </li>
             </ul>

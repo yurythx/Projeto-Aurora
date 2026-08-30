@@ -12,7 +12,6 @@ import {
   Settings,
   ShieldCheck,
   UserCheck,
-  Users,
 } from "lucide-react";
 import type { Metadata } from "next";
 import { connection } from "next/server";
@@ -21,55 +20,62 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Logo } from "@/components/ui/Logo";
+import { Seal } from "@/components/ui/Seal";
 
-// §auditoria 2026-08: sem metadados públicos antes disto — só a página
-// inicial e /sobre ganham (as únicas duas rotas públicas com algo que
-// vale compartilhar; rotas autenticadas não têm por quê ser indexadas).
+// §auditoria 2026-08: só a página inicial e /sobre têm metadados públicos
+// — as únicas rotas públicas com algo que vale compartilhar.
 const description =
-  "Plataforma de automação e transparência para Administração Municipal — unificando a gestão de contratos com captura automatizada do Diário Oficial para facilitar o trabalho de fiscais de contrato.";
+  "Plataforma de fiscalização de contratos da Administração Municipal de Rondonópolis — as seis etapas da IN SCL 01/2019 num quadro só, com o Diário Oficial lido e cruzado automaticamente.";
 
 export const metadata: Metadata = {
-  title: "Projeto Nova — Administração Municipal & Contratos",
+  title: "Projeto Nova — Fiscalização de Contratos Municipais",
   description,
   openGraph: { title: "Projeto Nova", description, type: "website" },
 };
 
-// Serviços/módulos reais da plataforma — nada aqui é aspiracional, cada
-// item corresponde a um módulo que já existe em backend/internal/modules
-// ou internal/platform (§ Reestruturação de páginas: página inicial
-// apresentando filosofia e serviços).
+// O fluxo de 6 etapas da IN SCL 01/2019 — o assunto do produto. Numeração
+// aqui é informação real (a ordem importa), não enfeite.
+const etapas = [
+  { n: 1, label: "Elaborar OF / Pré-empenho" },
+  { n: 2, label: "Tramitar no Planejamento" },
+  { n: 3, label: "Emitir OS / Envio à empresa" },
+  { n: 4, label: "Execução e recepção" },
+  { n: 5, label: "Relatório de pagamento / Certidões" },
+  { n: 6, label: "Contabilidade / Liquidação" },
+];
+
+// Serviços/módulos reais da plataforma — nada aspiracional, cada item
+// corresponde a um módulo que já existe em backend/internal.
 const services = [
   {
     icon: LinkIcon,
-    title: "Integrações Extensíveis",
+    title: "Integrações extensíveis",
     description:
       "Arquitetura modular. Lê o Diário Oficial de Rondonópolis hoje e o próximo sistema amanhã sem tocar no núcleo da plataforma.",
   },
   {
     icon: Bell,
-    title: "Notificações em Tempo Real",
-    description: "Receba alertas instantâneos (via WebSocket) quando novos editais ou contratos do Diário Oficial entram no seu Kanban.",
+    title: "Notificações em tempo real",
+    description:
+      "Alerta na hora (via WebSocket) quando um edital ou contrato do Diário Oficial entra no seu quadro, ou quando um SLA estoura.",
   },
   {
     icon: ScrollText,
-    title: "Auditoria Imutável",
-    description: "Cada aprovação ou movimentação de contrato é salva numa tabela protegida nativamente no banco (nível Tribunal de Contas).",
+    title: "Trilha de auditoria",
+    description:
+      "Cada aprovação e movimentação de card fica registrada numa tabela que o banco recusa alterar — o controle interno consegue reconstruir o processo.",
   },
   {
     icon: ShieldCheck,
-    title: "Resiliência & Tolerância a Falhas",
+    title: "Resiliência a falhas",
     description:
-      "O sistema usa RabbitMQ com padrão Outbox Transacional e Retry Automático. Falhas externas não geram perda de dados.",
+      "RabbitMQ com outbox transacional e retry automático. Uma indisponibilidade externa não perde evento nem escrita.",
   },
 ];
 
-// Mapeamento OWASP Top 10 -> prática concreta já implementada, não uma
-// promessa (§ auditoria + docs/roadmap-secops-orchestrator.md, que
-// documenta o restante em fase de planejamento — SAST/DAST/scanning de
-// container ainda não fazem parte do produto, só do roadmap). Cada linha
-// aqui foi conferida no código durante esta sessão, não copiada de um
-// checklist genérico: A03 e A10, por exemplo, foram checados com grep no
-// backend inteiro antes de escrever a frase.
+// Mapeamento OWASP Top 10 -> prática concreta já implementada. Cada linha
+// foi conferida no código durante esta sessão, não copiada de um
+// checklist genérico.
 const owaspPractices = [
   {
     code: "A01",
@@ -134,19 +140,16 @@ const owaspPractices = [
 ];
 
 export default async function LandingPage() {
-  // Força renderização dinâmica (não estática) — necessário para que o
-  // Content-Security-Policy com nonce gerado a cada requisição em
-  // proxy.ts seja efetivamente aplicado aos scripts desta página. Uma
-  // página pré-renderizada em build-time é sempre o mesmo HTML, sem
-  // nenhum nonce embutido, então o navegador bloquearia os próprios
-  // scripts do framework.
+  // Força renderização dinâmica — necessário para o CSP com nonce gerado
+  // por requisição em proxy.ts. Ver o comentário equivalente em
+  // app/login/page.tsx.
   await connection();
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between px-6 py-5">
-        <span className="flex items-center gap-2 text-lg font-semibold">
-          <Logo size={32} />
+      <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-5">
+        <span className="flex items-center gap-2.5 text-lg font-semibold">
+          <Logo size={30} />
           Projeto Nova
         </span>
         <nav className="flex items-center gap-4 text-sm">
@@ -159,34 +162,53 @@ export default async function LandingPage() {
         </nav>
       </header>
 
-      <main className="flex flex-1 flex-col gap-20 px-6 py-12">
-        <section className="mx-auto flex max-w-2xl flex-col items-center gap-6 text-center">
-          <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
-            Plataforma de Operações para Administração Municipal
-          </h1>
-          <p className="max-w-xl text-muted">
-            O <strong>Projeto Nova</strong> centraliza a gestão de Fiscais de Contratos e o cruzamento automatizado de dados do Diário Oficial. Num único painel seguro e extensível, entregamos integrações modulares, notificações em tempo real via WebSocket, auditoria imutável (nível Tribunal de Contas) e resiliência absoluta através de mensageria assíncrona.
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <Link href="/login">
-              <Button size="md">Entrar</Button>
-            </Link>
-            <Link href="/sobre">
-              <Button size="md" variant="secondary">
-                Conhecer a filosofia
-              </Button>
-            </Link>
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-24 px-6 py-14">
+        {/* Hero — a tese é o fluxo, não um slogan. */}
+        <section className="flex flex-col gap-8">
+          <div className="flex flex-col gap-5">
+            <p className="dateline">Rondonópolis-MT · Secretaria de Administração</p>
+            <h1 className="max-w-2xl text-4xl font-semibold leading-[1.1] text-foreground sm:text-5xl">
+              Da requisição ao arquivamento, uma demanda de cada vez.
+            </h1>
+            <p className="max-w-xl text-muted">
+              O <strong className="font-semibold text-foreground">Projeto Nova</strong> acompanha cada
+              demanda mensal de contrato pelas seis etapas da IN SCL 01/2019, gera os documentos
+              oficiais prontos para assinatura e lê o Diário Oficial de Rondonópolis para cruzar
+              publicações com os seus contratos.
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <Link href="/login">
+                <Button size="md">Entrar</Button>
+              </Link>
+              <Link href="/sobre">
+                <Button size="md" variant="secondary">
+                  Como funciona
+                </Button>
+              </Link>
+            </div>
           </div>
+
+          {/* O fluxo de 6 etapas como elemento característico. */}
+          <ol className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-surface-border bg-surface-border sm:grid-cols-3 lg:grid-cols-6">
+            {etapas.map((etapa) => (
+              <li key={etapa.n} className="flex flex-col gap-2 bg-surface p-4">
+                <span className="font-mono text-xs font-semibold text-seal">
+                  {String(etapa.n).padStart(2, "0")}
+                </span>
+                <span className="text-sm leading-snug text-foreground">{etapa.label}</span>
+              </li>
+            ))}
+          </ol>
         </section>
 
-        <section className="mx-auto flex w-full max-w-5xl flex-col gap-8">
-          <div className="text-center">
-            <h2 className="text-2xl font-semibold text-foreground">
-              Segurança por padrão — OWASP Top 10
-            </h2>
-            <p className="mx-auto mt-1 max-w-2xl text-sm text-muted">
-              As dez categorias, e a prática concreta que já existe no código pra cada uma —
-              conferido nesta base de código, não copiado de um checklist genérico.
+        {/* Segurança por padrão — OWASP Top 10 */}
+        <section className="flex flex-col gap-8">
+          <div className="flex flex-col gap-2">
+            <p className="dateline">Segurança por padrão</p>
+            <h2 className="text-2xl font-semibold text-foreground">OWASP Top 10, uma prática por linha</h2>
+            <p className="max-w-2xl text-sm text-muted">
+              As dez categorias e o que já existe no código para cada uma — conferido nesta base,
+              não copiado de um checklist genérico.
             </p>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -202,7 +224,7 @@ export default async function LandingPage() {
                       <Icon size={16} aria-hidden="true" />
                     </span>
                     <div>
-                      <p className="font-mono text-xs font-semibold text-primary">{item.code}</p>
+                      <p className="font-mono text-xs font-semibold text-seal">{item.code}</p>
                       <p className="text-xs font-medium text-foreground">{item.title}</p>
                     </div>
                   </div>
@@ -211,7 +233,7 @@ export default async function LandingPage() {
               );
             })}
           </div>
-          <p className="text-center text-xs text-muted">
+          <p className="text-xs text-muted">
             Um item (assinatura de artefatos de build, parte de A08) ainda não existe — está
             documentado como pendência, não escondido. Veja{" "}
             <Link href="/sobre" className="text-primary hover:underline">
@@ -221,21 +243,22 @@ export default async function LandingPage() {
           </p>
         </section>
 
-        <section className="mx-auto flex w-full max-w-5xl flex-col gap-8">
-          <div className="text-center">
+        {/* Serviços */}
+        <section className="flex flex-col gap-8">
+          <div className="flex flex-col gap-2">
+            <p className="dateline">Em produção hoje</p>
             <h2 className="text-2xl font-semibold text-foreground">Serviços</h2>
-            <p className="mt-1 text-sm text-muted">O que já roda em produção hoje.</p>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {services.map((service) => {
               const Icon = service.icon;
               return (
                 <Card key={service.title}>
-                  <CardHeader className="flex flex-row items-center gap-3 space-y-0">
+                  <CardHeader className="flex flex-row items-center gap-3">
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                       <Icon size={18} aria-hidden="true" />
                     </span>
-                    <CardTitle className="text-base">{service.title}</CardTitle>
+                    <CardTitle className="text-sm">{service.title}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-muted">{service.description}</p>
@@ -247,8 +270,14 @@ export default async function LandingPage() {
         </section>
       </main>
 
-      <footer className="border-t border-surface-border px-6 py-6 text-center text-xs text-muted">
-        © {new Date().getFullYear()} Projeto Nova — Administração Municipal. <Link href="/sobre" className="hover:text-foreground">Sobre o sistema e Integração (API)</Link>
+      <footer className="mx-auto flex w-full max-w-5xl items-center gap-4 border-t border-surface-border px-6 py-6 text-xs text-muted">
+        <Seal size={40} decorative className="text-surface-border" />
+        <p>
+          © {new Date().getFullYear()} Prefeitura Municipal de Rondonópolis ·{" "}
+          <Link href="/sobre" className="hover:text-foreground">
+            Sobre o sistema e a API
+          </Link>
+        </p>
       </footer>
     </div>
   );

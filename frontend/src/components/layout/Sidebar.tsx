@@ -39,6 +39,12 @@ interface SidebarProps {
 export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
 
+  // href do item mais específico que casa com a rota atual (match exato ou
+  // prefixo de segmento) — só esse acende no menu.
+  const activeHref = links
+    .filter((l) => pathname === l.href || pathname.startsWith(l.href + "/"))
+    .reduce<string | null>((best, l) => (best && best.length >= l.href.length ? best : l.href), null);
+
   // Fecha o painel mobile com Escape, e trava o scroll do body enquanto
   // ele está aberto — o mesmo comportamento de qualquer off-canvas/modal.
   useEffect(() => {
@@ -82,13 +88,13 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
         <ul className="flex flex-col gap-0.5 px-2 pt-2">
           {links.map((link) => {
             const Icon = link.icon;
-            // startsWith cobre sub-rotas (ex.: /configuracao/integracoes/diario
-            // ainda deve marcar "Configurações" como ativa) — só para
-            // /dashboard, que não tem sub-rotas próprias, é preciso o
-            // match exato.
-            const active =
-              pathname === link.href ||
-              (link.href !== "/dashboard" && pathname.startsWith(link.href + "/"));
+            // Só UM item acende: o de href mais específico que casa com a
+            // rota atual. Sem isso, em /diario/revisao os dois itens
+            // (/diario e /diario/revisao) acendiam juntos, porque ambos
+            // passam no startsWith. startsWith + "/" ainda cobre sub-rotas
+            // sem item próprio (ex.: /contratos/demandas/... acende
+            // "Liquidação").
+            const active = link.href === activeHref;
             return (
               <li key={link.href}>
                 <Link

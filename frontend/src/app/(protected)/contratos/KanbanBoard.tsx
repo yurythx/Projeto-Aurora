@@ -187,9 +187,12 @@ export function KanbanBoard({ initialData }: Props) {
   return (
     <div className="flex h-full flex-col gap-4">
       <div className="flex shrink-0 flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">Liquidação (Demandas Mensais)</h1>
-          <p className="text-sm text-muted">Acompanhe as 6 etapas de liquidação de contratos conforme IN SCL 01/2019.</p>
+        <div className="flex flex-col gap-1.5">
+          <p className="dateline">IN SCL 01/2019 · Demandas mensais</p>
+          <h1 className="text-2xl font-semibold">Liquidação</h1>
+          <p className="text-sm text-muted">
+            Acompanhe cada demanda pelas seis etapas, da requisição ao arquivamento.
+          </p>
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
@@ -352,9 +355,14 @@ function Column({ column, onCardClick }: { column: KanbanColumn; onCardClick: (d
 
   return (
     <div className="flex w-80 shrink-0 flex-col rounded-lg bg-surface-hover/30 p-4 border border-border/50">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="font-medium text-foreground text-sm uppercase tracking-wider">{column.label}</h3>
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-surface-hover text-xs font-medium text-muted">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h3 className="flex items-baseline gap-2 text-sm font-medium text-foreground">
+          <span className="font-mono text-xs font-semibold text-seal">
+            {column.status.padStart(2, "0")}
+          </span>
+          <span className="uppercase tracking-wider">{column.label}</span>
+        </h3>
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-hover text-xs font-medium text-muted">
           {column.total}
         </span>
       </div>
@@ -447,7 +455,7 @@ function DemandCard({ demand, isOverlay, onClick }: { demand: DemandResponse; is
                   key={d.doc_type}
                   title={`${d.label}${d.valid_until ? ` — válida até ${new Date(d.valid_until).toLocaleDateString("pt-BR")}` : ""}`}
                   className={`inline-block h-1.5 w-5 rounded-full ${
-                    !d.present ? "bg-border" : d.expired ? "bg-danger" : "bg-emerald-500"
+                    !d.present ? "bg-surface-border" : d.expired ? "bg-danger" : "bg-success"
                   }`}
                 />
               ))}

@@ -534,7 +534,7 @@ Link do PDF: ${c.doc_url || "N/A"}`;
 
       {/* Modal de Detalhes do Contrato Público */}
       {selectedContract && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm nova-fade-in">
           <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-surface-border bg-surface shadow-2xl">
             {/* Cabeçalho do Modal */}
             <div className="flex items-center justify-between border-b border-surface-border p-4 bg-surface-border/10">

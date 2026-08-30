@@ -1,6 +1,6 @@
-# NIX Platform — Frontend
+# Projeto Nova — Frontend
 
-Dashboard em Next.js (App Router) + TypeScript para o NIX Platform. Veja o
+Dashboard em Next.js (App Router) + TypeScript para o Projeto Nova. Veja o
 [README raiz do repositório](../README.md) para a visão geral completa do
 projeto, a configuração do Keycloak e como rodar toda a stack via Docker
 Compose.
@@ -48,3 +48,34 @@ npm run dev
 - `src/proxy.ts` — o `proxy.ts` do Next.js 16 (antigo `middleware.ts`),
   responsável por proteger `/dashboard/**` e por gerar o CSP com nonce em
   cada requisição.
+
+## Sistema visual (§ redesenho 2026-08)
+
+Direção: **documento oficial / carimbo de repartição**. Um acento só, gasto
+no elemento de assinatura; tudo em volta fica quieto.
+
+- **Cor** — tokens em `src/app/globals.css`. Base institucional
+  (`surface` / `surface-border` / `muted` / `primary` azul `#1b365d`). O
+  acento de assinatura é `--seal` (tinta de carimbo `#8a1c1c` claro /
+  `#d1524a` escuro / `#ff5b5b` e-MAG), usado **só** em: selo da marca,
+  numeração de etapa, códigos (OWASP), marcador de alerta. Nunca como cor
+  de UI genérica. Os aliases `border` / `card` / `muted-foreground`
+  apontam para os tokens base — código novo usa os nomes base.
+- **Tipografia** — `Newsreader` (serifada de notícia) **só** em `h1`/`h2`
+  (título de página e de seção; regra global no `globals.css`). `Inter` no
+  corpo e nos dados. `Geist Mono` só onde o monoespaçado significa algo
+  (nº de contrato, matrícula, competência, código de autenticidade).
+- **Cabeçalho de página** — padrão único: eyebrow `.dateline` (fio em
+  tinta de carimbo + versalete mono, ex.: `COMPETÊNCIA · AGOSTO/2026`) →
+  `<h1 className="text-2xl font-semibold">` → descrição `text-sm text-muted`.
+  Sem ícone decorativo no `<h1>`.
+- **Elemento de assinatura** — `src/components/ui/Seal.tsx`, um carimbo
+  circular. Marca d'água discreta no login e nos documentos oficiais
+  imprimíveis; não repetir pela interface toda.
+- **Marca** — `src/components/ui/Logo.tsx` e `src/app/icon.svg` são o mesmo
+  desenho (selo com "N"), mantidos em sincronia à mão. **Sem
+  `<defs>`/gradiente**: dois `<Logo>` no mesmo DOM (ex.: login desktop +
+  mobile) com IDs de gradiente repetidos quebram a instância visível.
+- **Quality floor** — responsivo até 390px, `focus-visible` em tudo,
+  `prefers-reduced-motion` respeitado (`globals.css`), modo e-MAG alto
+  contraste (`[data-high-contrast]`).

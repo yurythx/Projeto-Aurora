@@ -184,11 +184,11 @@ export default function RevisaoPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-surface-border pb-4">
         <div>
-          <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-            <AlertTriangle className="h-6 w-6 text-amber-500" />
-            Fila de Revisão — Extrações de Baixa Confiança
+          <p className="dateline">DIORONDON · Fila de revisão</p>
+          <h1 className="mt-2 text-2xl font-semibold text-foreground">
+            Extrações de baixa confiança
           </h1>
-          <p className="text-xs text-muted mt-1">
+          <p className="mt-1 text-sm text-muted">
             Findings <strong>confidence=low</strong>, fora da busca do usuário. Corrija e{" "}
             <strong>promova</strong> para indexar, <strong>marque como revisado</strong> se for
             legítimo mas fraco, ou <strong>descarte</strong> se for ruído do parser.

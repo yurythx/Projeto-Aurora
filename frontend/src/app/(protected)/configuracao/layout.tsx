@@ -22,8 +22,11 @@ export default function ConfiguracaoLayout({ children }: { children: ReactNode }
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold">Configurações</h1>
-        <p className="text-sm text-muted">Usuários e configuração dinâmica do sistema.</p>
+        <p className="dateline">Administração do sistema</p>
+        <h1 className="mt-2 text-2xl font-semibold">Configurações</h1>
+        <p className="mt-1 text-sm text-muted">
+          Identidade visual da instituição, módulos ativos e contas de usuário.
+        </p>
       </div>
 
       <nav aria-label="Configurações" className="border-b border-surface-border">

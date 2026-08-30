@@ -24,6 +24,9 @@ export default async function SistemaPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Cabeçalho da seção vem do layout compartilhado
+          (configuracao/layout.tsx), junto da tira de abas. */}
+
       {/* 1. Branding & Identidade Visual Governamental */}
       <BrandingSettingsForm />
 

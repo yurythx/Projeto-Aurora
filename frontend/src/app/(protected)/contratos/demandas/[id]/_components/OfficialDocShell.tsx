@@ -6,6 +6,7 @@ import { Printer, ArrowLeft } from "lucide-react";
 import { apiClient } from "@/lib/api/client";
 import type { DemandResponse } from "@/types/api";
 import { Button } from "@/components/ui/Button";
+import { Seal } from "@/components/ui/Seal";
 
 export interface SignatureSlot {
   role: string;
@@ -87,10 +88,13 @@ export function OfficialDocShell({ docTitle, docTag, minEtapa = 1, signatures, c
         </Button>
       </div>
 
-      <div className="mx-auto max-w-4xl bg-white p-10 shadow-lg border border-slate-200 print:shadow-none print:border-none print:max-w-none print:p-0">
+      <div className="relative mx-auto max-w-4xl overflow-hidden bg-white p-10 shadow-lg border border-slate-200 print:shadow-none print:border-none print:max-w-none print:p-0">
         <div className="flex items-center justify-between border-b-2 border-slate-900 pb-6">
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-slate-900 text-white font-bold text-xl">
+            {/* Monograma da Prefeitura no papel timbrado — o brasão do
+                município (não a marca do software, que fica só no rodapé
+                e no selo de autenticidade). */}
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-slate-900 font-mono text-lg font-bold tracking-tight text-slate-900">
               PMR
             </div>
             <div>
@@ -174,6 +178,14 @@ export function OfficialDocShell({ docTitle, docTag, minEtapa = 1, signatures, c
         <div className="mt-12 border-t border-slate-200 pt-4 text-center text-[10px] text-slate-400 font-mono">
           Documento gerado automaticamente pelo Projeto Nova • Código de Autenticidade: {demand.id}
         </div>
+
+        {!belowStage && (
+          <Seal
+            size={150}
+            decorative
+            className="pointer-events-none absolute bottom-16 right-8 -rotate-6 text-slate-900/[0.07]"
+          />
+        )}
       </div>
     </div>
   );

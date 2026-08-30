@@ -12,7 +12,7 @@
 // tem uma primitiva própria para "estado que vive fora do React e precisa
 // re-renderizar quando muda": useSyncExternalStore. Este módulo é a
 // "store" que ela espera: getSnapshot()/subscribe() sem efeito nenhum.
-const STORAGE_KEY = "nix-sidebar-collapsed";
+const STORAGE_KEY = "nova-sidebar-collapsed";
 
 type Listener = () => void;
 const listeners = new Set<Listener>();

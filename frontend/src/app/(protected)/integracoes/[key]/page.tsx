@@ -37,8 +37,9 @@ export default async function IntegrationDetailPage({
       {integration && (
         <>
           <div>
-            <h1 className="text-xl font-semibold">{integration.name}</h1>
-            <p className="text-sm text-muted">
+            <p className="dateline">Integração</p>
+            <h1 className="mt-2 text-2xl font-semibold">{integration.name}</h1>
+            <p className="mt-1 text-sm text-muted">
               {registryEntry?.description ?? "Configuração e teste de conectividade desta integração."}
             </p>
           </div>

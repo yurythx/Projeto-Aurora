@@ -1,4 +1,4 @@
-// Formatos compartilhados que espelham os DTOs do backend do Projeto-Nova.
+// Formatos compartilhados que espelham os DTOs do backend do Projeto Nova.
 // Mantidos manualmente em sincronia com docs/openapi.yaml — qualquer novo
 // campo exposto pela API precisa ser refletido aqui para o frontend
 // enxergá-lo com tipagem.

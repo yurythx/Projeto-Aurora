@@ -23,7 +23,7 @@ describe("sidebarCollapsedStore", () => {
   it("persiste a escolha em localStorage e reflete no snapshot", () => {
     setSidebarCollapsed(true);
     expect(getSidebarCollapsedSnapshot()).toBe(true);
-    expect(window.localStorage.getItem("nix-sidebar-collapsed")).toBe("true");
+    expect(window.localStorage.getItem("nova-sidebar-collapsed")).toBe("true");
   });
 
   it("notifica listeners inscritos quando o valor muda", () => {

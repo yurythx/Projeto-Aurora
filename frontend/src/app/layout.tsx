@@ -1,14 +1,27 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Inter, Newsreader } from "next/font/google";
 import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 import "./globals.css";
 
 import { Providers } from "./providers";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Par tipográfico deliberado (§ redesenho 2026-08, ver globals.css):
+// Newsreader (serifada de notícia) só nos títulos, Inter no corpo,
+// Geist Mono reservada a códigos. Os três expõem custom properties que
+// o @theme inline do globals.css consome.
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
+  display: "swap",
+});
+
+const newsreader = Newsreader({
+  variable: "--font-newsreader",
+  subsets: ["latin"],
+  weight: ["500", "600"],
+  style: ["normal", "italic"],
+  display: "swap",
 });
 
 const geistMono = Geist_Mono({
@@ -17,8 +30,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Projeto-Nova",
-  description: "Plataforma de Gestão de Contratos Municipais e Liquidação.",
+  title: "Projeto Nova",
+  description: "Plataforma de fiscalização de contratos municipais e inteligência do Diário Oficial de Rondonópolis.",
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
@@ -36,7 +49,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <html
       lang="pt-BR"
       data-theme={dataTheme}
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${newsreader.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <Providers>{children}</Providers>
