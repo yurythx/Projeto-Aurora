@@ -51,6 +51,14 @@
   --topbar-h: 5.25rem;
   --sidebar-w: 15rem;
   --sidebar-w-collapsed: 4rem;
+
+  /* Recolher/expandir a Sidebar: a largura do <nav> e o padding-left do
+     conteúdo animam JUNTOS com estes valores. Curva "ease-out" (começa
+     rápido, desacelera) e 150ms — mesma cadência dos modais — pra parecer
+     imediato; animar width/padding remexe o layout, então quanto mais
+     curto, menos custo por frame. */
+  --shell-motion: 150ms;
+  --shell-ease: cubic-bezier(0, 0, 0.2, 1);
 }
 
 @theme inline {

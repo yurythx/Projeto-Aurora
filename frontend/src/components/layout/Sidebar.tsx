@@ -96,7 +96,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
       <nav
         aria-label="Principal"
         className={`fixed left-0 bottom-0 top-[var(--topbar-h)] z-40 flex flex-col overflow-y-auto overflow-x-hidden border-r border-surface-border bg-surface
-          transition-[transform,width] duration-200 md:translate-x-0
+          transition-[transform,width] duration-[var(--shell-motion)] ease-[var(--shell-ease)] md:translate-x-0
           ${collapsed ? "md:w-[var(--sidebar-w-collapsed)]" : "md:w-[var(--sidebar-w)]"}
           ${mobileOpen ? "translate-x-0" : "-translate-x-full"} w-72`}
       >

@@ -87,7 +87,7 @@ export function DashboardShell({
               de um pl extra. min-h-dvh (não screen) mantém o rodapé colado no
               fim da viewport em telas curtas, sem sobra. */}
           <div
-            className={`flex min-h-dvh flex-col pt-[var(--topbar-h)] transition-[padding] duration-200
+            className={`flex min-h-dvh flex-col pt-[var(--topbar-h)] transition-[padding] duration-[var(--shell-motion)] ease-[var(--shell-ease)]
               ${collapsed ? "md:pl-[var(--sidebar-w-collapsed)]" : "md:pl-[var(--sidebar-w)]"}`}
           >
             <main id="main-content" className="flex-1 overflow-x-auto px-4 pb-8 sm:px-8 sm:pb-10">
