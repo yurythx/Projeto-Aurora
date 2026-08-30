@@ -85,7 +85,9 @@ export default async function UsuariosPage({
                     <TableCell>{user.email}</TableCell>
                     <TableCell>{user.active ? "Ativo" : "Inativo"}</TableCell>
                     <TableCell>
-                      {user.last_seen_at ? new Date(user.last_seen_at).toLocaleString() : "—"}
+                      {user.last_seen_at
+                        ? new Date(user.last_seen_at).toLocaleString("pt-BR")
+                        : "—"}
                     </TableCell>
                   </TableRow>
                 ))}

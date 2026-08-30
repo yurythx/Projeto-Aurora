@@ -8,7 +8,7 @@ Compose.
 ## Desenvolvimento local
 
 ```bash
-cp .env.example .env.local   # preencha os valores de Keycloak/backend
+cp .env.example .env.local   # preencha as URLs do backend (Keycloak é opcional — há login local)
 npm install
 npm run dev
 ```
@@ -30,10 +30,14 @@ npm run dev
 
 ## Organização
 
-- `src/app` — rotas (App Router): landing page, `/login`, `/dashboard/**`,
-  o route handler do NextAuth e o proxy BFF `/api/backend/*`.
-- `src/lib/auth` — configuração do NextAuth (Keycloak, Authorization Code +
-  PKCE, sessão em JWT).
+- `src/app` — rotas (App Router): landing page, `/sobre`, `/login`, as
+  rotas autenticadas em `(protected)/**` (`/dashboard`, `/contratos`,
+  `/pessoal`, `/diario`, `/diario-oficial`, `/monitoramento`,
+  `/integracoes`, `/configuracao`), o route handler do NextAuth e o proxy
+  BFF `/api/backend/*`.
+- `src/lib/auth` — configuração do NextAuth: login local usuário/senha
+  (CredentialsProvider, RS256) **ou** SSO Keycloak (Authorization Code +
+  PKCE); sessão em JWT nos dois casos.
 - `src/lib/api` — `client.ts`: cliente tipado para Client Components; sempre chama o proxy BFF na
   mesma origem, para que o access token nunca chegue ao JS do navegador. `swr.ts`/`SWRProvider.tsx`:
   integração com SWR (dedupe/cache/revalidação) para o pouco que ainda é `"use client"` +
@@ -46,8 +50,8 @@ npm run dev
 - `src/components/ui` — o kit de componentes compartilhado, sem regra de
   negócio.
 - `src/proxy.ts` — o `proxy.ts` do Next.js 16 (antigo `middleware.ts`),
-  responsável por proteger `/dashboard/**` e por gerar o CSP com nonce em
-  cada requisição.
+  responsável por proteger as rotas autenticadas (`(protected)/**`) e por
+  gerar o CSP com nonce em cada requisição.
 
 ## Sistema visual (§ redesenho 2026-08)
 
@@ -76,6 +80,11 @@ no elemento de assinatura; tudo em volta fica quieto.
   desenho (selo com "N"), mantidos em sincronia à mão. **Sem
   `<defs>`/gradiente**: dois `<Logo>` no mesmo DOM (ex.: login desktop +
   mobile) com IDs de gradiente repetidos quebram a instância visível.
+- **Modais** — todos sobre o `<dialog>` nativo via `ui/ModalShell` (Esc,
+  clique-no-backdrop, captura de foco, fundo `inert`, trava de scroll,
+  transição por `@starting-style`). `ui/Dialog` é a variante estruturada
+  (título/descrição/corpo rolável/rodapé fixo) com prop `size`
+  (sm/md/lg/xl).
 - **Quality floor** — responsivo até 390px, `focus-visible` em tudo,
   `prefers-reduced-motion` respeitado (`globals.css`), modo e-MAG alto
   contraste (`[data-high-contrast]`).

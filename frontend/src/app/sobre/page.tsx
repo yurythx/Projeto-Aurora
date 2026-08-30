@@ -17,13 +17,13 @@ export const metadata: Metadata = {
   openGraph: { title: "Sobre o Projeto Nova", description, type: "website" },
 };
 
-// Mesma matriz de docs/roadmap-secops-orchestrator.md — mantida em
-// sincronia manualmente (o roadmap é o documento fonte, esta página é o
-// resumo pro público). Cada célula da coluna "Hoje" foi conferida no
-// código durante a auditoria de 2026-08 e a sessão seguinte, não copiada
-// de um checklist genérico — em especial A03 (zero concatenação de
-// string em SQL, checado com grep no backend inteiro) e A10 (nenhum
-// endpoint aceita URL arbitrária do chamador, mesma checagem).
+// Resumo público da matriz OWASP; o documento-fonte é
+// docs/audit-2026-08.md, mantido em sincronia manualmente. Cada célula
+// da coluna "Hoje" foi conferida no código durante a auditoria de
+// 2026-08 e as sessões seguintes, não copiada de um checklist genérico —
+// em especial A03 (zero concatenação de string em SQL, checado com grep
+// no backend inteiro) e A10 (nenhum endpoint aceita URL arbitrária do
+// chamador, mesma checagem).
 const owaspMapping = [
   { code: "A01", risk: "Broken Access Control", today: "RBAC por permissão em cada rota sensível — nunca só a presença de um token." },
   { code: "A02", risk: "Cryptographic Failures", today: "RS256 com chave própria para o login local, bcrypt, segredos via arquivo, nunca em texto puro." },
@@ -150,10 +150,10 @@ export default async function AboutPage() {
           <p className="text-sm text-muted">
             Estamos expandindo isso para varredura automatizada de código e dependências (SAST,
             scanning de containers, segredos vazados, testes dinâmicos) orquestrada pelo mesmo
-            padrão que já usamos pras integrações externas hoje — o plano completo, fase por
-            fase, está em{" "}
+            padrão que já usamos pras integrações externas hoje. A auditoria de segurança mais
+            recente, com o que já está no ar e o que está pendente, fica em{" "}
             <code className="rounded bg-black/5 px-1 py-0.5 text-xs dark:bg-white/10">
-              docs/roadmap-secops-orchestrator.md
+              docs/audit-2026-08.md
             </code>{" "}
             no repositório.
           </p>
