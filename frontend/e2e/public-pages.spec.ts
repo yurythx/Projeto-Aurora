@@ -7,7 +7,10 @@ test.describe("Páginas públicas", () => {
   test("/ mostra a filosofia da plataforma e link pra /sobre", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Sobre a plataforma" })).toBeVisible();
+    // Pelo menos um caminho para /sobre na página (o redesenho "documento
+    // oficial" renomeou o link de "Sobre a plataforma" para "Sobre" no
+    // header e "Como funciona" no hero) — o alvo é o destino, não a cópia.
+    await expect(page.locator('a[href="/sobre"]').first()).toBeVisible();
   });
 
   test("/sobre carrega sem erro", async ({ page }) => {
