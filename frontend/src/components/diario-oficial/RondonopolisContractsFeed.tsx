@@ -178,7 +178,7 @@ export function RondonopolisContractsFeed() {
 
       return true;
     });
-  }, [contracts, searchTerm, selectedType, selectedStatus, selectedYear, selectedEdition]);
+  }, [displayContracts, searchTerm, selectedType, selectedStatus, selectedYear, selectedEdition]);
 
   // Contratos relacionados ao mesmo CPF ou CNPJ selecionado no modal
   const selectedRelatedContracts = useMemo(() => {

@@ -40,12 +40,15 @@ const BrandingContext = createContext<BrandingContextType | undefined>(undefined
 export function BrandingProvider({ children }: { children: React.ReactNode }) {
   const [branding, setBranding] = useState<SystemBrandingConfig>(DEFAULT_BRANDING);
 
-  // Carrega configurações salvas do localStorage no cliente
+  // Hidrata do localStorage no cliente, depois do 1º paint (mantém o HTML
+  // do SSR = DEFAULT_BRANDING, sem mismatch). O fix "de livro" seria
+  // useSyncExternalStore com snapshot de servidor — refatoração à parte.
   useEffect(() => {
     try {
       const saved = localStorage.getItem(BRANDING_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setBranding((prev) => ({ ...prev, ...parsed }));
       }
     } catch {

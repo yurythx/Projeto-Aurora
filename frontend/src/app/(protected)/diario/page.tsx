@@ -100,6 +100,7 @@ export default function DiarioSearchPage() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca de dados no mount/na mudança de filtro; migração pra SWR (useApiQuery) é item à parte (audit-2026-08, item 4).
     handleSearch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editionType, dateFrom, dateTo]);
@@ -266,23 +267,18 @@ export default function DiarioSearchPage() {
  *  tratado como texto puro (React escapa) e só o realce <mark> é reintroduzido
  *  como elemento real. */
 function SafeHighlight({ snippet }: { snippet: string }) {
-  const parts = snippet.split(/(<mark>|<\/mark>)/g);
-  let marked = false;
+  // Divide o snippet mantendo cada trecho <mark>…</mark> como um item
+  // próprio — assim cada parte se descreve sozinha (sem variável mutável
+  // no closure do .map, que o React Compiler proíbe).
+  const parts = snippet.split(/(<mark>[\s\S]*?<\/mark>)/g);
   return (
     <p className="line-clamp-4">
       {parts.map((part, i) => {
-        if (part === "<mark>") {
-          marked = true;
-          return null;
-        }
-        if (part === "</mark>") {
-          marked = false;
-          return null;
-        }
         if (!part) return null;
+        const marked = part.match(/^<mark>([\s\S]*)<\/mark>$/);
         return marked ? (
           <mark key={i} className="rounded bg-primary/20 px-0.5 text-foreground">
-            {part}
+            {marked[1]}
           </mark>
         ) : (
           <span key={i}>{part}</span>

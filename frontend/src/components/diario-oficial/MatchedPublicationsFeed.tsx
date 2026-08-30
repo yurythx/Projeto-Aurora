@@ -87,7 +87,12 @@ export function MatchedPublicationsFeed() {
     }
   }
 
-  const listToFilter = Array.isArray(publications) ? publications : [];
+  // memoizado para não virar uma referência nova a cada render (senão os
+  // useMemo abaixo, que dependem dele, recalculariam sempre).
+  const listToFilter = useMemo(
+    () => (Array.isArray(publications) ? publications : []),
+    [publications],
+  );
 
   const orgaoOptions = useMemo(
     () => Array.from(new Set(listToFilter.map((p) => p.tribunal))).sort(),

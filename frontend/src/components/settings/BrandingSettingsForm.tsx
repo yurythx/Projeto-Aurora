@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useBranding, DEFAULT_BRANDING, type SystemBrandingConfig } from "@/components/branding/BrandingContext";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -15,9 +15,14 @@ export function BrandingSettingsForm() {
   const [form, setForm] = useState<SystemBrandingConfig>(branding);
   const [logoPreviewError, setLogoPreviewError] = useState(false);
 
-  useEffect(() => {
+  // Ressincroniza o formulário quando o branding do contexto muda (ex.:
+  // após salvar / restaurar padrões). Ajuste de estado durante o render —
+  // padrão recomendado pelo React em vez de um useEffect com setState.
+  const [syncedBranding, setSyncedBranding] = useState(branding);
+  if (branding !== syncedBranding) {
+    setSyncedBranding(branding);
     setForm(branding);
-  }, [branding]);
+  }
 
   const handleChange = (field: keyof SystemBrandingConfig, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [field]: value }));

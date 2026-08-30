@@ -124,6 +124,7 @@ export default function PessoalSearchPage() {
 
   // Busca ao montar (usando o estado vindo da URL) e sempre que um filtro muda.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca de dados no mount/na mudança de filtro; migração pra SWR (useApiQuery) é item à parte (audit-2026-08, item 4).
     handleSearch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actType, secretaria, dasLevel, dateFrom, dateTo]);

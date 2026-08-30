@@ -256,7 +256,7 @@ export function AuditMonitoringCenter() {
     });
 
     return { alerts: generatedAlerts, alertCountByTarget: countMap };
-  }, [targets, hrEvents, contracts]);
+  }, [targets, activeHrEvents, activeContracts]);
 
   // Alertas Filtrados
   const [readAlertIds, setReadAlertIds] = useState<Set<string>>(new Set());
