@@ -16,6 +16,8 @@ import type { Contrato, DiarioRef, PaginationMeta } from "@/types/api";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent } from "@/components/ui/Card";
+import { SectionTabs } from "@/components/layout/SectionTabs";
+import { CONTRATOS_TABS } from "@/lib/nav/sectionTabs";
 
 const STATUS_OPTIONS = [
   { value: "", label: "Todos os status" },
@@ -239,6 +241,8 @@ export default function ContratosCadastroPage() {
           Atualizar
         </Button>
       </div>
+
+      <SectionTabs ariaLabel="Contratos" tabs={CONTRATOS_TABS} />
 
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">

@@ -26,6 +26,8 @@ import type { KanbanResponse, KanbanColumn, DemandResponse, StageCheck } from "@
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/notifications/ToastProvider";
+import { SectionTabs } from "@/components/layout/SectionTabs";
+import { CONTRATOS_TABS } from "@/lib/nav/sectionTabs";
 import { Building2, Calendar, Lock, Plus, CheckCircle2, Clock, AlertTriangle, FileArchive, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { ContratoModal } from "./ContratoModal";
@@ -223,6 +225,8 @@ export function KanbanBoard({ initialData }: Props) {
           </Button>
         </div>
       </div>
+
+      <SectionTabs ariaLabel="Contratos" className="shrink-0" tabs={CONTRATOS_TABS} />
 
       {/* Desktop: quadro horizontal com drag-and-drop (lg+) */}
       <DndContext

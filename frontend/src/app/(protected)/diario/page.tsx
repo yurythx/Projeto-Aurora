@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { SectionTabs } from "@/components/layout/SectionTabs";
+import { DIARIO_TABS } from "@/lib/nav/sectionTabs";
 import { useToast } from "@/components/notifications/ToastProvider";
 import {
   readSearchState,
@@ -114,16 +116,16 @@ export default function DiarioSearchPage() {
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-surface-border pb-4">
-        <div>
-          <p className="dateline">DIORONDON · Busca em texto integral</p>
-          <h1 className="mt-2 text-2xl font-semibold text-foreground">Pesquisa no Diário Oficial</h1>
-          <p className="mt-1 text-sm text-muted">
-            Contratos, editais, leis, portarias e decretos da Administração Municipal, no texto
-            completo de cada edição.
-          </p>
-        </div>
+      <div>
+        <p className="dateline">DIORONDON · Busca em texto integral</p>
+        <h1 className="mt-2 text-2xl font-semibold text-foreground">Pesquisa no Diário Oficial</h1>
+        <p className="mt-1 text-sm text-muted">
+          Contratos, editais, leis, portarias e decretos da Administração Municipal, no texto
+          completo de cada edição.
+        </p>
       </div>
+
+      <SectionTabs ariaLabel="Diário Oficial" tabs={DIARIO_TABS} />
 
       {/* Barra de Pesquisa Principal */}
       <div className="flex flex-col sm:flex-row gap-3 rounded-xl border border-surface-border bg-surface p-4 shadow-sm">

@@ -1,22 +1,34 @@
 "use client";
 
-import { LayoutDashboard, Newspaper, Plug, Settings, Bell, FileSignature, FileText, Users, Search, AlertTriangle } from "lucide-react";
+import { LayoutDashboard, Newspaper, Plug, Settings, Bell, FileSignature } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 
-const links = [
+// Navegação de 1º nível — uma entrada por SEÇÃO, não por página. As
+// sub-páginas (Kanban↔Cadastro, Portal↔Busca↔Atos de Pessoal↔Revisão)
+// ficam em abas dentro da seção (components/layout/SectionTabs). `match`
+// lista os prefixos de rota que acendem a entrada — necessário quando a
+// seção cobre caminhos que não são sub-rotas do próprio href (ex.:
+// Diário Oficial cobre /diario e /pessoal, que são irmãos de
+// /diario-oficial).
+const links: { href: string; label: string; icon: typeof LayoutDashboard; match?: string[] }[] = [
   { href: "/dashboard", label: "Visão geral", icon: LayoutDashboard },
-  { href: "/contratos", label: "Liquidação (Demandas)", icon: FileSignature },
-  { href: "/contratos/cadastro", label: "Contratos", icon: FileText },
-  { href: "/pessoal", label: "Atos de Pessoal", icon: Users },
-  { href: "/diario", label: "Busca no Diário", icon: Search },
-  { href: "/diario/revisao", label: "Revisão (baixa confiança)", icon: AlertTriangle },
-  { href: "/diario-oficial", label: "Diário Oficial", icon: Newspaper },
+  { href: "/contratos", label: "Contratos", icon: FileSignature, match: ["/contratos"] },
+  {
+    href: "/diario-oficial",
+    label: "Diário Oficial",
+    icon: Newspaper,
+    match: ["/diario-oficial", "/diario", "/pessoal"],
+  },
   { href: "/monitoramento", label: "Monitoramento", icon: Bell },
   { href: "/integracoes", label: "Integrações", icon: Plug },
   { href: "/configuracao", label: "Configurações", icon: Settings },
 ];
+
+function matchesPath(pathname: string, prefix: string): boolean {
+  return pathname === prefix || pathname.startsWith(prefix + "/");
+}
 
 interface SidebarProps {
   /** Recolhida a ícone-somente no desktop (md: e acima) — persistida pelo
@@ -39,11 +51,19 @@ interface SidebarProps {
 export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
 
-  // href do item mais específico que casa com a rota atual (match exato ou
-  // prefixo de segmento) — só esse acende no menu.
-  const activeHref = links
-    .filter((l) => pathname === l.href || pathname.startsWith(l.href + "/"))
-    .reduce<string | null>((best, l) => (best && best.length >= l.href.length ? best : l.href), null);
+  // href da entrada cujo prefixo mais específico casa com a rota atual —
+  // só essa acende. Cada entrada casa pelo próprio href e por qualquer
+  // prefixo em `match`.
+  let activeHref: string | null = null;
+  let bestLen = -1;
+  for (const l of links) {
+    for (const prefix of l.match ?? [l.href]) {
+      if (matchesPath(pathname, prefix) && prefix.length > bestLen) {
+        bestLen = prefix.length;
+        activeHref = l.href;
+      }
+    }
+  }
 
   // Fecha o painel mobile com Escape, e trava o scroll do body enquanto
   // ele está aberto — o mesmo comportamento de qualquer off-canvas/modal.

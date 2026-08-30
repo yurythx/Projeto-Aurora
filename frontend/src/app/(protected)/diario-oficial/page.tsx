@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { Bell, Newspaper } from "lucide-react";
+import { SectionTabs } from "@/components/layout/SectionTabs";
+import { DIARIO_TABS } from "@/lib/nav/sectionTabs";
 import { EtlPipelinePanel } from "@/components/diario-oficial/EtlPipelinePanel";
 import { MatchedPublicationsFeed } from "@/components/diario-oficial/MatchedPublicationsFeed";
 import { MonitoredTermsPanel } from "@/components/diario-oficial/MonitoredTermsPanel";
@@ -14,33 +14,16 @@ import { ExecutiveAnalyticsPanel } from "@/components/diario-oficial/ExecutiveAn
 export default function DiarioOficialPage() {
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-surface-border pb-4">
-        <div>
-          <p className="dateline">DIORONDON-E</p>
-          <h1 className="mt-2 text-2xl font-semibold">Diário Oficial de Rondonópolis</h1>
-          <p className="mt-1 text-sm text-muted">
-            Monitoramento das edições, consultas de atos de pessoal, contratos públicos e
-            fiscalização.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Link
-            href="/diario-oficial"
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold shadow-sm"
-          >
-            <Newspaper size={14} />
-            Consultas & Feed
-          </Link>
-          <Link
-            href="/monitoramento"
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface border border-surface-border text-foreground hover:bg-surface-border/50 text-xs font-semibold transition-colors"
-          >
-            <Bell size={14} className="text-primary" />
-            Centro de Monitoramento (CPFs)
-          </Link>
-        </div>
+      <div>
+        <p className="dateline">DIORONDON-E</p>
+        <h1 className="mt-2 text-2xl font-semibold">Diário Oficial de Rondonópolis</h1>
+        <p className="mt-1 text-sm text-muted">
+          Portal do motor DIORONDON: saúde da fonte, pipeline de ingestão, retorno bruto da API e
+          feeds de atos de pessoal e contratos públicos.
+        </p>
       </div>
+
+      <SectionTabs ariaLabel="Diário Oficial" tabs={DIARIO_TABS} />
 
       <SourceHealthPanel />
 

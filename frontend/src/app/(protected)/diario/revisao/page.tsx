@@ -8,6 +8,8 @@ import { pdfUrlWithPage } from "@/lib/typesense-client";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent } from "@/components/ui/Card";
+import { SectionTabs } from "@/components/layout/SectionTabs";
+import { DIARIO_TABS } from "@/lib/nav/sectionTabs";
 import { useToast } from "@/components/notifications/ToastProvider";
 
 interface ReviewFinding {
@@ -190,7 +192,7 @@ export default function RevisaoPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-surface-border pb-4">
+      <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
         <div>
           <p className="dateline">DIORONDON · Fila de revisão</p>
           <h1 className="mt-2 text-2xl font-semibold text-foreground">
@@ -202,13 +204,15 @@ export default function RevisaoPage() {
             legítimo mas fraco, ou <strong>descarte</strong> se for ruído do parser.
           </p>
         </div>
-        <Button size="sm" variant="ghost" onClick={load} disabled={loading} className="inline-flex items-center gap-2">
+        <Button size="sm" variant="ghost" onClick={load} disabled={loading} className="inline-flex shrink-0 items-center gap-2">
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Atualizar
         </Button>
       </div>
 
-      {err && <div className="rounded-lg border border-danger/40 bg-danger/10 p-4 text-sm text-danger">{err}</div>}
+      <SectionTabs ariaLabel="Diário Oficial" tabs={DIARIO_TABS} />
+
+      {err &&<div className="rounded-lg border border-danger/40 bg-danger/10 p-4 text-sm text-danger">{err}</div>}
 
       {!err && !loading && items.length === 0 && (
         <div className="rounded-xl border border-dashed border-surface-border bg-surface p-12 text-center text-muted">

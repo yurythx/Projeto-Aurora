@@ -21,21 +21,27 @@ describe("Sidebar", () => {
     expect(screen.getByRole("link", { name: /Integrações/ })).not.toHaveAttribute("aria-current");
   });
 
-  it("marca o link ativo também numa sub-rota sem item próprio (startsWith)", () => {
+  it("acende a seção 'Contratos' numa sub-rota profunda (startsWith)", () => {
     usePathname.mockReturnValue("/contratos/demandas/abc/oficio");
     render(<Sidebar collapsed={false} mobileOpen={false} onCloseMobile={() => {}} />);
-    expect(screen.getByRole("link", { name: /Liquidação/ })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: /Contratos/ })).toHaveAttribute("aria-current", "page");
   });
 
-  it("quando dois hrefs casam, só o mais específico acende", () => {
-    // /diario e /diario/revisao são AMBOS itens do menu — em /diario/revisao
-    // só "Revisão" pode acender, nunca "Busca no Diário" junto.
-    usePathname.mockReturnValue("/diario/revisao");
-    render(<Sidebar collapsed={false} mobileOpen={false} onCloseMobile={() => {}} />);
-    expect(screen.getByRole("link", { name: /Revisão/ })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("link", { name: /Busca no Diário/ })).not.toHaveAttribute(
-      "aria-current",
-    );
+  it("acende 'Diário Oficial' em rotas cobertas por `match` (irmãs, não sub-rotas)", () => {
+    // /pessoal e /diario/revisao não são sub-rotas de /diario-oficial, mas
+    // a seção Diário Oficial as cobre via `match`.
+    for (const p of ["/diario", "/pessoal", "/diario/revisao", "/diario-oficial"]) {
+      usePathname.mockReturnValue(p);
+      const { unmount } = render(
+        <Sidebar collapsed={false} mobileOpen={false} onCloseMobile={() => {}} />,
+      );
+      expect(screen.getByRole("link", { name: /Diário Oficial/ }), `rota ${p}`).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+      expect(screen.getByRole("link", { name: /Contratos/ })).not.toHaveAttribute("aria-current");
+      unmount();
+    }
   });
 
   it("clicar num link fecha o painel mobile (onCloseMobile)", async () => {
