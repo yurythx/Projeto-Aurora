@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { BRANDING_COOKIE, parseBrandingCookie } from "@/components/branding/brandingConfig";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { SWRProvider } from "@/lib/api/SWRProvider";
 import { authOptions } from "@/lib/auth/options";
@@ -35,9 +36,21 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
   const themeCookie = cookieStore.get("nova-theme")?.value;
   const initialTheme = themeCookie === "dark" || themeCookie === "light" ? themeCookie : undefined;
 
+  // Mesmas preferências de dispositivo lidas server-side pelo mesmo motivo
+  // do tema: entregar o shell já no estado certo no 1º paint, sem o flash
+  // de "padrão → valor salvo" na hidratação. Escritas por
+  // lib/layout/sidebarCollapsedStore.ts e components/branding/brandingStore.ts.
+  const initialCollapsed = cookieStore.get("nova-sidebar-collapsed")?.value === "true";
+  const initialBranding = parseBrandingCookie(cookieStore.get(BRANDING_COOKIE)?.value);
+
   return (
     <SWRProvider>
-      <DashboardShell userLabel={userLabel} initialTheme={initialTheme}>
+      <DashboardShell
+        userLabel={userLabel}
+        initialTheme={initialTheme}
+        initialCollapsed={initialCollapsed}
+        initialBranding={initialBranding}
+      >
         {children}
       </DashboardShell>
     </SWRProvider>

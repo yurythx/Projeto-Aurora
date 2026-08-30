@@ -4,7 +4,6 @@ import React, { createContext, useContext, useEffect, useSyncExternalStore } fro
 
 import { DEFAULT_BRANDING, type SystemBrandingConfig } from "./brandingConfig";
 import {
-  getBrandingServerSnapshot,
   getBrandingSnapshot,
   resetBrandingStore,
   subscribeBranding,
@@ -24,13 +23,25 @@ interface BrandingContextType {
 
 const BrandingContext = createContext<BrandingContextType | undefined>(undefined);
 
-export function BrandingProvider({ children }: { children: React.ReactNode }) {
-  // Estado vive fora do React (localStorage) — useSyncExternalStore em vez
-  // de useState + useEffect de hidratação. Ver brandingStore.ts.
+export function BrandingProvider({
+  children,
+  initialBranding,
+}: {
+  children: React.ReactNode;
+  /** Branding lido do cookie `nova-branding` no layout do servidor. Vira o
+   * server snapshot do useSyncExternalStore: como o cliente lê o MESMO
+   * cookie, o snapshot de SSR e o do cliente coincidem e o nome não pisca
+   * do valor antigo para o novo depois da hidratação. Ausente (fora do
+   * layout, ex. testes) → DEFAULT_BRANDING. */
+  initialBranding?: SystemBrandingConfig;
+}) {
+  // Estado vive fora do React (cookie) — useSyncExternalStore em vez de
+  // useState + useEffect de hidratação. Ver brandingStore.ts.
+  const serverSnapshot = initialBranding ?? DEFAULT_BRANDING;
   const branding = useSyncExternalStore(
     subscribeBranding,
     getBrandingSnapshot,
-    getBrandingServerSnapshot,
+    () => serverSnapshot,
   );
 
   // Sincroniza o atributo e-MAG de Alto Contraste no <html> — este SIM é

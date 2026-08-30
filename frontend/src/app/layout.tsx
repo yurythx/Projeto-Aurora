@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 import "./globals.css";
 
+import { BRANDING_COOKIE, parseBrandingCookie } from "@/components/branding/brandingConfig";
 import { Providers } from "./providers";
 
 // Par tipográfico deliberado (§ redesenho 2026-08, ver globals.css):
@@ -45,10 +46,19 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const theme = cookieStore.get("nova-theme")?.value;
   const dataTheme = theme === "dark" || theme === "light" ? theme : undefined;
 
+  // Alto Contraste e-MAG também via cookie: sem isto o atributo só era
+  // aplicado por um useEffect no BrandingProvider, então a página piscava
+  // do contraste normal para o alto a cada refresh. Mesmo cookie que a
+  // Topbar escreve ao alternar (components/branding/brandingStore.ts).
+  const dataHighContrast = parseBrandingCookie(cookieStore.get(BRANDING_COOKIE)?.value).highContrast
+    ? "true"
+    : undefined;
+
   return (
     <html
       lang="pt-BR"
       data-theme={dataTheme}
+      data-high-contrast={dataHighContrast}
       className={`${inter.variable} ${newsreader.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">

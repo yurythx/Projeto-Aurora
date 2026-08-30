@@ -8,7 +8,6 @@ import { NotificationCenter } from "@/components/notifications/NotificationCente
 import { NotificationHistoryProvider } from "@/components/notifications/NotificationHistoryProvider";
 import { ToastProvider } from "@/components/notifications/ToastProvider";
 import {
-  getSidebarCollapsedServerSnapshot,
   getSidebarCollapsedSnapshot,
   setSidebarCollapsed,
   subscribeSidebarCollapsed,
@@ -27,22 +26,31 @@ const MD_BREAKPOINT_QUERY = "(min-width: 768px)";
 // pilha de toasts (ToastProvider) e a bandeja do sino
 // (NotificationHistoryProvider).
 import { BrandingProvider } from "@/components/branding/BrandingContext";
+import type { SystemBrandingConfig } from "@/components/branding/brandingConfig";
 import { Footer } from "@/components/layout/Footer";
 
 export function DashboardShell({
   userLabel,
   initialTheme,
+  initialCollapsed = false,
+  initialBranding,
   children,
 }: {
   userLabel: string;
   initialTheme?: "light" | "dark";
+  /** Estado da Sidebar lido do cookie `nova-sidebar-collapsed` no layout do
+   * servidor — server snapshot do useSyncExternalStore, para o shell já
+   * nascer recolhido/expandido no 1º paint sem "piscar" na hidratação. */
+  initialCollapsed?: boolean;
+  /** Branding lido do cookie `nova-branding` no layout do servidor. */
+  initialBranding?: SystemBrandingConfig;
   children: ReactNode;
 }) {
   const [connectionState, setConnectionState] = useState<ConnectionState>("idle");
   const collapsed = useSyncExternalStore(
     subscribeSidebarCollapsed,
     getSidebarCollapsedSnapshot,
-    getSidebarCollapsedServerSnapshot,
+    () => initialCollapsed,
   );
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -55,7 +63,7 @@ export function DashboardShell({
   }
 
   return (
-    <BrandingProvider>
+    <BrandingProvider initialBranding={initialBranding}>
       <ToastProvider>
         <NotificationHistoryProvider>
           <a

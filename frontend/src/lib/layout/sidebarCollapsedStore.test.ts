@@ -1,40 +1,75 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  getSidebarCollapsedServerSnapshot,
-  getSidebarCollapsedSnapshot,
-  setSidebarCollapsed,
-  subscribeSidebarCollapsed,
-} from "./sidebarCollapsedStore";
+// A store é um singleton de módulo (cache em memória). vi.resetModules() +
+// import dinâmico dá a cada teste uma instância zerada, como um refresh de
+// página faria.
+async function freshStore() {
+  vi.resetModules();
+  return import("./sidebarCollapsedStore");
+}
+
+function clearCookies() {
+  for (const pair of document.cookie.split(";")) {
+    const name = pair.split("=")[0]?.trim();
+    if (name) document.cookie = `${name}=; path=/; max-age=0`;
+  }
+}
 
 describe("sidebarCollapsedStore", () => {
   beforeEach(() => {
+    clearCookies();
     window.localStorage.clear();
-    // O módulo mantém um cache em memória entre chamadas dentro do mesmo
-    // processo de teste — força a releitura do localStorage limpo acima
-    // gravando explicitamente o estado inicial esperado.
-    setSidebarCollapsed(false);
   });
 
-  it("getServerSnapshot é sempre false (SSR nunca tem preferência do dispositivo)", () => {
-    expect(getSidebarCollapsedServerSnapshot()).toBe(false);
+  it("getServerSnapshot é sempre false (fallback; o server snapshot real vem do layout)", async () => {
+    const store = await freshStore();
+    expect(store.getSidebarCollapsedServerSnapshot()).toBe(false);
   });
 
-  it("persiste a escolha em localStorage e reflete no snapshot", () => {
-    setSidebarCollapsed(true);
-    expect(getSidebarCollapsedSnapshot()).toBe(true);
-    expect(window.localStorage.getItem("nova-sidebar-collapsed")).toBe("true");
+  it("sem cookie nem localStorage, o snapshot é false", async () => {
+    const store = await freshStore();
+    expect(store.getSidebarCollapsedSnapshot()).toBe(false);
   });
 
-  it("notifica listeners inscritos quando o valor muda", () => {
+  it("persiste a escolha num cookie e reflete no snapshot", async () => {
+    const store = await freshStore();
+    store.setSidebarCollapsed(true);
+    expect(store.getSidebarCollapsedSnapshot()).toBe(true);
+    expect(document.cookie).toContain("nova-sidebar-collapsed=true");
+  });
+
+  it("voltar para expandida (false) apaga o cookie — layout já assume expandida sem cookie", async () => {
+    const store = await freshStore();
+    store.setSidebarCollapsed(true);
+    store.setSidebarCollapsed(false);
+    expect(store.getSidebarCollapsedSnapshot()).toBe(false);
+    expect(document.cookie).not.toContain("nova-sidebar-collapsed=true");
+  });
+
+  it("lê um cookie pré-existente no primeiro snapshot", async () => {
+    document.cookie = "nova-sidebar-collapsed=true; path=/";
+    const store = await freshStore();
+    expect(store.getSidebarCollapsedSnapshot()).toBe(true);
+  });
+
+  it("migra um valor legado do localStorage para cookie na 1ª leitura", async () => {
+    window.localStorage.setItem("nova-sidebar-collapsed", "true");
+    const store = await freshStore();
+    expect(store.getSidebarCollapsedSnapshot()).toBe(true);
+    expect(document.cookie).toContain("nova-sidebar-collapsed=true");
+    expect(window.localStorage.getItem("nova-sidebar-collapsed")).toBeNull();
+  });
+
+  it("notifica listeners inscritos quando o valor muda e para após unsubscribe", async () => {
+    const store = await freshStore();
     const listener = vi.fn();
-    const unsubscribe = subscribeSidebarCollapsed(listener);
+    const unsubscribe = store.subscribeSidebarCollapsed(listener);
 
-    setSidebarCollapsed(true);
+    store.setSidebarCollapsed(true);
     expect(listener).toHaveBeenCalledTimes(1);
 
     unsubscribe();
-    setSidebarCollapsed(false);
-    expect(listener).toHaveBeenCalledTimes(1); // não chamado depois de cancelar a inscrição
+    store.setSidebarCollapsed(false);
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 });
