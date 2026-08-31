@@ -35,6 +35,23 @@ O Projeto Aurora utiliza uma arquitetura em **Camadas Limpas (Clean Architecture
 
 ---
 
+## ⚡ Scaffolding Automático de Módulos
+
+Para criar a estrutura inicial de um novo módulo com 1 comando:
+
+```bash
+./scripts/create-module.sh <nome_do_modulo>
+# Exemplo:
+./scripts/create-module.sh financeiro
+```
+
+O script gera automaticamente:
+1. Pastas do Go (`internal/modules/<nome>/domain`, `application`, `infrastructure`, `transport`).
+2. Página do Next.js em `app/(protected)/<nome>/page.tsx`.
+3. Migration SQL da Feature Flag do módulo em `backend/migrations/`.
+
+---
+
 ## 📁 Estrutura de Pastas de um Módulo
 
 Ao criar um novo módulo chamado `financeiro`, a estrutura deve seguir:
@@ -70,7 +87,7 @@ src/
 ## 🛠️ Passo a Passo para Criar um Novo Módulo
 
 ### 1. Criar a Migration SQL (`backend/migrations/`)
-Crie um novo arquivo de migration com numeracao sequencial via `goose`:
+Crie um novo arquivo de migration com numeração sequencial via `goose`:
 ```sql
 -- 000042_create_financeiro_table.sql
 -- +goose Up
@@ -159,7 +176,25 @@ r.Route("/api/v1/financeiro", func(r chi.Router) {
 
 ---
 
-### 5. Consumir e Notificar no Frontend (`Next.js`)
+### 5. Registrar a Feature Flag do Módulo (Controle em /configuracao)
+Todo módulo deve possuir uma entrada em `feature_flags` para ser ativado/desativado pelos administradores no painel de configurações:
+
+```sql
+-- Migration SQL
+INSERT INTO feature_flags (key, enabled, description) VALUES
+    ('module_financeiro_enabled', true, 'Habilita a exibição e uso do Módulo Financeiro.')
+ON CONFLICT (key) DO NOTHING;
+```
+
+No frontend (`Sidebar.tsx`), associe a flag ao item do menu:
+```tsx
+{ href: "/financeiro", label: "Financeiro", icon: DollarSign, flag: "module_financeiro_enabled" }
+```
+Quando o administrador desabilitar a flag no painel `/configuracao`, o item do menu desaparecerá automaticamente da interface.
+
+---
+
+### 6. Consumir e Notificar no Frontend (`Next.js`)
 No frontend, adicione o manipulador do evento no `NotificationCenter.tsx` para exibir toasts e atualizar contadores em tempo real quando o evento WebSocket for recebido:
 
 ```tsx

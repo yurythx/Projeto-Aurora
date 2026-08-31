@@ -5,9 +5,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 
-const links: { href: string; label: string; icon: typeof LayoutDashboard; match?: string[] }[] = [
+import useSWR from "swr";
+import { apiClient } from "@/lib/api/client";
+import type { FeatureFlag } from "@/types/api";
+
+const links: { href: string; label: string; icon: typeof LayoutDashboard; flag?: string; match?: string[] }[] = [
   { href: "/dashboard", label: "Visão Geral", icon: LayoutDashboard },
-  { href: "/exemplos", label: "Módulo Modelo", icon: Box },
+  { href: "/exemplos", label: "Módulo Modelo", icon: Box, flag: "module_exemplos_enabled" },
   { href: "/monitoramento", label: "Monitoramento", icon: Activity },
   { href: "/integracoes", label: "Integrações", icon: Plug },
   { href: "/configuracao", label: "Configurações", icon: Settings },
@@ -26,9 +30,21 @@ interface SidebarProps {
 export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
 
+  const { data: featureFlags } = useSWR<FeatureFlag[]>(
+    "v1/admin/feature-flags",
+    () => apiClient.get<FeatureFlag[]>("v1/admin/feature-flags").then((res) => res.data),
+    { revalidateOnFocus: false, shouldRetryOnError: false }
+  );
+
+  const disabledFlags = new Set(
+    (featureFlags ?? []).filter((f) => f.enabled === false).map((f) => f.key)
+  );
+
+  const visibleLinks = links.filter((l) => !l.flag || !disabledFlags.has(l.flag));
+
   let activeHref: string | null = null;
   let bestLen = -1;
-  for (const l of links) {
+  for (const l of visibleLinks) {
     for (const prefix of l.match ?? [l.href]) {
       if (matchesPath(pathname, prefix) && prefix.length > bestLen) {
         bestLen = prefix.length;
@@ -74,7 +90,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
           </div>
         )}
         <ul className={`flex flex-col gap-0.5 px-2 pb-3 ${collapsed ? "pt-3" : "pt-2"}`}>
-          {links.map((link) => {
+          {visibleLinks.map((link) => {
             const Icon = link.icon;
             const active = link.href === activeHref;
             return (
