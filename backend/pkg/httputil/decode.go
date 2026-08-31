@@ -7,7 +7,7 @@ import (
 	"io"
 	"net/http"
 
-	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
+	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
 )
 
 // MaxRequestBodyBytes limita quanto de um corpo de requisição o DecodeJSON

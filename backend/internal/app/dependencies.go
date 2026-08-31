@@ -14,22 +14,22 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/yurythx/projeto-nova/internal/domain/events"
-	"github.com/yurythx/projeto-nova/internal/platform/auth"
-	"github.com/yurythx/projeto-nova/internal/platform/config"
-	"github.com/yurythx/projeto-nova/internal/platform/configflags"
-	"github.com/yurythx/projeto-nova/internal/platform/database"
-	"github.com/yurythx/projeto-nova/internal/platform/httpserver"
-	"github.com/yurythx/projeto-nova/internal/platform/idempotency"
-	"github.com/yurythx/projeto-nova/internal/platform/logging"
-	"github.com/yurythx/projeto-nova/internal/platform/messaging"
-	"github.com/yurythx/projeto-nova/internal/platform/metrics"
-	"github.com/yurythx/projeto-nova/internal/platform/outbox"
-	"github.com/yurythx/projeto-nova/internal/platform/ratelimit"
-	"github.com/yurythx/projeto-nova/internal/platform/storage"
-	"github.com/yurythx/projeto-nova/internal/platform/telemetry"
-	"github.com/yurythx/projeto-nova/internal/platform/ws"
-	"github.com/yurythx/projeto-nova/pkg/typesense"
+	"github.com/yurythx/projeto-aurora/internal/domain/events"
+	"github.com/yurythx/projeto-aurora/internal/platform/auth"
+	"github.com/yurythx/projeto-aurora/internal/platform/config"
+	"github.com/yurythx/projeto-aurora/internal/platform/configflags"
+	"github.com/yurythx/projeto-aurora/internal/platform/database"
+	"github.com/yurythx/projeto-aurora/internal/platform/httpserver"
+	"github.com/yurythx/projeto-aurora/internal/platform/idempotency"
+	"github.com/yurythx/projeto-aurora/internal/platform/logging"
+	"github.com/yurythx/projeto-aurora/internal/platform/messaging"
+	"github.com/yurythx/projeto-aurora/internal/platform/metrics"
+	"github.com/yurythx/projeto-aurora/internal/platform/outbox"
+	"github.com/yurythx/projeto-aurora/internal/platform/ratelimit"
+	"github.com/yurythx/projeto-aurora/internal/platform/storage"
+	"github.com/yurythx/projeto-aurora/internal/platform/telemetry"
+	"github.com/yurythx/projeto-aurora/internal/platform/ws"
+	"github.com/yurythx/projeto-aurora/pkg/typesense"
 )
 
 // RateLimiters guarda todo rate limiter distribuído (baseado em Postgres —
@@ -50,10 +50,8 @@ type RateLimiters struct {
 }
 
 // OutboxSource identifica este backend como o Source carimbado em todo
-// envelope de evento gravado no outbox, independente de qual módulo o
-// escreveu — a proveniência no nível de módulo vive em
-// aggregate_type/aggregate_id.
-const OutboxSource = "projeto-nova.platform"
+// envelope de evento gravado no outbox.
+const OutboxSource = "projeto-aurora.platform"
 
 // Dependencies guarda todo recurso de plataforma compartilhado.
 // Dependências específicas de módulo (repositórios, casos de uso) são

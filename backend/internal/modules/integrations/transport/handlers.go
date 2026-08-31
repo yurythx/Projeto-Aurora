@@ -7,9 +7,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
-	"github.com/yurythx/projeto-nova/internal/modules/integrations/application"
-	"github.com/yurythx/projeto-nova/pkg/httputil"
+	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
+	"github.com/yurythx/projeto-aurora/internal/modules/integrations/application"
+	"github.com/yurythx/projeto-aurora/pkg/httputil"
 )
 
 type Handlers struct {

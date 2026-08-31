@@ -56,11 +56,11 @@ describe("NotificationCenter", () => {
     renderCenter();
     act(() =>
       capturedHandler!(
-        envelope("integration.status.changed", { key: "diario-oficial", status: "online" }),
+        envelope("integration.status.changed", { key: "example-service", status: "online" }),
       ),
     );
 
-    expect(screen.getByText("Integração diario-oficial agora está online")).toBeInTheDocument();
+    expect(screen.getByText("Integração example-service agora está online")).toBeInTheDocument();
     expect(screen.getByTestId("history-count")).toHaveTextContent("1");
   });
 
@@ -81,7 +81,7 @@ describe("NotificationCenter", () => {
     expect(screen.getByText("Nenhum achado.")).toBeInTheDocument();
   });
 
-  it("scanning.scan.completed com achados menciona a contagem e aponta pra Segurança", () => {
+  it("scanning.scan.completed com achados menciona a contagem", () => {
     renderCenter();
     act(() =>
       capturedHandler!(
@@ -94,7 +94,7 @@ describe("NotificationCenter", () => {
       ),
     );
 
-    expect(screen.getByText("3 achado(s) — veja em Segurança.")).toBeInTheDocument();
+    expect(screen.getByText("3 achado(s)")).toBeInTheDocument();
   });
 
   it("scanning.scan.completed com CRITICAL destaca a contagem e usa tom de perigo", () => {
@@ -112,7 +112,7 @@ describe("NotificationCenter", () => {
       ),
     );
 
-    expect(screen.getByText("5 achado(s), 2 crítico(s)! — veja em Segurança.")).toBeInTheDocument();
+    expect(screen.getByText("5 achado(s), 2 crítico(s)!")).toBeInTheDocument();
   });
 
   it("scanning.scan.completed sem CRITICAL mas com HIGH menciona só o HIGH", () => {
@@ -130,16 +130,16 @@ describe("NotificationCenter", () => {
       ),
     );
 
-    expect(screen.getByText("4 achado(s), 3 alto(s) — veja em Segurança.")).toBeInTheDocument();
+    expect(screen.getByText("4 achado(s), 3 alto(s)")).toBeInTheDocument();
   });
 
-  it("eventos de job (diario_oficial.job.completed) usam o schema genérico de job_id", () => {
+  it("eventos de job (job.completed) usam o schema genérico de job_id", () => {
     renderCenter();
     act(() =>
-      capturedHandler!(envelope("diario_oficial.job.completed", { job_id: "12345678-abcd-def0" })),
+      capturedHandler!(envelope("job.completed", { job_id: "12345678-abcd-def0" })),
     );
 
-    expect(screen.getByText("Verificação do Diário Oficial concluída")).toBeInTheDocument();
+    expect(screen.getByText("Job de sistema concluído com sucesso")).toBeInTheDocument();
     expect(screen.getByText("Job 12345678")).toBeInTheDocument();
   });
 
@@ -152,11 +152,9 @@ describe("NotificationCenter", () => {
 
   it("um payload que não bate com o schema esperado é descartado, sem quebrar nem gerar toast", () => {
     renderCenter();
-    // integration.status.changed exige "status" num enum conhecido —
-    // "esquisito" não é um valor válido.
     act(() =>
       capturedHandler!(
-        envelope("integration.status.changed", { key: "diario-oficial", status: "esquisito" }),
+        envelope("integration.status.changed", { key: "example-service", status: "esquisito" }),
       ),
     );
 

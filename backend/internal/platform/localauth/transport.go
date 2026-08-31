@@ -9,11 +9,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 
-	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
-	"github.com/yurythx/projeto-nova/internal/platform/audit"
-	"github.com/yurythx/projeto-nova/internal/platform/auth"
-	"github.com/yurythx/projeto-nova/internal/platform/httpserver"
-	"github.com/yurythx/projeto-nova/pkg/httputil"
+	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
+	"github.com/yurythx/projeto-aurora/internal/platform/audit"
+	"github.com/yurythx/projeto-aurora/internal/platform/auth"
+	"github.com/yurythx/projeto-aurora/internal/platform/httpserver"
+	"github.com/yurythx/projeto-aurora/pkg/httputil"
 )
 
 // ActionLoginFailed é registrado em audit_logs (§49) a cada tentativa de

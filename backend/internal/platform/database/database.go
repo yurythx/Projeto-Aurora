@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/yurythx/projeto-nova/internal/platform/config"
+	"github.com/yurythx/projeto-aurora/internal/platform/config"
 )
 
 // pgxTx é um alias local para que quem chama WithTx não precise importar o

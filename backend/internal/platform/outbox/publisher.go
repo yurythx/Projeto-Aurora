@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/yurythx/projeto-nova/internal/domain/events"
+	"github.com/yurythx/projeto-aurora/internal/domain/events"
 )
 
 // Publisher faz polling de outbox_events buscando linhas pendentes e as

@@ -103,7 +103,7 @@ export function Topbar({
                 {branding.appName}
               </span>
               <span className="text-[10px] text-muted font-mono uppercase tracking-[0.12em] leading-none">
-                Fiscalização de contratos
+                Plataforma Enterprise Base
               </span>
             </span>
           </Link>

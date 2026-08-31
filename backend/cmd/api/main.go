@@ -18,7 +18,7 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"github.com/yurythx/projeto-nova/internal/app"
+	"github.com/yurythx/projeto-aurora/internal/app"
 )
 
 // shutdownTimeout limita quanto tempo a API espera as requisições em

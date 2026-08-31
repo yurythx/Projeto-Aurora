@@ -1,5 +1,6 @@
-import { ContractMonitoringDashboard } from "@/components/monitoring/ContractMonitoringDashboard";
+import { PlatformMonitoringDashboard } from "@/components/monitoring/PlatformMonitoringDashboard";
 
 export default function MonitoramentoPage() {
-  return <ContractMonitoringDashboard />;
+  return <PlatformMonitoringDashboard />;
 }
+

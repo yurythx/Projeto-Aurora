@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/yurythx/projeto-nova/internal/domain/pagination"
+	"github.com/yurythx/projeto-aurora/internal/domain/pagination"
 )
 
 // User é uma conta do NIX Platform. A maioria é espelhada do Keycloak a

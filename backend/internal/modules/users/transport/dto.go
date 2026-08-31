@@ -6,7 +6,7 @@ package transport
 import (
 	"time"
 
-	"github.com/yurythx/projeto-nova/internal/modules/users/domain"
+	"github.com/yurythx/projeto-aurora/internal/modules/users/domain"
 )
 
 // UserResponse é o formato público de um usuário retornado pela API —

@@ -3,14 +3,15 @@ package ws
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
 
-	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
-	"github.com/yurythx/projeto-nova/internal/platform/auth"
-	"github.com/yurythx/projeto-nova/internal/platform/metrics"
-	"github.com/yurythx/projeto-nova/pkg/httputil"
+	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
+	"github.com/yurythx/projeto-aurora/internal/platform/auth"
+	"github.com/yurythx/projeto-aurora/internal/platform/metrics"
+	"github.com/yurythx/projeto-aurora/pkg/httputil"
 )
 
 // TicketTTL limita por quanto tempo um ticket emitido continua resgatável.
@@ -54,13 +55,24 @@ func UpgradeHandler(hub *Hub, store *TicketStore, allowedOrigin string, logger *
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
-		// Só aceita o handshake se o Origin bater com o frontend
-		// configurado (ou vier vazio, caso de clientes não-browser) —
-		// impede que uma página de outro domínio abra WebSockets contra
-		// esta API usando um ticket vazado.
 		CheckOrigin: func(r *http.Request) bool {
 			origin := r.Header.Get("Origin")
-			return origin == "" || origin == allowedOrigin
+			if origin == "" {
+				return true
+			}
+			if allowedOrigin == "*" {
+				return true
+			}
+			for _, allowed := range strings.Split(allowedOrigin, ",") {
+				if strings.TrimSpace(allowed) == origin {
+					return true
+				}
+			}
+			// Permite conexões de localhost e 127.0.0.1 em desenvolvimento
+			if strings.HasPrefix(origin, "http://localhost:") || strings.HasPrefix(origin, "http://127.0.0.1:") || strings.HasPrefix(origin, "https://localhost:") || strings.HasPrefix(origin, "https://127.0.0.1:") {
+				return true
+			}
+			return false
 		},
 	}
 

@@ -24,7 +24,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/yurythx/projeto-nova/internal/platform/metrics"
+	"github.com/yurythx/projeto-aurora/internal/platform/metrics"
 )
 
 // Flag é o estado persistido de uma feature flag.

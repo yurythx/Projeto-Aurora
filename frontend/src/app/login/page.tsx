@@ -14,38 +14,25 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 // tecnologia mais avançada do mercado"), que a versão anterior tinha
 // herdado de um template.
 const capabilities = [
-  "As 6 etapas da IN SCL 01/2019 em um quadro só, do ofício ao arquivamento.",
-  "Ofício, Ordem de Serviço e Relatório de Fiscalização gerados prontos para assinar.",
-  "Aviso de SLA estourado e de certidão vencida antes de travar o processo.",
-  "Diário Oficial de Rondonópolis lido e cruzado com os seus contratos.",
+  "Autenticação unificada via SSO Keycloak e credenciais locais seguras.",
+  "Mensageria resiliente com Transactional Outbox e integração com RabbitMQ.",
+  "Painel de telemetria e monitoramento de microsserviços em tempo real.",
+  "Arquitetura limpa e modular pronta para expansão de novos módulos.",
 ];
 
 export default async function LoginPage() {
-  // Força renderização dinâmica — necessário para que o
-  // Content-Security-Policy com nonce (proxy.ts) seja aplicado
-  // corretamente; veja o comentário equivalente em app/page.tsx.
   await connection();
 
-  // Mesmo cookie "nova-theme" que o dashboard lê — o login também tem um
-  // ThemeToggle (canto superior direito), então precisa do mesmo
-  // tratamento sem-flash.
   const cookieStore = await cookies();
   const themeCookie = cookieStore.get("nova-theme")?.value;
   const initialTheme = themeCookie === "dark" || themeCookie === "light" ? themeCookie : undefined;
 
   return (
     <div className="flex min-h-screen">
-      {/* Painel de marca — só no desktop (lg+). Abaixo disso a tela vira
-          só o formulário, centralizado. O painel é sempre escuro
-          (bg-brand-panel) em qualquer tema, então o texto é fixado em
-          branco (não text-primary-foreground, que no tema escuro fica
-          quase preto) e a tinta de carimbo do selo/marcadores no tom
-          claro (--seal). */}
       <div
         className="relative hidden overflow-hidden bg-brand-panel text-white lg:flex lg:w-[44%] lg:flex-col lg:justify-between lg:p-12"
         style={{ "--seal": "#d1524a" } as CSSProperties}
       >
-        {/* Assinatura: o selo como marca d'água, sangrando pelo canto. */}
         <Seal
           size={520}
           decorative
@@ -54,17 +41,16 @@ export default async function LoginPage() {
 
         <div className="relative flex items-center gap-2.5 text-lg font-semibold">
           <Logo size={30} />
-          Projeto Nova
+          Projeto Aurora
         </div>
 
         <div className="relative flex flex-col gap-6">
-          <p className="dateline text-white/60">Prefeitura Municipal de Rondonópolis</p>
+          <p className="dateline text-white/60">Plataforma Base Enterprise</p>
           <h1 className="max-w-md text-3xl font-semibold leading-tight text-white">
-            Fiscalização de contratos, do ofício ao arquivamento.
+            Fundação sólida e modular para novas aplicações.
           </h1>
           <p className="max-w-sm text-sm text-white/75">
-            Um painel para acompanhar cada demanda mensal pelas seis etapas da IN SCL 01/2019 — com
-            os documentos, os prazos e o Diário Oficial no mesmo lugar.
+            Plataforma genérica de alta performance com arquitetura limpa em Go e Next.js, pronta para acoplamento de novos serviços.
           </p>
           <ul className="mt-1 flex flex-col gap-3 text-sm text-white/90">
             {capabilities.map((item) => (
@@ -90,7 +76,7 @@ export default async function LoginPage() {
 
         <Link href="/" className="mb-10 flex items-center gap-2 text-lg font-semibold lg:hidden">
           <Logo size={30} />
-          Projeto Nova
+          Projeto Aurora
         </Link>
 
         <Suspense fallback={null}>

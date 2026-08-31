@@ -9,10 +9,10 @@ import (
 
 	"github.com/google/uuid"
 
-	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
-	"github.com/yurythx/projeto-nova/internal/domain/pagination"
-	"github.com/yurythx/projeto-nova/internal/modules/users/domain"
-	"github.com/yurythx/projeto-nova/internal/platform/audit"
+	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
+	"github.com/yurythx/projeto-aurora/internal/domain/pagination"
+	"github.com/yurythx/projeto-aurora/internal/modules/users/domain"
+	"github.com/yurythx/projeto-aurora/internal/platform/audit"
 )
 
 // SyncIdentityInput é o subconjunto da identidade de um chamador

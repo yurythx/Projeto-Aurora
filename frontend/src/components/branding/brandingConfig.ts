@@ -1,6 +1,4 @@
-// Formato + padrões do branding white-label. Extraído de BrandingContext.tsx
-// para que a "external store" (brandingStore.ts) possa importar sem ciclo.
-// BrandingContext.tsx re-exporta os dois, então imports antigos seguem valendo.
+// Formato + padrões do branding white-label do Projeto Aurora.
 
 export interface SystemBrandingConfig {
   appName: string;
@@ -15,36 +13,27 @@ export interface SystemBrandingConfig {
 }
 
 export const DEFAULT_BRANDING: SystemBrandingConfig = {
-  appName: "Projeto Nova",
-  appDescription: "Sistema de Gestão de Contratos Administrativos e Liquidação Financeira",
+  appName: "Projeto Aurora",
+  appDescription: "Plataforma Enterprise Base Genérica & Serviços",
   orgName: "Prefeitura Municipal de Rondonópolis",
   logoUrl: "",
   faviconUrl: "",
-  supportEmail: "suporte.contratos@rondonopolis.mt.gov.br",
+  supportEmail: "suporte@rondonopolis.mt.gov.br",
   supportPhone: "(66) 3411-5000",
   supportHours: "Segunda a Sexta, das 08h às 17h",
   highContrast: false,
 };
 
-// Cookie (não localStorage) para o branding chegar ao servidor e o layout
-// já renderizar a Topbar/Footer com o nome certo no 1º paint — ver
-// lib/prefs/cookies.ts. O valor é o JSON do SystemBrandingConfig.
-export const BRANDING_COOKIE = "nova-branding";
+export const BRANDING_COOKIE = "aurora-branding";
 
-// parseBrandingCookie é isomórfico (sem window/document): o layout do
-// servidor e a store do cliente usam o MESMO parser, garantindo que o
-// snapshot de SSR e o do cliente coincidam — sem essa igualdade, o
-// useSyncExternalStore troca o valor logo após a hidratação e pisca.
 export function parseBrandingCookie(raw: string | null | undefined): SystemBrandingConfig {
   if (!raw) return DEFAULT_BRANDING;
   const attempts = [raw];
-  // Rede de segurança: se o valor chegar ainda percent-encoded (algum
-  // runtime não decodifica o cookie), tenta decodificar uma vez.
   if (raw.includes("%")) {
     try {
       attempts.push(decodeURIComponent(raw));
     } catch {
-      // valor malformado — cai no DEFAULT abaixo
+      // valor malformado
     }
   }
   for (const text of attempts) {
@@ -54,7 +43,7 @@ export function parseBrandingCookie(raw: string | null | undefined): SystemBrand
         return { ...DEFAULT_BRANDING, ...parsed };
       }
     } catch {
-      // tenta o próximo candidato
+      // tenta próximo
     }
   }
   return DEFAULT_BRANDING;

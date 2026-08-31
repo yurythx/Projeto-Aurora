@@ -13,8 +13,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/yurythx/projeto-nova/internal/domain/events"
-	"github.com/yurythx/projeto-nova/internal/platform/metrics"
+	"github.com/yurythx/projeto-aurora/internal/domain/events"
+	"github.com/yurythx/projeto-aurora/internal/platform/metrics"
 )
 
 // Consumer implementa events.EventConsumer para uma única fila. Os retries

@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
+	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
 )
 
 func testLogger() *slog.Logger {

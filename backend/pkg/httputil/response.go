@@ -12,8 +12,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
-	"github.com/yurythx/projeto-nova/internal/platform/logging"
+	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
+	"github.com/yurythx/projeto-aurora/internal/platform/logging"
 )
 
 // Envelope é o formato de resposta padrão de todo endpoint do NIX Platform.

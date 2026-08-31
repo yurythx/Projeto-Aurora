@@ -4,4 +4,5 @@
 // pra um só lugar pra essas duas cadeias de fallback nunca poderem
 // divergir uma da outra.
 export const BACKEND_INTERNAL_URL =
-  process.env.BACKEND_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+  process.env.BACKEND_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8002";
+

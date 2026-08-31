@@ -1,4 +1,4 @@
-module github.com/yurythx/projeto-nova
+module github.com/yurythx/projeto-aurora
 
 go 1.25.14
 

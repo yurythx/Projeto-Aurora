@@ -13,8 +13,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/yurythx/projeto-nova/internal/domain/events"
-	"github.com/yurythx/projeto-nova/internal/platform/messaging"
+	"github.com/yurythx/projeto-aurora/internal/domain/events"
+	"github.com/yurythx/projeto-aurora/internal/platform/messaging"
 )
 
 // Estes testes rodam contra o PostgreSQL real e migrado usado em toda a

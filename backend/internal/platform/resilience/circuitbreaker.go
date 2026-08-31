@@ -18,8 +18,8 @@ import (
 
 	"github.com/sony/gobreaker/v2"
 
-	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
-	"github.com/yurythx/projeto-nova/internal/platform/metrics"
+	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
+	"github.com/yurythx/projeto-aurora/internal/platform/metrics"
 )
 
 // Valores padrão de configuração, usados por New quando Options não os

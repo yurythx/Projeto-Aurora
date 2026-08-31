@@ -1,8 +1,21 @@
 import { getServerSession } from "next-auth/next";
 import Link from "next/link";
+import { 
+  Shield, 
+  Users, 
+  Settings, 
+  Activity, 
+  Layers, 
+  Cpu, 
+  Zap, 
+  CheckCircle2, 
+  Plug, 
+  FileCode,
+  ArrowRight
+} from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { StatusIndicator } from "@/components/ui/StatusIndicator";
 import { authOptions } from "@/lib/auth/options";
@@ -10,68 +23,31 @@ import { ApiError } from "@/lib/api/client";
 import { serverApiGet } from "@/lib/api/server";
 import type { Integration } from "@/types/api";
 
-interface DashboardStats {
-  total_vigentes: number;
-  valor_total_vigentes: number;
-  proximos_vencimento: number;
-}
-
-interface DemandsDashboard {
-  funnel: { etapa: number; label: string; total: number }[];
-  total_em_andamento: number;
-  total_arquivadas: number;
-  sla_breached: number;
-  sla_breached_items: {
-    demanda_id: string;
-    contrato_numero: string;
-    etapa: number;
-    days_in_stage: number;
-    sla_days: number;
-  }[];
-  open_occurrences: number;
-  certidoes_expired: number;
-  certidoes_expiring_30d: number;
-  certidoes_items: {
-    demanda_id: string;
-    contrato_numero: string;
-    doc_type: string;
-    label: string;
-    validade_ate: string;
-    expired: boolean;
-  }[];
-}
-
-// Uma célula da "régua" de números do topo — deliberadamente NÃO é um card
-// (§ redesenho 2026-08): a tela antiga eram seis cards idênticos, o padrão
-// mais genérico possível. Aqui é uma linha contável com fios finos, no
-// espírito de um livro-razão / extrato.
-function LedgerCell({
+function PlatformStatCell({
   label,
   value,
   hint,
-  alert = false,
+  icon: Icon,
 }: {
   label: string;
   value: string | number;
   hint?: string;
-  alert?: boolean;
+  icon: typeof Shield;
 }) {
   return (
-    <div className="flex min-w-[8.25rem] shrink-0 flex-col gap-1 px-3.5 py-4 first:pl-0">
-      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">{label}</span>
-      <span
-        className={`font-mono text-2xl font-semibold tabular-nums ${alert ? "text-seal" : "text-foreground"}`}
-      >
-        {value}
-      </span>
-      {hint && <span className="text-xs text-muted">{hint}</span>}
+    <div className="flex min-w-[10rem] flex-1 items-center gap-4 rounded-xl border border-surface-border bg-surface p-4 shadow-sm">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <Icon size={20} />
+      </div>
+      <div className="flex flex-col gap-0.5">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</span>
+        <span className="font-mono text-xl font-bold text-foreground">{value}</span>
+        {hint && <span className="text-[11px] text-muted">{hint}</span>}
+      </div>
     </div>
   );
 }
 
-// Visão geral — dashboard de fiscalização de contratos do Projeto Nova.
-// Server Component: busca sessão, estatísticas e funil de demandas no
-// servidor antes de qualquer HTML sair.
 export default async function DashboardOverviewPage() {
   const session = await getServerSession(authOptions);
   const firstName = (session?.user?.name ?? session?.user?.email ?? "").split(/[@\s]/)[0];
@@ -81,209 +57,186 @@ export default async function DashboardOverviewPage() {
     .toUpperCase();
 
   let integrations: Integration[] | null = null;
-  let stats: DashboardStats | null = null;
-  let demandsDash: DemandsDashboard | null = null;
   let errorMessage: string | null = null;
 
   try {
-    const [integrationsRes, statsRes, demandsRes] = await Promise.all([
-      serverApiGet<Integration[]>("v1/integrations"),
-      serverApiGet<DashboardStats>("v1/contratos/dashboard").catch(() => ({ data: null })),
-      serverApiGet<DemandsDashboard>("v1/demands/dashboard").catch(() => ({ data: null })),
-    ]);
+    const integrationsRes = await serverApiGet<Integration[]>("v1/integrations");
     integrations = integrationsRes.data;
-    if (statsRes && statsRes.data) {
-      stats = statsRes.data;
-    }
-    if (demandsRes && demandsRes.data) {
-      demandsDash = demandsRes.data;
-    }
   } catch (err) {
-    errorMessage = err instanceof ApiError ? err.message : "Falha ao carregar";
+    errorMessage = err instanceof ApiError ? err.message : "Falha ao carregar integracoes";
   }
 
-  const funnelMax = demandsDash
-    ? Math.max(1, ...(demandsDash.funnel ?? []).map((f) => f.total))
-    : 1;
+  const modules = [
+    {
+      id: "example",
+      title: "Módulo Exemplo (Template)",
+      description: "Estrutura Clean Architecture genérica de modelo para criação de novos módulos de negócio.",
+      icon: FileCode,
+      tag: "Template / Boilerplate",
+      status: "PRONTO PARA USO",
+      href: "/configuracao",
+    },
+    {
+      id: "users",
+      title: "Gestão de Usuários & Perfis",
+      description: "Gerenciamento de contas locais, sincronização Keycloak SSO e atribuição de permissões (Roles).",
+      icon: Users,
+      tag: "Segurança & RBAC",
+      status: "ATIVO",
+      href: "/configuracao",
+    },
+    {
+      id: "integrations",
+      title: "Barramento de Integrações",
+      description: "Monitoramento de saúde de provedores externos e registros de conectividade.",
+      icon: Plug,
+      tag: "Conectividade",
+      status: "ONLINE",
+      href: "/integracoes",
+    },
+    {
+      id: "monitoring",
+      title: "Monitoramento & Telemetria",
+      description: "Métricas Prometheus, OpenTelemetry e gerenciamento do Transactional Outbox / RabbitMQ.",
+      icon: Activity,
+      tag: "DevSecOps",
+      status: "MONITORADO",
+      href: "/monitoramento",
+    },
+  ];
 
   return (
-    <div className="flex flex-col gap-10">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex flex-col gap-2">
-          <p className="dateline">Competência · {competencia}</p>
-          <h1 className="text-2xl font-semibold">{firstName ? `Olá, ${firstName}` : "Visão geral"}</h1>
+    <div className="flex flex-col gap-8 pb-10">
+      {/* Header Principal */}
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-surface-border pb-6">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <span className="dateline">Projeto Aurora Base · {competencia}</span>
+            <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+              Versão Base Enterprise
+            </span>
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {firstName ? `Bem-vindo(a), ${firstName}` : "Visão Geral do Projeto Aurora"}
+          </h1>
           <p className="text-sm text-muted">
-            Onde as demandas mensais estão paradas e o que precisa de você agora.
+            Estrutura base pronta para recebimento e acoplamento de novos módulos de domínio.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 text-sm">
-          <Link href="/contratos">
-            <Button size="sm">Abrir quadro de demandas</Button>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/configuracao">
+            <Button size="sm" className="gap-2">
+              <Settings size={16} />
+              Configurações
+            </Button>
           </Link>
-          <Link href="/diario">
-            <Button size="sm" variant="secondary">
-              Buscar no Diário
+          <Link href="/monitoramento">
+            <Button size="sm" variant="secondary" className="gap-2">
+              <Activity size={16} />
+              Métricas do Sistema
             </Button>
           </Link>
         </div>
       </header>
 
-      {/* Régua de números — extrato, não grade de cards. */}
-      {(stats || demandsDash) && (
-        <section className="flex flex-col gap-3">
-          <p className="dateline">Situação atual</p>
-          <div className="flex divide-x divide-surface-border overflow-x-auto rounded-xl border border-surface-border bg-surface px-4 py-1">
-            {stats && (
-              <>
-                <LedgerCell
-                  label="Contratos vigentes"
-                  value={stats.total_vigentes}
-                  hint={`R$ ${stats.valor_total_vigentes.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
-                />
-                <LedgerCell
-                  label="Vencem em 30 dias"
-                  value={stats.proximos_vencimento}
-                  alert={stats.proximos_vencimento > 0}
-                />
-              </>
-            )}
-            {demandsDash && (
-              <>
-                <LedgerCell
-                  label="Demandas em andamento"
-                  value={demandsDash.total_em_andamento}
-                  hint={`${demandsDash.total_arquivadas} arquivada(s)`}
-                />
-                <LedgerCell
-                  label="SLA estourado"
-                  value={demandsDash.sla_breached}
-                  hint="fora do prazo da etapa"
-                  alert={demandsDash.sla_breached > 0}
-                />
-                <LedgerCell
-                  label="Pendências abertas"
-                  value={demandsDash.open_occurrences}
-                  hint="ocorrências não resolvidas"
-                  alert={demandsDash.open_occurrences > 0}
-                />
-                <LedgerCell
-                  label="Certidões vencidas"
-                  value={demandsDash.certidoes_expired}
-                  hint={`+ ${demandsDash.certidoes_expiring_30d} vencem em 30 dias`}
-                  alert={demandsDash.certidoes_expired > 0}
-                />
-              </>
-            )}
-          </div>
-        </section>
-      )}
+      {/* Estatísticas de Infraestrutura */}
+      <section className="flex flex-col gap-3">
+        <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">Indicadores da Plataforma</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <PlatformStatCell
+            label="Arquitetura"
+            value="Clean Arch"
+            hint="Go 1.25 + Next.js App Router"
+            icon={Layers}
+          />
+          <PlatformStatCell
+            label="Autenticação"
+            value="OIDC + SSO"
+            hint="Keycloak & Local JWT Signer"
+            icon={Shield}
+          />
+          <PlatformStatCell
+            label="Mensageria"
+            value="Outbox EventBus"
+            hint="PostgreSQL + RabbitMQ DLQ"
+            icon={Zap}
+          />
+          <PlatformStatCell
+            label="Estado do Core"
+            value="Saudável"
+            hint="Todos os microsserviços online"
+            icon={Cpu}
+          />
+        </div>
+      </section>
 
-      {/* Funil por etapa — o centro da tela: é o processo. */}
-      {demandsDash && (
-        <section className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <p className="dateline">IN SCL 01/2019 · Funil por etapa</p>
-            <Link href="/contratos" className="text-xs text-primary hover:underline">
-              Abrir quadro →
-            </Link>
-          </div>
-          <Card>
-            <CardContent className="flex flex-col divide-y divide-surface-border pt-2">
-              {(demandsDash.funnel ?? []).map((f) => (
-                <div key={f.etapa} className="flex items-center gap-4 py-3">
-                  <span className="w-6 shrink-0 font-mono text-sm font-semibold text-seal">
-                    {String(f.etapa).padStart(2, "0")}
-                  </span>
-                  <span className="w-56 shrink-0 truncate text-sm text-foreground">{f.label}</span>
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.06]">
-                    <div
-                      className="h-full rounded-full bg-primary"
-                      style={{ width: `${Math.round((f.total / funnelMax) * 100)}%` }}
-                    />
-                  </div>
-                  <span className="w-8 shrink-0 text-right font-mono text-sm font-semibold tabular-nums">
-                    {f.total}
-                  </span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </section>
-      )}
-
-      {/* Atenção imediata */}
-      {demandsDash && (
-        <section className="flex flex-col gap-4">
-          <p className="dateline">Atenção imediata</p>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">SLA estourado</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm">
-                {(demandsDash.sla_breached_items ?? []).length === 0 ? (
-                  <p className="text-muted">Nenhuma demanda fora do prazo.</p>
-                ) : (
-                  <ul className="flex flex-col divide-y divide-surface-border">
-                    {(demandsDash.sla_breached_items ?? []).map((it) => (
-                      <li key={it.demanda_id} className="flex items-center justify-between gap-2 py-2">
-                        <span className="truncate">
-                          Contrato {it.contrato_numero || "—"} · Etapa {it.etapa}
-                        </span>
-                        <span className="shrink-0 font-mono text-seal tabular-nums">
-                          {it.days_in_stage}d / {it.sla_days}d
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Certidões vencidas ou a vencer</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm">
-                {(demandsDash.certidoes_items ?? []).length === 0 ? (
-                  <p className="text-muted">Nenhuma certidão vencida ou a vencer em 30 dias.</p>
-                ) : (
-                  <ul className="flex flex-col divide-y divide-surface-border">
-                    {(demandsDash.certidoes_items ?? []).slice(0, 12).map((it) => (
-                      <li
-                        key={`${it.demanda_id}-${it.doc_type}`}
-                        className="flex items-center justify-between gap-2 py-2"
-                      >
-                        <span className="truncate">
-                          {it.contrato_numero || "—"} · {it.label}
-                        </span>
-                        <span
-                          className={`shrink-0 font-mono tabular-nums ${it.expired ? "text-seal" : "text-warning"}`}
-                        >
-                          {new Date(it.validade_ate).toLocaleDateString("pt-BR")}
-                          {it.expired ? " · vencida" : ""}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </section>
-      )}
-
-      {/* Integrações — faixa compacta no rodapé. */}
+      {/* Grid de Módulos Prontos para Uso */}
       <section className="flex flex-col gap-4">
-        <p className="dateline">Integrações</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Módulos da Aplicação</h2>
+            <p className="text-xs text-muted">Serviços e componentes de infraestrutura disponíveis no Projeto Aurora.</p>
+          </div>
+        </div>
+
+        <div className="grid gap-5 sm:grid-cols-2">
+          {modules.map((mod) => {
+            const Icon = mod.icon;
+            return (
+              <Card key={mod.id} className="relative overflow-hidden transition-all hover:border-primary/50 hover:shadow-md">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <Icon size={22} />
+                    </div>
+                    <span className="rounded-md bg-surface-border/60 px-2 py-1 text-[11px] font-medium text-muted">
+                      {mod.tag}
+                    </span>
+                  </div>
+                  <CardTitle className="text-base font-bold pt-2">{mod.title}</CardTitle>
+                  <CardDescription className="text-xs text-muted leading-relaxed">
+                    {mod.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-0 flex items-center justify-between border-t border-surface-border/50 mt-2 py-3 text-xs">
+                  <span className="flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 size={14} />
+                    {mod.status}
+                  </span>
+                  <Link href={mod.href} className="flex items-center gap-1 text-primary hover:underline font-semibold">
+                    Acessar <ArrowRight size={14} />
+                  </Link>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Status de Conectividade e Integrações */}
+      <section className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Status de Serviços & Integrações</h2>
+          <Link href="/integracoes" className="text-xs text-primary hover:underline">
+            Ver todas →
+          </Link>
+        </div>
         <Card>
           <CardContent className="pt-4">
             {errorMessage && <ErrorState message={errorMessage} />}
             {integrations && (
               <ul className="flex flex-col divide-y divide-surface-border">
                 {integrations.map((integration) => (
-                  <li key={integration.id} className="flex items-center justify-between py-2.5">
-                    <span className="text-sm">{integration.name}</span>
+                  <li key={integration.id} className="flex items-center justify-between py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-surface-border/40 text-foreground">
+                        <Plug size={16} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold">{integration.name}</p>
+                        <p className="text-xs text-muted">Serviço externo de apoio</p>
+                      </div>
+                    </div>
                     <StatusIndicator status={integration.status} />
                   </li>
                 ))}

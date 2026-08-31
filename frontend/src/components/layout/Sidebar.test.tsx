@@ -2,46 +2,26 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-// Sidebar lê a rota atual via usePathname() pra marcar o link ativo —
-// mesmo padrão de mock já usado em NewProjectForm.test.tsx pra
-// next/navigation.
 const { usePathname } = vi.hoisted(() => ({ usePathname: vi.fn() }));
 vi.mock("next/navigation", () => ({ usePathname }));
 
 import { Sidebar } from "./Sidebar";
 
 describe("Sidebar", () => {
-  it("marca só o link exato como ativo em /dashboard (sem sub-rotas próprias)", () => {
+  it("marca só o link exato como ativo em /dashboard", () => {
     usePathname.mockReturnValue("/dashboard");
     render(<Sidebar collapsed={false} mobileOpen={false} onCloseMobile={() => {}} />);
-    expect(screen.getByRole("link", { name: /Visão geral/ })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Visão Geral/ })).toHaveAttribute(
       "aria-current",
       "page",
     );
     expect(screen.getByRole("link", { name: /Integrações/ })).not.toHaveAttribute("aria-current");
   });
 
-  it("acende a seção 'Contratos' numa sub-rota profunda (startsWith)", () => {
-    usePathname.mockReturnValue("/contratos/demandas/abc/oficio");
+  it("acende a seção 'Integrações' na rota de integrações", () => {
+    usePathname.mockReturnValue("/integracoes");
     render(<Sidebar collapsed={false} mobileOpen={false} onCloseMobile={() => {}} />);
-    expect(screen.getByRole("link", { name: /Contratos/ })).toHaveAttribute("aria-current", "page");
-  });
-
-  it("acende 'Diário Oficial' em rotas cobertas por `match` (irmãs, não sub-rotas)", () => {
-    // /pessoal e /diario/revisao não são sub-rotas de /diario-oficial, mas
-    // a seção Diário Oficial as cobre via `match`.
-    for (const p of ["/diario", "/pessoal", "/diario/revisao", "/diario-oficial"]) {
-      usePathname.mockReturnValue(p);
-      const { unmount } = render(
-        <Sidebar collapsed={false} mobileOpen={false} onCloseMobile={() => {}} />,
-      );
-      expect(screen.getByRole("link", { name: /Diário Oficial/ }), `rota ${p}`).toHaveAttribute(
-        "aria-current",
-        "page",
-      );
-      expect(screen.getByRole("link", { name: /Contratos/ })).not.toHaveAttribute("aria-current");
-      unmount();
-    }
+    expect(screen.getByRole("link", { name: /Integrações/ })).toHaveAttribute("aria-current", "page");
   });
 
   it("clicar num link fecha o painel mobile (onCloseMobile)", async () => {

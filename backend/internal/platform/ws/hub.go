@@ -10,7 +10,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/yurythx/projeto-nova/internal/platform/metrics"
+	"github.com/yurythx/projeto-aurora/internal/platform/metrics"
 )
 
 // Hub rastreia todo cliente conectado e distribui (fan-out) as mensagens

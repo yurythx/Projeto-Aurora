@@ -1,10 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_BRANDING } from "./brandingConfig";
+import { BRANDING_COOKIE, DEFAULT_BRANDING } from "./brandingConfig";
 
-// A store é um singleton de módulo (cache em memória). vi.resetModules() +
-// import dinâmico dá a cada teste uma instância zerada, como um refresh de
-// página faria.
 async function freshStore() {
   vi.resetModules();
   return import("./brandingStore");
@@ -23,10 +20,8 @@ describe("brandingStore", () => {
     window.localStorage.clear();
   });
 
-  it("getServerSnapshot é o DEFAULT (fallback; o server snapshot real vem do layout)", async () => {
+  it("getServerSnapshot é o DEFAULT", async () => {
     const store = await freshStore();
-    // toEqual, não toBe: freshStore() re-importa o módulo (e o brandingConfig
-    // junto), então a referência de DEFAULT_BRANDING difere da estática aqui.
     expect(store.getBrandingServerSnapshot()).toEqual(DEFAULT_BRANDING);
   });
 
@@ -41,11 +36,11 @@ describe("brandingStore", () => {
     const snap = store.getBrandingSnapshot();
     expect(snap.appName).toBe("Prefeitura X");
     expect(snap.highContrast).toBe(true);
-    expect(snap.orgName).toBe(DEFAULT_BRANDING.orgName); // campos não tocados ficam
+    expect(snap.orgName).toBe(DEFAULT_BRANDING.orgName);
 
-    expect(document.cookie).toContain("nova-branding=");
+    expect(document.cookie).toContain(`${BRANDING_COOKIE}=`);
     const raw = decodeURIComponent(
-      document.cookie.split("nova-branding=")[1]?.split(";")[0] ?? "",
+      document.cookie.split(`${BRANDING_COOKIE}=`)[1]?.split(";")[0] ?? "",
     );
     expect(JSON.parse(raw).appName).toBe("Prefeitura X");
   });
@@ -55,12 +50,12 @@ describe("brandingStore", () => {
     store.updateBrandingStore({ appName: "Temp" });
     store.resetBrandingStore();
     expect(store.getBrandingSnapshot()).toEqual(DEFAULT_BRANDING);
-    expect(document.cookie).not.toContain("nova-branding=");
+    expect(document.cookie).not.toContain(`${BRANDING_COOKIE}=`);
   });
 
   it("lê um cookie pré-existente no primeiro snapshot", async () => {
-    document.cookie = `nova-branding=${encodeURIComponent(
-      JSON.stringify({ ...DEFAULT_BRANDING, appName: "Do Cookie" }),
+    document.cookie = `${BRANDING_COOKIE}=${encodeURIComponent(
+      JSON.stringify({ appName: "Do Cookie" }),
     )}; path=/`;
     const store = await freshStore();
     expect(store.getBrandingSnapshot().appName).toBe("Do Cookie");
@@ -73,7 +68,7 @@ describe("brandingStore", () => {
     );
     const store = await freshStore();
     expect(store.getBrandingSnapshot().appName).toBe("Legado");
-    expect(document.cookie).toContain("nova-branding=");
+    expect(document.cookie).toContain(`${BRANDING_COOKIE}=`);
     expect(window.localStorage.getItem("nova_system_branding_v1")).toBeNull();
   });
 

@@ -10,9 +10,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
-	"github.com/yurythx/projeto-nova/internal/domain/pagination"
-	"github.com/yurythx/projeto-nova/internal/platform/metrics"
+	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
+	"github.com/yurythx/projeto-aurora/internal/domain/pagination"
+	"github.com/yurythx/projeto-aurora/internal/platform/metrics"
 )
 
 // Repository persiste as linhas de Job. Todo método que altera dado recebe

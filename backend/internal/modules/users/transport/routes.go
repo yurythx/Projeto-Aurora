@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/yurythx/projeto-nova/internal/platform/auth"
+	"github.com/yurythx/projeto-aurora/internal/platform/auth"
 )
 
 // RegisterRoutes monta as rotas do módulo users num router já protegido

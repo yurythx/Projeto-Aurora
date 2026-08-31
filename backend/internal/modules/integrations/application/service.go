@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/yurythx/projeto-nova/internal/modules/integrations/domain"
+	"github.com/yurythx/projeto-aurora/internal/modules/integrations/domain"
 )
 
 type Service struct {

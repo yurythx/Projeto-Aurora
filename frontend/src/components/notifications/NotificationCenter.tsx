@@ -9,20 +9,16 @@ import type { ToastTone } from "@/components/ui/Toast";
 import {
   integrationStatusPayloadSchema,
   jobEventPayloadSchema,
-  demandEtapaChangedPayloadSchema,
   scanCompletedPayloadSchema,
-  contratoDiarioRefLinkedPayloadSchema,
-  contratoFiscalAlertPayloadSchema,
   type EventEnvelope,
 } from "@/lib/validation/schemas";
-import { mutate } from "swr";
 import type { ConnectionState } from "@/lib/websocket/client";
 
 const eventCopy: Partial<Record<string, { title: string; tone: "success" | "danger" | "info" }>> = {
-  "diario_oficial.job.completed": { title: "Verificação do Diário Oficial concluída", tone: "success" },
-  "diario_oficial.job.failed": { title: "Verificação do Diário Oficial falhou", tone: "danger" },
   "integration.test.completed": { title: "Teste de integração concluído", tone: "success" },
-  "notification.created": { title: "Nova notificação", tone: "info" },
+  "job.completed": { title: "Job de sistema concluído com sucesso", tone: "success" },
+  "job.failed": { title: "Job de sistema falhou", tone: "danger" },
+  "notification.created": { title: "Nova notificação do sistema", tone: "info" },
 };
 
 /** Aviso só em dev quando o payload de um evento não bate com o schema —
@@ -65,60 +61,6 @@ export function NotificationCenter({
           return;
         }
 
-        case "demand.etapa_changed": {
-          const result = demandEtapaChangedPayloadSchema.safeParse(event.payload);
-          if (!result.success) {
-            logParseFailure(event.type, result.error);
-            return;
-          }
-          const notification = {
-            title: `Demanda de Contrato movida para Etapa ${result.data.new_etapa}`,
-            tone: "info" as ToastTone,
-          };
-          showToast(notification);
-          pushHistory(notification);
-          // Revalida a chave exata e quaisquer chaves parametrizadas do Kanban
-          mutate((key) => typeof key === "string" && key.startsWith("/api/v1/demands/kanban"), undefined, {
-            revalidate: true,
-          });
-          return;
-        }
-
-        case "contrato.diario_ref.linked": {
-          const result = contratoDiarioRefLinkedPayloadSchema.safeParse(event.payload);
-          if (!result.success) {
-            logParseFailure(event.type, result.error);
-            return;
-          }
-          const n = result.data.refs_vinculadas;
-          const notification = {
-            title: `Contrato ${result.data.contrato_numero}: ${n} publicação${n > 1 ? "ões" : ""} do Diário vinculada${n > 1 ? "s" : ""}`,
-            tone: "info" as ToastTone,
-          };
-          showToast(notification);
-          pushHistory(notification);
-          mutate((key) => typeof key === "string" && key.startsWith("/api/v1/contratos/kanban"), undefined, {
-            revalidate: true,
-          });
-          return;
-        }
-
-        case "contrato.fiscal_alert": {
-          const result = contratoFiscalAlertPayloadSchema.safeParse(event.payload);
-          if (!result.success) {
-            logParseFailure(event.type, result.error);
-            return;
-          }
-          const notification = {
-            title: `Alerta de fiscalização — contrato ${result.data.contrato_numero}`,
-            description: result.data.message,
-            tone: "danger" as ToastTone,
-          };
-          showToast(notification);
-          pushHistory(notification);
-          return;
-        }
-
         case "scanning.scan.completed": {
           const result = scanCompletedPayloadSchema.safeParse(event.payload);
           if (!result.success) {
@@ -131,13 +73,13 @@ export function NotificationCenter({
 
           if (findings_count > 0) {
             if (critical_count > 0) {
-              description = `${findings_count} achado(s), ${critical_count} crítico(s)! — veja em Segurança.`;
+              description = `${findings_count} achado(s), ${critical_count} crítico(s)!`;
               tone = "danger";
             } else if (high_count > 0) {
-              description = `${findings_count} achado(s), ${high_count} alto(s) — veja em Segurança.`;
+              description = `${findings_count} achado(s), ${high_count} alto(s)`;
               tone = "danger";
             } else {
-              description = `${findings_count} achado(s) — veja em Segurança.`;
+              description = `${findings_count} achado(s)`;
               tone = "info";
             }
           }

@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
-	"github.com/yurythx/projeto-nova/internal/platform/logging"
-	"github.com/yurythx/projeto-nova/pkg/httputil"
+	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
+	"github.com/yurythx/projeto-aurora/internal/platform/logging"
+	"github.com/yurythx/projeto-aurora/pkg/httputil"
 )
 
 // RequireAuthentication extrai e verifica o bearer token do header

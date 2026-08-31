@@ -28,7 +28,17 @@ export function useNotifications(onEvent: (event: EventEnvelope) => void): Conne
   });
 
   useEffect(() => {
-    const wsBaseUrl = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000/ws";
+    let wsBaseUrl = process.env.NEXT_PUBLIC_WS_URL;
+
+    if (!wsBaseUrl && typeof window !== "undefined") {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const host = window.location.hostname || "localhost";
+      wsBaseUrl = `${protocol}//${host}:8002/ws`;
+    }
+
+    if (!wsBaseUrl) {
+      wsBaseUrl = "ws://localhost:8002/ws";
+    }
 
     const client = new NotificationClient({
       wsBaseUrl,

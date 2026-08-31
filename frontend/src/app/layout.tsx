@@ -31,8 +31,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Projeto Nova",
-  description: "Plataforma de fiscalização de contratos municipais e inteligência do Diário Oficial de Rondonópolis.",
+  title: "Projeto Aurora",
+  description: "Plataforma Enterprise Base Genérica da Prefeitura Municipal de Rondonópolis.",
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {

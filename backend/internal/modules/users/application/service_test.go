@@ -6,8 +6,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/yurythx/projeto-nova/internal/domain/pagination"
-	"github.com/yurythx/projeto-nova/internal/modules/users/domain"
+	"github.com/yurythx/projeto-aurora/internal/domain/pagination"
+	"github.com/yurythx/projeto-aurora/internal/modules/users/domain"
 )
 
 type fakeRepository struct {

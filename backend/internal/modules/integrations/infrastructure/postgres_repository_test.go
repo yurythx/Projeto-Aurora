@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/yurythx/projeto-nova/internal/modules/integrations/domain"
+	"github.com/yurythx/projeto-aurora/internal/modules/integrations/domain"
 )
 
 func testPool(t *testing.T) *pgxpool.Pool {

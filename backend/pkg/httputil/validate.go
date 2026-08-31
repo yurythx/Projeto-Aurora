@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
+	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
 )
 
 var (

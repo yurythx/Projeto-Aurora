@@ -6,10 +6,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
-	"github.com/yurythx/projeto-nova/internal/platform/audit"
-	"github.com/yurythx/projeto-nova/internal/platform/auth"
-	"github.com/yurythx/projeto-nova/pkg/httputil"
+	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
+	"github.com/yurythx/projeto-aurora/internal/platform/audit"
+	"github.com/yurythx/projeto-aurora/internal/platform/auth"
+	"github.com/yurythx/projeto-aurora/pkg/httputil"
 )
 
 // ActionFeatureFlagChanged é a ação registrada em audit_logs (§49) toda

@@ -14,9 +14,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
-	"github.com/yurythx/projeto-nova/internal/modules/integrations/application"
-	"github.com/yurythx/projeto-nova/internal/modules/integrations/domain"
+	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
+	"github.com/yurythx/projeto-aurora/internal/modules/integrations/application"
+	"github.com/yurythx/projeto-aurora/internal/modules/integrations/domain"
 )
 
 // fakeRepository é um domain.Repository em memória — este módulo nunca

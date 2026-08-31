@@ -19,8 +19,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/yurythx/projeto-nova/internal/platform/auth"
-	"github.com/yurythx/projeto-nova/internal/platform/config"
+	"github.com/yurythx/projeto-aurora/internal/platform/auth"
+	"github.com/yurythx/projeto-aurora/internal/platform/config"
 )
 
 // fakeStore é uma implementação de Store inteiramente em memória, para

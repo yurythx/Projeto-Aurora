@@ -9,11 +9,11 @@ import (
 	"log/slog"
 	"net/http"
 
-	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
-	"github.com/yurythx/projeto-nova/internal/platform/auth"
-	"github.com/yurythx/projeto-nova/internal/platform/logging"
-	"github.com/yurythx/projeto-nova/internal/platform/metrics"
-	"github.com/yurythx/projeto-nova/pkg/httputil"
+	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
+	"github.com/yurythx/projeto-aurora/internal/platform/auth"
+	"github.com/yurythx/projeto-aurora/internal/platform/logging"
+	"github.com/yurythx/projeto-aurora/internal/platform/metrics"
+	"github.com/yurythx/projeto-aurora/pkg/httputil"
 )
 
 // Header é o nome do cabeçalho HTTP que ativa a idempotência para uma

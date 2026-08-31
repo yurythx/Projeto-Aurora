@@ -8,17 +8,19 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 	"golang.org/x/time/rate"
 
-	apperrors "github.com/yurythx/projeto-nova/internal/domain/errors"
-	"github.com/yurythx/projeto-nova/internal/platform/logging"
-	"github.com/yurythx/projeto-nova/internal/platform/metrics"
-	"github.com/yurythx/projeto-nova/pkg/httputil"
+	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
+	"github.com/yurythx/projeto-aurora/internal/platform/logging"
+	"github.com/yurythx/projeto-aurora/internal/platform/metrics"
+	"github.com/yurythx/projeto-aurora/pkg/httputil"
 )
 
 const RequestIDHeader = "X-Request-ID"
@@ -292,4 +294,23 @@ func ClientIPKey(r *http.Request) string {
 // contextTimeout é um pequeno helper usado pelas verificações de readiness.
 func contextTimeout(parent context.Context, d time.Duration) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(parent, d)
+}
+
+// timeoutExceptWebSocket é chimiddleware.Timeout(d) para todo request HTTP
+// normal, mas PULA a conexão de upgrade do WebSocket (/ws): ela é
+// deliberadamente longa (fica aberta horas) e, sob o Timeout, o contexto
+// do handler era cancelado e o AccessLog registrava um "504" com duração
+// absurda a cada conexão encerrada — ruído puro nos logs.
+func timeoutExceptWebSocket(d time.Duration) func(http.Handler) http.Handler {
+	timeout := chimiddleware.Timeout(d)
+	return func(next http.Handler) http.Handler {
+		wrapped := timeout(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+				next.ServeHTTP(w, r)
+				return
+			}
+			wrapped.ServeHTTP(w, r)
+		})
+	}
 }

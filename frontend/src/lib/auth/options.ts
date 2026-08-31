@@ -19,7 +19,8 @@ if (!issuer || !clientId || !clientSecret) {
 // O mesmo endereço interno que o proxy BFF usa (ver
 // app/api/backend/[...path]/route.ts) — o login local também é uma
 // chamada server-to-server ao backend Go, nunca exposta ao navegador.
-const backendInternalURL = process.env.BACKEND_INTERNAL_URL ?? "http://localhost:8000";
+const backendInternalURL = process.env.BACKEND_INTERNAL_URL ?? "http://localhost:8002";
+
 
 interface KeycloakTokenResponse {
   access_token: string;

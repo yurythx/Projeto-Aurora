@@ -15,7 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/yurythx/projeto-nova/internal/domain/events"
+	"github.com/yurythx/projeto-aurora/internal/domain/events"
 )
 
 // Writer insere linhas no outbox. Não recebe um handle de banco próprio —

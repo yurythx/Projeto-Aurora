@@ -7,68 +7,29 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/yurythx/projeto-nova/internal/domain/events"
-
-	contratosWorker "github.com/yurythx/projeto-nova/internal/modules/contratos/worker"
-
-	diarioApp "github.com/yurythx/projeto-nova/internal/modules/diario_oficial/application"
-	diarioInfra "github.com/yurythx/projeto-nova/internal/modules/diario_oficial/infrastructure"
-	diarioWorker "github.com/yurythx/projeto-nova/internal/modules/diario_oficial/worker"
-
-	"github.com/yurythx/projeto-nova/internal/platform/httpserver"
-	"github.com/yurythx/projeto-nova/internal/platform/idempotency"
-	"github.com/yurythx/projeto-nova/internal/platform/jobs"
-	"github.com/yurythx/projeto-nova/internal/platform/messaging"
-	"github.com/yurythx/projeto-nova/internal/platform/outbox"
-	"github.com/yurythx/projeto-nova/internal/platform/ratelimit"
+	"github.com/yurythx/projeto-aurora/internal/platform/httpserver"
+	"github.com/yurythx/projeto-aurora/internal/platform/idempotency"
+	"github.com/yurythx/projeto-aurora/internal/platform/jobs"
+	"github.com/yurythx/projeto-aurora/internal/platform/outbox"
+	"github.com/yurythx/projeto-aurora/internal/platform/ratelimit"
 )
 
-// Worker roda todo processador de segundo plano de vida longa (consumers
-// do RabbitMQ, o publisher do outbox) com um ciclo de vida compartilhado:
-// Run bloqueia até ctx ser cancelado, e então espera cada goroutine de
-// processador terminar sua unidade de trabalho atual antes de retornar,
-// dando ao graceful shutdown do cmd/worker algo concreto para esperar.
+// Worker roda os processadores de segundo plano da infraestrutura (publisher do outbox,
+// limpezas periódicas de rate limit e idempotência, sweepers de jobs).
 type Worker struct {
 	deps       *Dependencies
 	processors []processor
 }
 
-// processor é um loop de segundo plano (ex.: um consumer de fila ou o
-// publisher do outbox). Cada um é iniciado em sua própria goroutine e
-// precisa retornar quando ctx é cancelado.
 type processor func(ctx context.Context) error
 
-// NewWorker constrói o runner do worker: o publisher do outbox mais os
-// consumers de fila + DLQ de cada módulo, e a limpeza periódica dos
-// buckets de rate limit. Cada um é envolvido por supervised, para que a
-// falha transitória de um processador (uma soluço de conexão no meio de
-// um consume, por exemplo) reinicie só aquele processador em vez de
-// derrubar o processo worker inteiro.
+// NewWorker constrói o runner do worker para o Projeto Aurora.
 func NewWorker(deps *Dependencies) (*Worker, error) {
 	outboxPublisher := outbox.NewPublisher(deps.DB, deps.Publisher, deps.Logger)
 
-	newConsumer := func(queue string) *messaging.Consumer {
-		return messaging.NewConsumer(deps.Messaging, queue, deps.Config.RabbitMQ.PrefetchCount, deps.Config.RabbitMQ.MaxRetries, deps.Logger)
-	}
-
-	diarioConsumer := newConsumer(messaging.QueueDiarioOficialWorker.Name)
-	diarioDLQConsumer := newConsumer(messaging.QueueDiarioOficialWorker.DLQName)
-
-	contratosConsumer := newConsumer(messaging.QueueContratosWorker.Name)
-	contratosDLQConsumer := newConsumer(messaging.QueueContratosWorker.DLQName)
-
-	// jobs_stale_sweeper — detecta jobs presos em "processing" (o worker
-	// morreu no meio do trabalho, a mensagem original já foi ack’ada).
-	// Cada handler dá o mesmo desfecho terminal (dead_letter) que uma
-	// falha normal já teria dado.
-	staleHandlers := map[string]jobs.StaleJobHandler{
-		diarioApp.JobType: func(ctx context.Context, jobID, correlationID uuid.UUID, reason string) error {
-			return deps.Modules.DiarioOficial.Service.HandleDeadLetter(ctx, jobID, correlationID, reason)
-		},
-	}
+	staleHandlers := map[string]jobs.StaleJobHandler{}
 
 	return &Worker{
 		deps: deps,
@@ -77,104 +38,10 @@ func NewWorker(deps *Dependencies) (*Worker, error) {
 			supervised("rate_limit_cleanup", deps.Logger, ratelimit.Cleanup(deps.DB)),
 			supervised("idempotency_cleanup", deps.Logger, idempotency.Cleanup(deps.DB)),
 			supervised("jobs_stale_sweeper", deps.Logger, jobs.SweepStale(deps.DB, staleHandlers, deps.Config.Jobs.StaleAfter, deps.Logger)),
-			supervised("diario_oficial_sync", deps.Logger, diarioWorker.DiarioOficialSyncLoop(deps.Modules.DiarioOficial.Service)),
-			supervised("rondonopolis_diario_watcher", deps.Logger, func(ctx context.Context) error {
-				editionRepo := diarioInfra.NewPostgresEditionRepository(deps.DB)
-				rondonopolisClient := diarioInfra.NewRondonopolisClient(deps.Config.DiarioOficial.RondonopolisBaseURL, deps.Config.DiarioOficial.RondonopolisToken, deps.Config.DiarioOficial.Timeout, deps.Logger)
-				syncWorkerPool := diarioWorker.NewSyncWorkerPool(editionRepo, 5, deps.Logger).WithTypesenseClient(deps.Typesense)
-
-				// Backfill do Typesense no boot: reconcilia as coleções com os
-				// findings já persistidos no PostgreSQL. Antes disso, edições
-				// ingeridas antes do cliente Typesense existir (ou cuja
-				// indexação best-effort falhou em silêncio) ficavam para sempre
-				// fora do índice — era por isso que as coleções estavam
-				// vazias. Best-effort: não bloqueia o watcher.
-				if deps.Typesense != nil {
-					reindexer := diarioWorker.NewReindexer(editionRepo, deps.Typesense, deps.Logger)
-					if n, err := reindexer.ReindexAll(ctx, false); err != nil {
-						deps.Logger.Warn("diario_oficial: reindex de boot falhou (best-effort)", slog.Any("error", err))
-					} else {
-						deps.Logger.Info("diario_oficial: reindex de boot concluído", slog.Int("docs", n))
-					}
-
-					// Garante já no boot a API key search-only do Typesense para
-					// o frontend (senão só nasce no 1º request a /search-config).
-					keyMgr := diarioInfra.NewTypesenseSearchKeyManager(deps.Typesense, deps.DB)
-					if _, err := keyMgr.EnsureFrontendSearchKey(ctx); err != nil {
-						deps.Logger.Warn("diario_oficial: falha ao garantir search key do Typesense (best-effort)", slog.Any("error", err))
-					} else {
-						deps.Logger.Info("diario_oficial: search key search-only do Typesense pronta")
-					}
-				}
-
-				watcher := diarioWorker.NewWatcher(editionRepo, rondonopolisClient, syncWorkerPool, 15*time.Minute, deps.Logger)
-				watcher.Start(ctx)
-				return nil
-			}),
-			supervised("diario_oficial.worker", deps.Logger, func(ctx context.Context) error {
-				return diarioConsumer.Consume(ctx, diarioWorker.JobCreatedHandler(deps.Modules.DiarioOficial.Service))
-			}),
-			supervised("diario_oficial.dlq", deps.Logger, func(ctx context.Context) error {
-				return diarioDLQConsumer.Consume(ctx, diarioWorker.DeadLetterHandler(deps.Modules.DiarioOficial.Service, deps.Logger))
-			}),
-			supervised("contratos.worker", deps.Logger, func(ctx context.Context) error {
-				return contratosConsumer.Consume(ctx, contratosWorker.PublicationMatchedHandler(deps.Modules.Contratos.Service, deps.Logger))
-			}),
-			supervised("contratos.dlq", deps.Logger, func(ctx context.Context) error {
-				// No momento, apenas loga e descarta, como DLQ padrão sem side-effects adicionais.
-				return contratosDLQConsumer.Consume(ctx, func(ctx context.Context, msg events.Event) error {
-					deps.Logger.Error("contratos: DLQ message received", "msg_id", msg.ID.String())
-					return nil
-				})
-			}),
-			// Gera a demanda mensal (Etapa 1) de todo contrato vigente que
-			// ainda não tem uma para o mês corrente. Idempotente.
-			supervised("demands.monthly_generator", deps.Logger, periodic(6*time.Hour, func(ctx context.Context) {
-				if _, err := deps.Modules.Demands.Service.EnsureMonthlyDemands(ctx, time.Now().Format("2006-01")); err != nil {
-					deps.Logger.Warn("demands: geração mensal falhou", slog.Any("error", err))
-				}
-			})),
-			// Abre pendência (contract_occurrences) para demandas paradas além
-			// do SLA da etapa.
-			supervised("demands.sla_sweeper", deps.Logger, periodic(6*time.Hour, func(ctx context.Context) {
-				if _, err := deps.Modules.Demands.Service.SweepSLA(ctx); err != nil {
-					deps.Logger.Warn("demands: varredura de SLA falhou", slog.Any("error", err))
-				}
-			})),
-			// Casa contratos com publicações do Diário Oficial (número/CNPJ),
-			// vincula as DiarioRefs e abre alertas de fiscalização.
-			supervised("contratos.diario_matcher", deps.Logger, periodic(6*time.Hour, func(ctx context.Context) {
-				if _, _, err := deps.Modules.Contratos.Service.RunDiarioMatch(ctx); err != nil {
-					deps.Logger.Warn("contratos: casamento com o Diário falhou", slog.Any("error", err))
-				}
-			})),
 		},
 	}, nil
 }
 
-// periodic transforma uma tarefa sem retorno num processor: roda uma vez
-// imediatamente e depois a cada `every`, até ctx ser cancelado.
-func periodic(every time.Duration, fn func(context.Context)) processor {
-	return func(ctx context.Context) error {
-		fn(ctx)
-		t := time.NewTicker(every)
-		defer t.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-t.C:
-				fn(ctx)
-			}
-		}
-	}
-}
-
-// supervised envolve um processador para que, se ele retornar antes de
-// ctx ser cancelado (um erro inesperado, ou — no caso de um consumer de
-// fila — simplesmente perder seu canal quando a conexão subjacente
-// reconecta), ele seja reiniciado com backoff em vez de derrubar o
-// restante do worker.
 func supervised(name string, logger *slog.Logger, fn processor) processor {
 	return func(ctx context.Context) error {
 		backoff := time.Second
@@ -206,13 +73,8 @@ func supervised(name string, logger *slog.Logger, fn processor) processor {
 	}
 }
 
-// Run inicia todo processador registrado e bloqueia até ctx ser cancelado
-// e todos eles terem retornado.
 func (w *Worker) Run(ctx context.Context) error {
 	if len(w.processors) == 0 {
-		// Nenhum processador registrado ainda (fase inicial de bootstrap)
-		// — ainda assim respeita a semântica de graceful shutdown
-		// bloqueando em ctx.
 		<-ctx.Done()
 		return nil
 	}
@@ -242,10 +104,6 @@ func (w *Worker) Run(ctx context.Context) error {
 	return nil
 }
 
-// RunMetricsServer inicia o listener HTTP mínimo /health + /metrics do
-// worker (sem rotas de negócio) e bloqueia até ctx ser cancelado, então o
-// encerra graciosamente. Nunca serve tráfego de negócio — só healthcheck
-// do Docker e scrape do Prometheus.
 func (w *Worker) RunMetricsServer(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.Handle("/health", httpserver.HealthHandler())

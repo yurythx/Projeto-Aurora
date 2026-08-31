@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/yurythx/projeto-nova/internal/modules/users/domain"
+	"github.com/yurythx/projeto-aurora/internal/modules/users/domain"
 )
 
 func testPool(t *testing.T) *pgxpool.Pool {

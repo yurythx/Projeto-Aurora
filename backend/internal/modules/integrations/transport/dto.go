@@ -4,7 +4,7 @@ package transport
 import (
 	"time"
 
-	"github.com/yurythx/projeto-nova/internal/modules/integrations/domain"
+	"github.com/yurythx/projeto-aurora/internal/modules/integrations/domain"
 )
 
 // IntegrationResponse é o formato público de uma integração (§74).

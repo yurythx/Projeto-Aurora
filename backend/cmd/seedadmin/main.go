@@ -39,8 +39,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/yurythx/projeto-nova/internal/platform/config"
-	"github.com/yurythx/projeto-nova/internal/platform/database"
+	"github.com/yurythx/projeto-aurora/internal/platform/config"
+	"github.com/yurythx/projeto-aurora/internal/platform/database"
 )
 
 // passwordBytes: 18 bytes aleatórios (144 bits de entropia) codificados em
@@ -54,9 +54,9 @@ const passwordBytes = 18
 
 func main() {
 	username := flag.String("username", "admin", "username da conta local a criar/resetar")
-	email := flag.String("email", "admin@projeto-nova.local", "email da conta")
+	email := flag.String("email", "admin@projeto-aurora.local", "email da conta")
 	displayName := flag.String("display-name", "Administrador (local)", "nome de exibição")
-	rolesCSV := flag.String("roles", "nova-admin,nova-user", "roles, separadas por vírgula")
+	rolesCSV := flag.String("roles", "aurora-admin,aurora-user", "roles, separadas por vírgula")
 	// password: SÓ para automação (CI de E2E, ver .github/workflows/ci.yml)
 	// que precisa saber a senha de antemão pra digitar num formulário —
 	// deixado vazio (o padrão), uma senha aleatória de verdade é gerada.

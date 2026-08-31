@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -56,7 +55,7 @@ func New(opts Options) chi.Router {
 		MaxAge:           300,
 	}))
 	r.Use(SecurityHeaders)
-	r.Use(chimiddleware.Timeout(opts.RequestTimeout))
+	r.Use(timeoutExceptWebSocket(opts.RequestTimeout))
 	r.Use(Metrics)
 
 	r.Get("/health", HealthHandler())

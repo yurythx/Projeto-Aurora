@@ -1,6 +1,6 @@
-name: projeto-nova
+name: projeto-aurora
 networks:
-  nix_internal:
+  aurora_internal:
     driver: bridge
 volumes:
   postgres_data: null
@@ -17,17 +17,17 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${DB_NAME:-nix}
-      POSTGRES_USER: ${DB_USER:-nix}
+      POSTGRES_DB: ${DB_NAME:-aurora}
+      POSTGRES_USER: ${DB_USER:-aurora}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
     volumes:
     - postgres_data:/var/lib/postgresql/data
     networks:
-    - nix_internal
+    - aurora_internal
     healthcheck:
       test:
       - CMD-SHELL
-      - pg_isready -U ${DB_USER:-nix} -d ${DB_NAME:-nix}
+      - pg_isready -U ${DB_USER:-aurora} -d ${DB_NAME:-aurora}
       interval: 10s
       timeout: 5s
       retries: 5
@@ -36,20 +36,16 @@ services:
     image: rabbitmq:3.13-management-alpine
     restart: unless-stopped
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-nix}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-aurora}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?RABBITMQ_DEFAULT_PASS must be
         set}
-      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_DEFAULT_VHOST:-nix}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_DEFAULT_VHOST:-aurora}
     volumes:
     - rabbitmq_data:/var/lib/rabbitmq
     - ./deploy/rabbitmq.conf:/etc/rabbitmq/conf.d/consumer_timeout.conf:ro
     networks:
-    - nix_internal
+    - aurora_internal
     healthcheck:
-      # `ping` só confirma que o nó Erlang subiu — o listener AMQP na 5672
-      # pode ainda não estar aceitando conexões, e aí backend-api (que
-      # depende de rabbitmq: service_healthy) subia cedo demais e batia
-      # "connection refused". check_port_connectivity confirma os listeners.
       test:
       - CMD
       - rabbitmq-diagnostics
@@ -68,13 +64,11 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
     volumes:
       - minio_data:/data
-    # 9000 = API S3 (o navegador faz o PUT/GET direto via URL pré-assinada,
-    # assinada para MINIO_PUBLIC_URL); 9001 = console web.
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${HOST_MINIO_PORT:-9002}:9000"
+      - "${HOST_MINIO_CONSOLE_PORT:-9003}:9001"
     networks:
-      - nix_internal
+      - aurora_internal
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
@@ -84,28 +78,21 @@ services:
   typesense:
     image: typesense/typesense:27.1
     restart: unless-stopped
-    # CORS restrito à origem do frontend (a busca client-side vai direto ao
-    # Typesense com uma chave RESTRITA a documents:search). Sobrescreva
-    # TYPESENSE_CORS_DOMAINS por deploy. --api-key é a chave ADMIN: em
-    # produção o backend recusa iniciar se ainda for o default 'xyz123secret'.
     command: >
       --data-dir /data
       --api-key=${TYPESENSE_API_KEY:-xyz123secret}
       --enable-cors
-      --cors-domains=${TYPESENSE_CORS_DOMAINS:-http://localhost:3000,http://127.0.0.1:3000}
+      --cors-domains=${TYPESENSE_CORS_DOMAINS:-http://localhost:3002,http://127.0.0.1:3002}
     environment:
       TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:-xyz123secret}
       TYPESENSE_DATA_DIR: /data
     volumes:
       - typesense_data:/data
     networks:
-      - nix_internal
+      - aurora_internal
     ports:
-      - "8108:8108"
+      - "${HOST_TYPESENSE_PORT:-8109}:8108"
     healthcheck:
-      # A imagem typesense/typesense não tem curl/wget/nc — só bash. Um
-      # connect TCP via /dev/tcp confirma que o servidor está aceitando
-      # conexões (o healthcheck com curl ficava sempre 'unhealthy').
       test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/8108"]
       interval: 10s
       timeout: 5s
@@ -119,30 +106,25 @@ services:
     env_file:
     - .env
     environment:
+      HTTP_PORT: ${HTTP_PORT:-8002}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3002}
+      DB_PORT: 5432
       DB_HOST: postgres
-      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-nix}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/${RABBITMQ_DEFAULT_VHOST:-nix}
-      SCANNING_TRIVY_SERVICE_URL: http://trivy-scanner:8080
-      SCANNING_GITLEAKS_SERVICE_URL: http://gitleaks-scanner:8080
-      SCANNING_SYFT_SERVICE_URL: http://syft-scanner:8080
-      SCANNING_SEMGREP_SERVICE_URL: http://semgrep-scanner:8080
-      SCANNING_SONAR_SCANNER_SERVICE_URL: http://sonar-scanner-cli:8080
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-aurora}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/${RABBITMQ_DEFAULT_VHOST:-aurora}
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
-      # Host do MinIO alcançável pelo NAVEGADOR — as URLs pré-assinadas de
-      # upload/download são assinadas para este endereço (o container fala
-      # "minio:9000", o navegador não resolve esse nome).
-      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000}
-      MINIO_BUCKET: ${MINIO_BUCKET:-demands}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9002}
+      MINIO_BUCKET: ${MINIO_BUCKET:-aurora}
       MINIO_USE_SSL: "false"
       TYPESENSE_URL: http://typesense:8108
       TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:-xyz123secret}
     volumes:
     - ./secrets:/run/secrets:ro
     networks:
-    - nix_internal
+    - aurora_internal
     ports:
-    - ${HTTP_PORT:-8000}:${HTTP_PORT:-8000}
+    - ${HTTP_PORT:-8002}:${HTTP_PORT:-8002}
     depends_on:
       postgres:
         condition: service_healthy
@@ -154,7 +136,7 @@ services:
       - wget
       - --spider
       - -q
-      - http://127.0.0.1:${HTTP_PORT:-8000}/health
+      - http://127.0.0.1:${HTTP_PORT:-8002}/health
       interval: 10s
       timeout: 5s
       retries: 5
@@ -169,33 +151,23 @@ services:
     env_file:
     - .env
     environment:
+      WORKER_METRICS_PORT: ${WORKER_METRICS_PORT:-9102}
+      DB_PORT: 5432
       DB_HOST: postgres
-      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-nix}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/${RABBITMQ_DEFAULT_VHOST:-nix}
-      SCANNING_TRIVY_SERVICE_URL: http://trivy-scanner:8080
-      SCANNING_GITLEAKS_SERVICE_URL: http://gitleaks-scanner:8080
-      SCANNING_SYFT_SERVICE_URL: http://syft-scanner:8080
-      SCANNING_SEMGREP_SERVICE_URL: http://semgrep-scanner:8080
-      SCANNING_SONAR_SCANNER_SERVICE_URL: http://sonar-scanner-cli:8080
-      SCANNING_WORKSPACE_DIR: /workspace
-      # O worker roda o pipeline do Diário Oficial (ingestão + indexação no
-      # Typesense). Sem estes overrides ele herdava TYPESENSE_URL=localhost:8108
-      # do .env, que dentro do container não é o serviço typesense — e toda
-      # indexação falhava em silêncio (coleções ficavam vazias).
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-aurora}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/${RABBITMQ_DEFAULT_VHOST:-aurora}
       TYPESENSE_URL: http://typesense:8108
       TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:-xyz123secret}
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
-      MINIO_BUCKET: ${MINIO_BUCKET:-demands}
+      MINIO_BUCKET: ${MINIO_BUCKET:-aurora}
       MINIO_USE_SSL: "false"
-      # Mesmo host público do backend-api — o worker também assina URLs
-      # pré-assinadas (pacote .zip / geração de documentos da demanda).
-      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9002}
     volumes:
     - ./secrets:/run/secrets:ro
     - scanning_workspace:/workspace
     networks:
-    - nix_internal
+    - aurora_internal
     depends_on:
       postgres:
         condition: service_healthy
@@ -207,7 +179,7 @@ services:
       - wget
       - --spider
       - -q
-      - http://127.0.0.1:${WORKER_METRICS_PORT:-9100}/health
+      - http://127.0.0.1:${WORKER_METRICS_PORT:-9102}/health
       interval: 10s
       timeout: 5s
       retries: 5
@@ -219,23 +191,23 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${API_PUBLIC_URL:-http://localhost:8000}
-        NEXT_PUBLIC_WS_URL: ${WEBSOCKET_PUBLIC_URL:-ws://localhost:8000/ws}
-        NEXT_PUBLIC_TYPESENSE_URL: ${TYPESENSE_PUBLIC_URL:-http://localhost:8108}
-        NEXT_PUBLIC_MINIO_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000}
+        NEXT_PUBLIC_API_URL: ${API_PUBLIC_URL:-http://localhost:8002}
+        NEXT_PUBLIC_WS_URL: ${WEBSOCKET_PUBLIC_URL:-ws://localhost:8002/ws}
+        NEXT_PUBLIC_TYPESENSE_URL: ${TYPESENSE_PUBLIC_URL:-http://localhost:8109}
+        NEXT_PUBLIC_MINIO_URL: ${MINIO_PUBLIC_URL:-http://localhost:9002}
     restart: unless-stopped
     env_file:
     - .env
     environment:
-      NEXT_PUBLIC_API_URL: ${API_PUBLIC_URL:-http://localhost:8000}
-      NEXT_PUBLIC_WS_URL: ${WEBSOCKET_PUBLIC_URL:-ws://localhost:8000/ws}
-      NEXT_PUBLIC_TYPESENSE_URL: ${TYPESENSE_PUBLIC_URL:-http://localhost:8108}
-      NEXT_PUBLIC_MINIO_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000}
-      BACKEND_INTERNAL_URL: http://backend-api:8000
+      NEXT_PUBLIC_API_URL: ${API_PUBLIC_URL:-http://localhost:8002}
+      NEXT_PUBLIC_WS_URL: ${WEBSOCKET_PUBLIC_URL:-ws://localhost:8002/ws}
+      NEXT_PUBLIC_TYPESENSE_URL: ${TYPESENSE_PUBLIC_URL:-http://localhost:8109}
+      NEXT_PUBLIC_MINIO_URL: ${MINIO_PUBLIC_URL:-http://localhost:9002}
+      BACKEND_INTERNAL_URL: http://backend-api:${HTTP_PORT:-8002}
     networks:
-    - nix_internal
+    - aurora_internal
     ports:
-    - 3000:3000
+    - ${FRONTEND_PORT:-3002}:3000
     depends_on:
       backend-api:
         condition: service_healthy

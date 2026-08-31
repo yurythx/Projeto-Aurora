@@ -9,7 +9,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/yurythx/projeto-nova/internal/platform/logging"
+	"github.com/yurythx/projeto-aurora/internal/platform/logging"
 )
 
 func testLogger() *slog.Logger {

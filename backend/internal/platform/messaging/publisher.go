@@ -11,8 +11,8 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/yurythx/projeto-nova/internal/domain/events"
-	"github.com/yurythx/projeto-nova/internal/platform/metrics"
+	"github.com/yurythx/projeto-aurora/internal/domain/events"
+	"github.com/yurythx/projeto-aurora/internal/platform/metrics"
 )
 
 // Publisher implementa events.EventPublisher publicando num exchange topic

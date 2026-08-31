@@ -139,6 +139,12 @@ type DiarioOficialConfig struct {
 	Timeout             time.Duration
 	RondonopolisBaseURL string
 	RondonopolisToken   string
+	// WatcherTimeout é o timeout HTTP do Vigia (descoberta de edições no
+	// portal). Separado — e bem mais folgado — que Timeout porque é um job
+	// de fundo lendo uma página HTML grande e lenta do portal municipal,
+	// não um request de usuário; com 10s (o Timeout de health) a leitura do
+	// corpo estourava direto ("context deadline exceeded while reading body").
+	WatcherTimeout time.Duration
 }
 
 const DefaultDiarioOficialBaseURL = "https://comunicaapi.pje.jus.br/api/v1/comunicacao"
@@ -359,6 +365,7 @@ func Load() (*Config, error) {
 			Timeout:             l.durationVal("DIARIO_OFICIAL_TIMEOUT", false, 10*time.Second),
 			RondonopolisBaseURL: l.str("RONDONOPOLIS_DIARY_BASE_URL", false, DefaultRondonopolisBaseURL),
 			RondonopolisToken:   l.secret("RONDONOPOLIS_DIARY_TOKEN", false, DefaultRondonopolisToken),
+			WatcherTimeout:      l.durationVal("RONDONOPOLIS_WATCHER_TIMEOUT", false, 45*time.Second),
 		},
 		MinIO: minioConfig(l),
 		Typesense: TypesenseConfig{

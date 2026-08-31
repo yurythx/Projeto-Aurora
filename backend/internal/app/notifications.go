@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"log/slog"
 
-	"github.com/yurythx/projeto-nova/internal/domain/events"
-	"github.com/yurythx/projeto-nova/internal/platform/messaging"
-	"github.com/yurythx/projeto-nova/internal/platform/ws"
+	"github.com/yurythx/projeto-aurora/internal/domain/events"
+	"github.com/yurythx/projeto-aurora/internal/platform/messaging"
+	"github.com/yurythx/projeto-aurora/internal/platform/ws"
 )
 
 // NewNotificationConsumer constrói o consumer que alimenta o Hub de
