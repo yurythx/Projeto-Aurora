@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
+import { Footer } from "@/components/layout/Footer";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import { NotificationHistoryProvider } from "@/components/notifications/NotificationHistoryProvider";
 import { ToastProvider } from "@/components/notifications/ToastProvider";
@@ -19,21 +20,24 @@ import type { ConnectionState } from "@/lib/websocket/client";
 // Sidebar, já que os dois compartilham um único botão na Topbar.
 const MD_BREAKPOINT_QUERY = "(min-width: 768px)";
 
-// Layout raiz do dashboard (§ Redesenho de layout, inspirado em
-// papermoon.cloud): Sidebar recolhível + Topbar fixos, conteúdo da rota
-// no meio, e o NotificationCenter (invisível, só lógica) montado uma vez
-// aqui para alimentar tanto o indicador de conexão da Topbar quanto a
-// pilha de toasts (ToastProvider) e a bandeja do sino
-// (NotificationHistoryProvider).
-import { BrandingProvider } from "@/components/branding/BrandingContext";
-import type { SystemBrandingConfig } from "@/components/branding/brandingConfig";
-import { Footer } from "@/components/layout/Footer";
+// Layout raiz do dashboard: Sidebar recolhível + Topbar fixos (a Topbar
+// inclui a barra e-MAG de acessibilidade), conteúdo da rota no meio, e o
+// NotificationCenter (invisível, só lógica) montado uma vez aqui para
+// alimentar o indicador de conexão da Topbar, a pilha de toasts e a
+// bandeja do sino.
+//
+// O BrandingProvider e o VLibrasWidget NÃO ficam mais aqui — subiram para
+// app/providers.tsx (raiz), para valerem também nas páginas públicas
+// (/, /sobre, /acessibilidade, /login).
+//
+// Âncoras dos atalhos e-MAG (ver EMagAccessibilityBar): #conteudo (Alt+1),
+// #menu (Alt+2), #rodape (Alt+4).
+import { LGPDConsentModal } from "@/components/layout/LGPDConsentModal";
 
 export function DashboardShell({
   userLabel,
   initialTheme,
   initialCollapsed = false,
-  initialBranding,
   children,
 }: {
   userLabel: string;
@@ -42,8 +46,6 @@ export function DashboardShell({
    * servidor — server snapshot do useSyncExternalStore, para o shell já
    * nascer recolhido/expandido no 1º paint sem "piscar" na hidratação. */
   initialCollapsed?: boolean;
-  /** Branding lido do cookie `nova-branding` no layout do servidor. */
-  initialBranding?: SystemBrandingConfig;
   children: ReactNode;
 }) {
   const [connectionState, setConnectionState] = useState<ConnectionState>("idle");
@@ -63,42 +65,56 @@ export function DashboardShell({
   }
 
   return (
-    <BrandingProvider initialBranding={initialBranding}>
-      <ToastProvider>
-        <NotificationHistoryProvider>
-          <a
-            href="#main-content"
-            className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
-          >
-            Pular para o conteúdo
-          </a>
+    <ToastProvider>
+      <NotificationHistoryProvider>
+        <a
+          href="#conteudo"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
+        >
+          Pular para o conteúdo [1]
+        </a>
 
-          <Topbar
-            userLabel={userLabel}
-            connectionState={connectionState}
-            onToggleSidebar={toggleSidebar}
-            initialTheme={initialTheme}
+        <Topbar
+          userLabel={userLabel}
+          connectionState={connectionState}
+          onToggleSidebar={toggleSidebar}
+          sidebarExpanded={mobileOpen || !collapsed}
+          initialTheme={initialTheme}
+        />
+        <div id="menu">
+          <Sidebar
+            collapsed={collapsed}
+            mobileOpen={mobileOpen}
+            onCloseMobile={() => setMobileOpen(false)}
           />
-          <Sidebar collapsed={collapsed} mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />
+        </div>
 
-          {/* Offset do shell: pt = altura da Topbar, pl (md+) = largura EXATA
-              da Sidebar — assim o conteúdo e o rodapé encostam na Sidebar sem
-              faixa morta. O respiro lateral vem do px do <main>/<Footer>, não
-              de um pl extra. min-h-dvh (não screen) mantém o rodapé colado no
-              fim da viewport em telas curtas, sem sobra. */}
-          <div
-            className={`flex min-h-dvh flex-col pt-[var(--topbar-h)] transition-[padding] duration-[var(--shell-motion)] ease-[var(--shell-ease)]
-              ${collapsed ? "md:pl-[var(--sidebar-w-collapsed)]" : "md:pl-[var(--sidebar-w)]"}`}
+        {/* Offset do shell: pt = altura da Topbar, pl (md+) = largura EXATA
+            da Sidebar — assim o conteúdo e o rodapé encostam na Sidebar sem
+            faixa morta. O respiro lateral vem do px do <main>/<Footer>, não
+            de um pl extra. min-h-dvh (não screen) mantém o rodapé colado no
+            fim da viewport em telas curtas, sem sobra. */}
+        <div
+          className={`flex min-h-dvh flex-col pt-[var(--topbar-h)] transition-[padding] duration-[var(--shell-motion)] ease-[var(--shell-ease)]
+            ${collapsed ? "md:pl-[var(--sidebar-w-collapsed)]" : "md:pl-[var(--sidebar-w)]"}`}
+        >
+          {/* tabIndex={-1}: torna o alvo de "Pular para o conteúdo" focável de
+              forma consistente entre navegadores (A-13). */}
+          <main
+            id="conteudo"
+            tabIndex={-1}
+            className="flex-1 overflow-x-auto px-4 pb-8 outline-none sm:px-8 sm:pb-10"
           >
-            <main id="main-content" className="flex-1 overflow-x-auto px-4 pb-8 sm:px-8 sm:pb-10">
-              {children}
-            </main>
+            {children}
+          </main>
+          <div id="rodape">
             <Footer />
           </div>
+        </div>
 
-          <NotificationCenter onConnectionStateChange={setConnectionState} />
-        </NotificationHistoryProvider>
-      </ToastProvider>
-    </BrandingProvider>
+        <NotificationCenter onConnectionStateChange={setConnectionState} />
+        <LGPDConsentModal />
+      </NotificationHistoryProvider>
+    </ToastProvider>
   );
 }

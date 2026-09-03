@@ -3,6 +3,8 @@ import type { JWT } from "next-auth/jwt";
 import CredentialsProvider from "next-auth/providers/credentials";
 import KeycloakProvider from "next-auth/providers/keycloak";
 
+import { BACKEND_INTERNAL_URL } from "@/lib/env";
+
 // Env somente de servidor — nunca com prefixo NEXT_PUBLIC_, nunca enviada
 // ao navegador (§30: segredos nunca em NEXT_PUBLIC_*).
 const issuer = process.env.KEYCLOAK_ISSUER_URL;
@@ -19,7 +21,8 @@ if (!issuer || !clientId || !clientSecret) {
 // O mesmo endereço interno que o proxy BFF usa (ver
 // app/api/backend/[...path]/route.ts) — o login local também é uma
 // chamada server-to-server ao backend Go, nunca exposta ao navegador.
-const backendInternalURL = process.env.BACKEND_INTERNAL_URL ?? "http://localhost:8002";
+// Parametrizado em lib/env.ts (S-04).
+const backendInternalURL = BACKEND_INTERNAL_URL;
 
 
 interface KeycloakTokenResponse {

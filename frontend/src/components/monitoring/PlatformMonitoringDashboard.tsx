@@ -11,12 +11,11 @@ import {
   Database,
   Radio,
   HardDrive,
-  Search,
-  Cpu,
   Zap,
   Clock,
   Layers,
-  BarChart3
+  BarChart3,
+  Download
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
@@ -116,16 +115,6 @@ export function PlatformMonitoringDashboard() {
       latency: "3.4 ms",
       type: "S3 Storage",
     },
-    {
-      id: "typesense-search",
-      name: "Typesense Search Engine",
-      description: "Motor de busca de alta velocidade e indexação em memória",
-      port: "8109",
-      icon: Search,
-      status: "online",
-      latency: "1.9 ms",
-      type: "Search Engine",
-    },
   ];
 
   return (
@@ -138,8 +127,8 @@ export function PlatformMonitoringDashboard() {
             <span
               className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                 isHealthy
-                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                  : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                  ? "bg-success/10 text-success"
+                  : "bg-warning/10 text-warning"
               }`}
             >
               {isHealthy ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
@@ -164,6 +153,15 @@ export function PlatformMonitoringDashboard() {
             <RefreshCw size={14} className={isValidating ? "animate-spin" : ""} />
             Atualizar
           </Button>
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => window.open("/api/backend/api/v1/audit/export", "_blank")}
+            className="gap-2"
+          >
+            <Download size={14} />
+            Exportar LAI (CSV)
+          </Button>
         </div>
       </header>
 
@@ -174,9 +172,9 @@ export function PlatformMonitoringDashboard() {
             <div className="flex flex-col gap-1">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted">Status Geral</span>
               <span className="text-xl font-bold text-foreground">100% Online</span>
-              <span className="text-[11px] text-emerald-600 dark:text-emerald-400">5 de 5 serviços ativos</span>
+              <span className="text-[11px] text-success">5 de 5 serviços ativos</span>
             </div>
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
               <Activity size={20} />
             </div>
           </CardContent>
@@ -200,9 +198,9 @@ export function PlatformMonitoringDashboard() {
             <div className="flex flex-col gap-1">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted">Latência Média</span>
               <span className="text-xl font-bold text-foreground">1.8 ms</span>
-              <span className="text-[11px] text-emerald-600 dark:text-emerald-400">Excelente resposta</span>
+              <span className="text-[11px] text-success">Excelente resposta</span>
             </div>
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
               <Clock size={20} />
             </div>
           </CardContent>
@@ -212,7 +210,7 @@ export function PlatformMonitoringDashboard() {
           <CardContent className="pt-4 flex items-center justify-between">
             <div className="flex flex-col gap-1">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted">Conexão WebSocket</span>
-              <span className="text-xl font-bold text-emerald-500">Ativa</span>
+              <span className="text-xl font-bold text-success">Ativa</span>
               <span className="text-[11px] text-muted">Notificações em tempo real</span>
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500">
@@ -257,7 +255,7 @@ export function PlatformMonitoringDashboard() {
                   </div>
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted">Latência:</span>
-                    <span className="font-mono font-medium text-emerald-600 dark:text-emerald-400">
+                    <span className="font-mono font-medium text-success">
                       {service.latency}
                     </span>
                   </div>
@@ -293,7 +291,7 @@ export function PlatformMonitoringDashboard() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-warning/10 text-warning">
                   <Layers size={20} />
                 </div>
                 <div>
@@ -303,7 +301,7 @@ export function PlatformMonitoringDashboard() {
                   </CardDescription>
                 </div>
               </div>
-              <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+              <span className="rounded-full bg-success/10 px-3 py-1 text-xs font-semibold text-success">
                 Outbox Worker Ativo
               </span>
             </div>

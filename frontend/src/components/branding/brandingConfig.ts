@@ -10,6 +10,10 @@ export interface SystemBrandingConfig {
   supportPhone: string;
   supportHours: string;
   highContrast: boolean;
+  /** Escala tipográfica e-MAG do documento (%): 90, 100, 110, 120, 130.
+   * Aplicada em html[data-font-scale=...] — ver globals.css e a barra
+   * A+/A-/A em EMagAccessibilityBar. */
+  fontSizeScale: number;
 }
 
 export const DEFAULT_BRANDING: SystemBrandingConfig = {
@@ -22,6 +26,7 @@ export const DEFAULT_BRANDING: SystemBrandingConfig = {
   supportPhone: "(66) 3411-5000",
   supportHours: "Segunda a Sexta, das 08h às 17h",
   highContrast: false,
+  fontSizeScale: 100,
 };
 
 export const BRANDING_COOKIE = "aurora-branding";

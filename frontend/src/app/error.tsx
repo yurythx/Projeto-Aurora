@@ -1,6 +1,7 @@
 "use client"; // error.tsx é sempre um Client Component — exigência do próprio Next.js.
 
 import { Button } from "@/components/ui/Button";
+import { EMagAccessibilityBar } from "@/components/layout/EMagAccessibilityBar";
 
 // Fallback de erro no tema da aplicação (§ auditoria 2026-08), substitui
 // a página padrão não estilizada do Next.js quando um erro não tratado
@@ -19,10 +20,16 @@ export default function GlobalError({
   retry: () => void;
 }) {
   return (
-    <div
-      role="alert"
-      className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center"
-    >
+    <div className="flex min-h-screen flex-col pt-10">
+      <header id="menu" className="fixed inset-x-0 top-0 z-50">
+        <EMagAccessibilityBar />
+      </header>
+      <main
+        id="conteudo"
+        role="alert"
+        tabIndex={-1}
+        className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center outline-none"
+      >
       <p className="text-sm font-medium text-danger">Algo deu errado</p>
       <p className="max-w-sm text-sm text-muted">
         Um erro inesperado interrompeu esta página.
@@ -36,6 +43,7 @@ export default function GlobalError({
       <Button size="md" className="mt-2" onClick={() => retry()}>
         Tentar novamente
       </Button>
+      </main>
     </div>
   );
 }

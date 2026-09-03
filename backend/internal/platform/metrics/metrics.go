@@ -119,27 +119,6 @@ var (
 		Name: "nix_feature_flag_checks_total",
 		Help: "Feature flag evaluations, by flag key and result (enabled/disabled).",
 	}, []string{"flag", "result"})
-
-	// --- Diário Oficial / DIORONDON (internal/modules/diario_oficial) ---
-	DiarioEditionsIngestedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "nix_diario_editions_ingested_total",
-		Help: "Edições do Diário Oficial processadas pelo worker pool, por resultado (completed/failed).",
-	}, []string{"result"})
-
-	DiarioFindingsExtractedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "nix_diario_findings_extracted_total",
-		Help: "Findings extraídos de edições ingeridas, por act_type e confiança.",
-	}, []string{"act_type", "confidence"})
-
-	DiarioEditionAbandonedTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "nix_diario_edition_abandoned_total",
-		Help: "Edições abandonadas após esgotar as tentativas de reprocessamento.",
-	})
-
-	DiarioTypesenseIndexedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "nix_diario_typesense_indexed_total",
-		Help: "Documentos enviados ao Typesense pelo reindexador, por coleção.",
-	}, []string{"collection"})
 )
 
 // RegisterPostgresPoolMetrics registra os gauges

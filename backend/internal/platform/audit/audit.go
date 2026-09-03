@@ -61,6 +61,9 @@ const (
 	// ActionProjectCreated.
 	ActionMonitoredTermCreated = "monitored_term.created"
 	ActionMonitoredTermDeleted = "monitored_term.deleted"
+	// ActionLGPDConsentGiven registra a aceitação formal dos Termos de Uso
+	// e Política de Privacidade de Dados (Lei 13.709/2018 - LGPD).
+	ActionLGPDConsentGiven = "lgpd_consent_given"
 )
 
 // Entry é um registro de auditoria.

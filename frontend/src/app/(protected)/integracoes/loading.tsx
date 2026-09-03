@@ -2,7 +2,8 @@ import { Skeleton } from "@/components/ui/Skeleton";
 
 export default function Loading() {
   return (
-    <div className="flex flex-col gap-6">
+    <div role="status" aria-live="polite" className="flex flex-col gap-6">
+      <span className="sr-only">Carregando…</span>
       <div className="flex flex-col gap-2">
         <Skeleton className="h-6 w-40" />
         <Skeleton className="h-4 w-80" />

@@ -6,7 +6,8 @@ import { Skeleton } from "@/components/ui/Skeleton";
 // aparece por baixo.
 export default function Loading() {
   return (
-    <Card>
+    <Card role="status" aria-live="polite">
+      <span className="sr-only">Carregando…</span>
       <CardHeader>
         <Skeleton className="h-5 w-32" />
       </CardHeader>

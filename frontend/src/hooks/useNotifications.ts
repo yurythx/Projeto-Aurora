@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { apiClient } from "@/lib/api/client";
+import { WS_PUBLIC_URL } from "@/lib/env";
 import { NotificationClient, type ConnectionState } from "@/lib/websocket/client";
 import type { EventEnvelope } from "@/lib/validation/schemas";
 
@@ -28,20 +29,10 @@ export function useNotifications(onEvent: (event: EventEnvelope) => void): Conne
   });
 
   useEffect(() => {
-    let wsBaseUrl = process.env.NEXT_PUBLIC_WS_URL;
-
-    if (!wsBaseUrl && typeof window !== "undefined") {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const host = window.location.hostname || "localhost";
-      wsBaseUrl = `${protocol}//${host}:8002/ws`;
-    }
-
-    if (!wsBaseUrl) {
-      wsBaseUrl = "ws://localhost:8002/ws";
-    }
-
+    // URL do WebSocket parametrizada em lib/env.ts (S-04) — sem porta
+    // hardcoded defasada; o default acompanha a porta atual da stack.
     const client = new NotificationClient({
-      wsBaseUrl,
+      wsBaseUrl: WS_PUBLIC_URL,
       getTicket: async () => {
         const { data } = await apiClient.post<TicketResponse>("v1/ws/ticket");
         return data.ticket;

@@ -1,0 +1,138 @@
+package lgpd
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
+	"github.com/yurythx/projeto-aurora/internal/platform/auth"
+	"github.com/yurythx/projeto-aurora/pkg/httputil"
+)
+
+const CurrentTermVersion = "v1.0.0-2026"
+
+type execer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+type Service struct {
+	db     *pgxpool.Pool
+	logger *slog.Logger
+}
+
+func NewService(db *pgxpool.Pool, logger *slog.Logger) *Service {
+	return &Service{db: db, logger: logger}
+}
+
+// HasAcceptedCurrentTerm reporta se o usuário já aceitou a versão mais recente dos termos.
+func (s *Service) HasAcceptedCurrentTerm(ctx context.Context, userID uuid.UUID, termVersion string) (bool, error) {
+	const q = `SELECT EXISTS (SELECT 1 FROM user_consents WHERE user_id = $1 AND term_version = $2)`
+	var exists bool
+	err := s.db.QueryRow(ctx, q, userID, termVersion).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("lgpd: check consent: %w", err)
+	}
+	return exists, nil
+}
+
+// RecordConsent insere o registro de aceite de termos na tabela user_consents.
+func (s *Service) RecordConsent(ctx context.Context, userID uuid.UUID, termVersion, ipAddress, userAgent string) error {
+	const q = `
+		INSERT INTO user_consents (user_id, term_version, ip_address, user_agent, accepted_at)
+		VALUES ($1, $2, NULLIF($3, '')::inet, NULLIF($4, ''), now())
+		ON CONFLICT (user_id, term_version) DO UPDATE SET accepted_at = now()
+	`
+	_, err := s.db.Exec(ctx, q, userID, termVersion, ipAddress, userAgent)
+	if err != nil {
+		return fmt.Errorf("lgpd: record consent: %w", err)
+	}
+	return nil
+}
+
+// RegisterRoutes registra os endpoints REST de consentimento LGPD.
+func (s *Service) RegisterRoutes(r interface {
+	Get(path string, fn http.HandlerFunc)
+	Post(path string, fn http.HandlerFunc)
+}) {
+	r.Get("/api/v1/lgpd/status", s.handleStatus)
+	r.Post("/api/v1/lgpd/accept", s.handleAccept)
+}
+
+func (s *Service) handleStatus(w http.ResponseWriter, r *http.Request) {
+	identity, ok := auth.IdentityFromContext(r.Context())
+	if !ok {
+		httputil.WriteError(w, r, s.logger, apperrors.Unauthorized("Não autenticado"))
+		return
+	}
+
+	userID, err := uuid.Parse(identity.Subject)
+	if err != nil {
+		httputil.WriteOK(w, map[string]any{
+			"accepted":     true,
+			"term_version": CurrentTermVersion,
+		})
+		return
+	}
+
+	accepted, err := s.HasAcceptedCurrentTerm(r.Context(), userID, CurrentTermVersion)
+	if err != nil {
+		httputil.WriteError(w, r, s.logger, apperrors.Internal(err))
+		return
+	}
+
+	httputil.WriteOK(w, map[string]any{
+		"accepted":     accepted,
+		"term_version": CurrentTermVersion,
+	})
+}
+
+func (s *Service) handleAccept(w http.ResponseWriter, r *http.Request) {
+	identity, ok := auth.IdentityFromContext(r.Context())
+	if !ok {
+		httputil.WriteError(w, r, s.logger, apperrors.Unauthorized("Não autenticado"))
+		return
+	}
+
+	var req struct {
+		TermVersion string `json:"term_version"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.TermVersion == "" {
+		req.TermVersion = CurrentTermVersion
+	}
+
+	userID, err := uuid.Parse(identity.Subject)
+	if err != nil {
+		httputil.WriteOK(w, map[string]any{
+			"status":       "ok",
+			"term_version": req.TermVersion,
+		})
+		return
+	}
+
+	ip := r.Header.Get("X-Forwarded-For")
+	if ip == "" {
+		ip = r.RemoteAddr
+	}
+
+	err = s.RecordConsent(r.Context(), userID, req.TermVersion, ip, r.UserAgent())
+	if err != nil {
+		httputil.WriteError(w, r, s.logger, apperrors.Internal(err))
+		return
+	}
+
+	httputil.WriteOK(w, map[string]any{
+		"status":       "ok",
+		"term_version": req.TermVersion,
+		"accepted_at":  time.Now().UTC(),
+	})
+}

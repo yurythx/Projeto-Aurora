@@ -49,7 +49,7 @@ describe("LoginCard", () => {
   });
 
   it("sucesso: navega para o callbackUrl", async () => {
-    searchParams = new URLSearchParams("callbackUrl=/contratos");
+    searchParams = new URLSearchParams("callbackUrl=/dashboard");
     signIn.mockResolvedValue({ ok: true, error: null });
     const user = userEvent.setup();
     render(<LoginCard />);
@@ -58,7 +58,7 @@ describe("LoginCard", () => {
     await user.type(screen.getByLabelText("Senha"), "Admin123!");
     await user.click(screen.getByRole("button", { name: "Entrar" }));
 
-    await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/contratos"));
+    await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard"));
     expect(signIn).toHaveBeenCalledWith(
       "local",
       expect.objectContaining({ username: "admin", password: "Admin123!", redirect: false }),

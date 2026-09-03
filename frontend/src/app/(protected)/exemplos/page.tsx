@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { Plus, RefreshCw, Box, AlertCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { apiClient } from "@/lib/api/client";
 import { Skeleton } from "@/components/ui/Skeleton";
 
@@ -50,7 +51,7 @@ export default function ExemplosPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Módulo Modelo (Exemplo Blueprint)</h1>
         <p className="text-sm text-muted">
@@ -69,29 +70,25 @@ export default function ExemplosPage() {
           </div>
         )}
 
-        <form onSubmit={handleCreate} className="space-y-4">
+        <form onSubmit={handleCreate} className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-xs font-medium text-muted mb-1">Título *</label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Ex: Novo serviço cadastrado"
-                required
-                className="w-full rounded-lg border border-surface-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted mb-1">Descrição</label>
-              <input
-                type="text"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Ex: Descrição detalhada da demanda"
-                className="w-full rounded-lg border border-surface-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
-              />
-            </div>
+            <Input
+              label="Título *"
+              name="title"
+              autoComplete="off"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Ex: Novo serviço cadastrado"
+              required
+            />
+            <Input
+              label="Descrição"
+              name="description"
+              autoComplete="off"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Ex: Descrição detalhada da demanda"
+            />
           </div>
 
           <div className="flex justify-end">
@@ -114,7 +111,8 @@ export default function ExemplosPage() {
         </div>
 
         {isLoading ? (
-          <div className="p-6 space-y-3">
+          <div role="status" aria-live="polite" className="flex flex-col gap-3 p-6">
+            <span className="sr-only">Carregando…</span>
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />

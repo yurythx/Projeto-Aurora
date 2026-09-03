@@ -38,6 +38,34 @@ func NewRouter(deps *Dependencies) chi.Router {
 	// WebSocket autenticado por ticket
 	r.Get("/ws", ws.UpgradeHandler(deps.Hub, deps.Tickets, deps.Config.FrontendURL, deps.Logger))
 
+	// Rota pública de documentação de API (OpenAPI 3.0 / Swagger UI - e-PING)
+	r.Get("/openapi.json", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "docs/openapi.json")
+	})
+	r.Get("/docs", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write([]byte(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Documentação da API — Projeto Aurora (OpenAPI 3.0)</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css" />
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    window.onload = () => {
+      SwaggerUIBundle({
+        url: '/openapi.json',
+        dom_id: '#swagger-ui',
+      });
+    };
+  </script>
+</body>
+</html>`))
+	})
+
 	// Rota de login local (pública)
 	localauth.RegisterRoutes(r, deps.Modules.LocalAuth.Handlers, deps.Logger, deps.RateLimiters.LocalLogin)
 
@@ -53,6 +81,8 @@ func NewRouter(deps *Dependencies) chi.Router {
 		integrationsTransport.RegisterRoutes(api, deps.Modules.Integrations.Handlers)
 		configflags.RegisterRoutes(api, deps.Modules.ConfigFlags.Handlers, deps.Logger)
 		exampleTransport.RegisterRoutes(api, deps.Modules.Example.Handlers)
+		deps.LGPDSvc.RegisterRoutes(api)
+		deps.AuditExp.RegisterRoutes(api)
 	})
 
 	return r

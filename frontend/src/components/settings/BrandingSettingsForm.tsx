@@ -1,12 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { Building2, Save, RotateCcw, ShieldCheck } from "lucide-react";
+
 import { useBranding, DEFAULT_BRANDING, type SystemBrandingConfig } from "@/components/branding/BrandingContext";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Dialog } from "@/components/ui/Dialog";
 import { useToast } from "@/components/notifications/ToastProvider";
-import { Building2, Save, RotateCcw, ShieldCheck } from "lucide-react";
+import { safeResourceUrl } from "@/lib/security/safe-url";
 
 export function BrandingSettingsForm() {
   const { branding, updateBranding, resetBranding } = useBranding();
@@ -14,10 +18,10 @@ export function BrandingSettingsForm() {
 
   const [form, setForm] = useState<SystemBrandingConfig>(branding);
   const [logoPreviewError, setLogoPreviewError] = useState(false);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
 
-  // Ressincroniza o formulário quando o branding do contexto muda (ex.:
-  // após salvar / restaurar padrões). Ajuste de estado durante o render —
-  // padrão recomendado pelo React em vez de um useEffect com setState.
+  // Ressincroniza o formulário quando o branding do contexto muda (após
+  // salvar/restaurar). Ajuste de estado durante o render — padrão do React.
   const [syncedBranding, setSyncedBranding] = useState(branding);
   if (branding !== syncedBranding) {
     setSyncedBranding(branding);
@@ -33,169 +37,197 @@ export function BrandingSettingsForm() {
     e.preventDefault();
     updateBranding(form);
     showToast({
-      title: "Configurações Salvas",
+      title: "Configurações salvas",
       description: "A identidade visual e os metadados da aplicação foram atualizados.",
       tone: "success",
     });
   };
 
-  const handleReset = () => {
-    if (confirm("Deseja restaurar as configurações padrão da aplicação?")) {
-      resetBranding();
-      setForm(DEFAULT_BRANDING);
-      showToast({
-        title: "Padrões Restaurados",
-        description: "A identidade visual padrão foi reestabelecida.",
-        tone: "info",
-      });
-    }
+  const doReset = () => {
+    resetBranding();
+    setForm(DEFAULT_BRANDING);
+    setConfirmResetOpen(false);
+    showToast({
+      title: "Padrões restaurados",
+      description: "A identidade visual padrão foi reestabelecida.",
+      tone: "info",
+    });
   };
+
+  // S-03: só usa a URL da logo como <img src> se for https:// bem-formada.
+  const safeLogo = logoPreviewError ? null : safeResourceUrl(form.logoUrl);
 
   return (
     <Card className="border border-surface-border bg-surface">
       <CardHeader className="border-b border-surface-border">
-        <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
-          <Building2 className="h-5 w-5 text-primary" />
+        <CardTitle as="h2" className="flex items-center gap-2 text-base font-bold text-foreground">
+          <Building2 className="h-5 w-5 text-primary" aria-hidden="true" />
           Identidade Visual Institucional & Branding White-Label
         </CardTitle>
-        <p className="text-xs text-muted mt-1">
-          Personalize o nome da aplicação, logomarca, descrição e dados de contato do órgão municipal.
+        <p className="mt-1 text-xs text-muted">
+          Personalize o nome da aplicação, logomarca, descrição e dados de contato do órgão.
         </p>
       </CardHeader>
 
       <CardContent className="p-6">
-        <form onSubmit={handleSave} className="space-y-6 text-xs">
-          {/* Seção 1: Identificação da Aplicação */}
-          <div className="space-y-4">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-primary border-b border-surface-border pb-1">
+        <form onSubmit={handleSave} className="flex flex-col gap-6 text-xs">
+          {/* Seção 1: Identificação */}
+          <div className="flex flex-col gap-4">
+            <h3 className="border-b border-surface-border pb-1 text-xs font-bold uppercase tracking-wider text-primary">
               1. Identificação & Metadados
             </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block font-medium text-foreground mb-1">Nome da Aplicação / Sistema *</label>
-                <Input
-                  value={form.appName}
-                  onChange={(e) => handleChange("appName", e.target.value)}
-                  placeholder="Ex: Projeto Nova"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block font-medium text-foreground mb-1">Órgão / Prefeitura Municipal *</label>
-                <Input
-                  value={form.orgName}
-                  onChange={(e) => handleChange("orgName", e.target.value)}
-                  placeholder="Ex: Prefeitura Municipal de Rondonópolis"
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block font-medium text-foreground mb-1">Descrição Institucional</label>
-              <textarea
-                value={form.appDescription}
-                onChange={(e) => handleChange("appDescription", e.target.value)}
-                rows={2}
-                className="w-full rounded border border-surface-border bg-surface p-2 text-foreground text-xs focus:border-primary focus:outline-none"
-                placeholder="Descrição curta para a barra e-MAG e metadados..."
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Input
+                label="Nome da Aplicação / Sistema *"
+                name="appName"
+                autoComplete="off"
+                value={form.appName}
+                onChange={(e) => handleChange("appName", e.target.value)}
+                placeholder="Ex: Portal da Prefeitura"
+                required
+              />
+              <Input
+                label="Órgão / Prefeitura Municipal *"
+                name="orgName"
+                autoComplete="organization"
+                value={form.orgName}
+                onChange={(e) => handleChange("orgName", e.target.value)}
+                placeholder="Ex: Prefeitura Municipal de Rondonópolis"
+                required
               />
             </div>
+            <Textarea
+              label="Descrição Institucional"
+              name="appDescription"
+              rows={2}
+              value={form.appDescription}
+              onChange={(e) => handleChange("appDescription", e.target.value)}
+              placeholder="Descrição curta para a barra e-MAG e metadados…"
+            />
           </div>
 
-          {/* Seção 2: Logomarca & Favicon (Imagens Seguras) */}
-          <div className="space-y-4">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-primary border-b border-surface-border pb-1">
+          {/* Seção 2: Logomarca */}
+          <div className="flex flex-col gap-4">
+            <h3 className="border-b border-surface-border pb-1 text-xs font-bold uppercase tracking-wider text-primary">
               2. Logomarca & Imagens Institucionais
             </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <label className="block font-medium text-foreground">URL da Logomarca (PNG/SVG/WebP)</label>
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <div className="flex flex-col gap-2">
                 <Input
+                  label="URL da Logomarca (PNG/SVG/WebP)"
+                  name="logoUrl"
+                  type="url"
+                  inputMode="url"
+                  autoComplete="off"
                   value={form.logoUrl}
                   onChange={(e) => handleChange("logoUrl", e.target.value)}
                   placeholder="https://exemplo.gov.br/logo.png"
                 />
-                <p className="text-[11px] text-muted">Cole o link direto da imagem pública da prefeitura.</p>
+                <p className="text-[11px] text-muted">
+                  Apenas URLs <code className="font-mono">https://</code> são aceitas.
+                </p>
               </div>
 
-              {/* Preview em Tempo Real */}
-              <div className="rounded-lg border border-surface-border bg-surface-hover/30 p-4 flex flex-col items-center justify-center min-h-[100px]">
-                <span className="text-[10px] uppercase font-bold text-muted mb-2">Pré-visualização da Logomarca</span>
-                {form.logoUrl && !logoPreviewError ? (
-                  // URL externa digitada pelo órgão; next/image exige domínio pré-configurado.
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={form.logoUrl}
-                    alt="Preview da Logo"
-                    onError={() => setLogoPreviewError(true)}
-                    className="h-10 w-auto object-contain max-w-[180px]"
-                  />
+              {/* Preview — espaço reservado fixo para não gerar CLS (P-01) */}
+              <div className="flex min-h-[100px] flex-col items-center justify-center rounded-lg border border-surface-border bg-surface-hover/30 p-4">
+                <span className="mb-2 text-[10px] font-bold uppercase text-muted">
+                  Pré-visualização da Logomarca
+                </span>
+                {safeLogo ? (
+                  <span className="inline-flex h-10 w-[180px] items-center justify-center overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={safeLogo}
+                      alt={`Logomarca de ${form.appName || "aplicação"}`}
+                      width={180}
+                      height={40}
+                      onError={() => setLogoPreviewError(true)}
+                      className="h-10 w-auto max-w-full object-contain"
+                    />
+                  </span>
                 ) : (
                   <div className="flex items-center gap-2 text-muted">
-                    <ShieldCheck className="h-6 w-6 text-primary" />
-                    <span className="text-xs font-semibold">{form.appName || "Projeto Nova"}</span>
-                    <span className="text-[10px] text-muted">(Fallback Vetorial)</span>
+                    <ShieldCheck className="h-6 w-6 text-primary" aria-hidden="true" />
+                    <span className="text-xs font-semibold">{form.appName || "Projeto Aurora"}</span>
+                    <span className="text-[10px] text-muted">(fallback vetorial)</span>
                   </div>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Seção 3: Suporte & Contatos */}
-          <div className="space-y-4">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-primary border-b border-surface-border pb-1">
+          {/* Seção 3: Contatos */}
+          <div className="flex flex-col gap-4">
+            <h3 className="border-b border-surface-border pb-1 text-xs font-bold uppercase tracking-wider text-primary">
               3. Canais de Atendimento & Suporte
             </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block font-medium text-foreground mb-1">E-mail de Suporte</label>
-                <Input
-                  type="email"
-                  value={form.supportEmail}
-                  onChange={(e) => handleChange("supportEmail", e.target.value)}
-                  placeholder="suporte@municipio.gov.br"
-                />
-              </div>
-
-              <div>
-                <label className="block font-medium text-foreground mb-1">Telefone de Atendimento</label>
-                <Input
-                  value={form.supportPhone}
-                  onChange={(e) => handleChange("supportPhone", e.target.value)}
-                  placeholder="(66) 3411-5000"
-                />
-              </div>
-
-              <div>
-                <label className="block font-medium text-foreground mb-1">Horário de Atendimento</label>
-                <Input
-                  value={form.supportHours}
-                  onChange={(e) => handleChange("supportHours", e.target.value)}
-                  placeholder="Segunda a Sexta, 08h às 17h"
-                />
-              </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Input
+                label="E-mail de Suporte"
+                name="supportEmail"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                value={form.supportEmail}
+                onChange={(e) => handleChange("supportEmail", e.target.value)}
+                placeholder="suporte@municipio.gov.br"
+              />
+              <Input
+                label="Telefone de Atendimento"
+                name="supportPhone"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                value={form.supportPhone}
+                onChange={(e) => handleChange("supportPhone", e.target.value)}
+                placeholder="(66) 3411-5000"
+              />
+              <Input
+                label="Horário de Atendimento"
+                name="supportHours"
+                autoComplete="off"
+                value={form.supportHours}
+                onChange={(e) => handleChange("supportHours", e.target.value)}
+                placeholder="Segunda a Sexta, 08h às 17h"
+              />
             </div>
           </div>
 
-          {/* Botões de Ação */}
-          <div className="flex items-center justify-between pt-4 border-t border-surface-border">
-            <Button type="button" variant="ghost" onClick={handleReset} className="text-danger hover:bg-danger/10">
-              <RotateCcw className="mr-1.5 h-4 w-4" />
-              Restaurar Padrões
+          <div className="flex items-center justify-between border-t border-surface-border pt-4">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setConfirmResetOpen(true)}
+              className="text-danger hover:bg-danger/10"
+            >
+              <RotateCcw className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              Restaurar padrões
             </Button>
-
             <Button type="submit" variant="primary">
-              <Save className="mr-1.5 h-4 w-4" />
-              Salvar Alterações
+              <Save className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              Salvar alterações
             </Button>
           </div>
         </form>
       </CardContent>
+
+      {/* D-01: confirmação de ação destrutiva pelo Dialog do kit, não confirm() */}
+      <Dialog
+        open={confirmResetOpen}
+        onClose={() => setConfirmResetOpen(false)}
+        title="Restaurar configurações padrão?"
+        description="A identidade visual (nome, logo, contatos) volta ao padrão da aplicação. Esta ação não pode ser desfeita."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmResetOpen(false)}>
+              Cancelar
+            </Button>
+            <Button variant="danger" className="ml-auto" onClick={doReset}>
+              Restaurar padrões
+            </Button>
+          </>
+        }
+      />
     </Card>
   );
 }

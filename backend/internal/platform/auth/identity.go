@@ -23,15 +23,42 @@ const (
 	SourceLocal    Source = "local"
 )
 
+// GovBRLevel representa o Nível de Confiabilidade da conta do cidadão/servidor no Login Único (Gov.br),
+// conforme a Portaria SGD/SEDGG Nº 2.154.
+type GovBRLevel string
+
+const (
+	GovBRLevelBronze  GovBRLevel = "BRONZE"
+	GovBRLevelPrata   GovBRLevel = "PRATA"
+	GovBRLevelOuro    GovBRLevel = "OURO"
+	GovBRLevelUnknown GovBRLevel = "UNKNOWN"
+)
+
 // Identity é o chamador autenticado, extraído de um access token já
 // verificado. Nunca carrega o token bruto em si — só o que os handlers
 // precisam (quem é o usuário e quais roles ele tem).
 type Identity struct {
-	Subject  string   // claim "sub" — id externo do Keycloak OU id interno de users, dependendo de Source
-	Username string   // "preferred_username"
-	Email    string   // "email"
-	Roles    []string // roles de realm + de client (Keycloak), ou a coluna users.roles (local)
-	Source   Source   // qual verificador emitiu esta identidade — ver o comentário de Source
+	Subject    string     // claim "sub" — id externo do Keycloak OU id interno de users, dependendo de Source
+	Username   string     // "preferred_username"
+	Email      string     // "email"
+	Roles      []string   // roles de realm + de client (Keycloak), ou a coluna users.roles (local)
+	GovBRLevel GovBRLevel // Nível de Confiabilidade Gov.br (Bronze, Prata, Ouro)
+	Source     Source     // qual verificador emitiu esta identidade — ver o comentário de Source
+}
+
+// HasGovBRLevelAtLeast reporta se a identidade atinge o nível mínimo exigido
+// (ex.: Nível Prata ou Ouro exigido para serviços públicos de alta criticidade).
+func (i Identity) HasGovBRLevelAtLeast(minimum GovBRLevel) bool {
+	switch minimum {
+	case GovBRLevelBronze:
+		return i.GovBRLevel == GovBRLevelBronze || i.GovBRLevel == GovBRLevelPrata || i.GovBRLevel == GovBRLevelOuro
+	case GovBRLevelPrata:
+		return i.GovBRLevel == GovBRLevelPrata || i.GovBRLevel == GovBRLevelOuro
+	case GovBRLevelOuro:
+		return i.GovBRLevel == GovBRLevelOuro
+	default:
+		return false
+	}
 }
 
 // HasRole reporta se a identidade recebeu o role informado.

@@ -125,3 +125,69 @@ func FromContext(ctx context.Context, base *slog.Logger) *slog.Logger {
 	}
 	return l
 }
+
+// -----------------------------------------------------------------------------
+// Higienização e Mascaramento de PII (LGPD - Lei 13.709/2018)
+// -----------------------------------------------------------------------------
+
+// SecretString oculta completamente o valor quando passado para o slog.
+type SecretString string
+
+func (s SecretString) LogValue() slog.Value {
+	return slog.StringValue("[REDACTED]")
+}
+
+// PIICPF aplica mascaramento em CPF (ex.: "123.***.***-45").
+type PIICPF string
+
+func (c PIICPF) LogValue() slog.Value {
+	return slog.StringValue(MaskCPF(string(c)))
+}
+
+// PIIEmail aplica mascaramento em e-mail (ex.: "u***r@domain.com").
+type PIIEmail string
+
+func (e PIIEmail) LogValue() slog.Value {
+	return slog.StringValue(MaskEmail(string(e)))
+}
+
+// PIIPhone aplica mascaramento em telefone (ex.: "(66) 9****-1234").
+type PIIPhone string
+
+func (p PIIPhone) LogValue() slog.Value {
+	return slog.StringValue(MaskPhone(string(p)))
+}
+
+// MaskCPF oculta dígitos centrais do CPF mantendo os primeiros e últimos dígitos visíveis para depuração.
+func MaskCPF(cpf string) string {
+	clean := strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, cpf)
+	if len(clean) != 11 {
+		return "***.***.***-**"
+	}
+	return clean[:3] + ".***.***-" + clean[9:]
+}
+
+// MaskEmail oculta o corpo do e-mail mantendo a primeira e última letra do usuário e o domínio.
+func MaskEmail(email string) string {
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 || len(parts[0]) <= 2 {
+		return "***@***"
+	}
+	user := parts[0]
+	domain := parts[1]
+	maskedUser := string(user[0]) + strings.Repeat("*", len(user)-2) + string(user[len(user)-1])
+	return maskedUser + "@" + domain
+}
+
+// MaskPhone oculta os dígitos intermediários do número de telefone.
+func MaskPhone(phone string) string {
+	if len(phone) < 8 {
+		return "*****"
+	}
+	return phone[:3] + "****" + phone[len(phone)-2:]
+}

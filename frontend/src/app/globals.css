@@ -15,7 +15,9 @@
   --surface: #ffffff;
   --surface-border: #e2e8f0;
   --surface-hover: #f1f5f9;
-  --muted: #64748b;
+  /* #52606d ≈ 5.4:1 sobre surface-hover (#f1f5f9) e ≈ 5.9:1 sobre #fff —
+     folga acima do mínimo AA (4.5:1) p/ texto pequeno secundário. A-04. */
+  --muted: #52606d;
   --primary: #1b365d;
   --primary-hover: #2563eb;
   --primary-foreground: #ffffff;
@@ -47,8 +49,9 @@
   /* Métricas do shell do dashboard — FONTE ÚNICA. Topbar.tsx, Sidebar.tsx
      e DashboardShell.tsx derivam altura/largura/offset daqui, então
      alinhar o conteúdo à Sidebar (e ao rodapé) é mudar um valor só.
-     --topbar-h = faixa e-MAG (h-7 = 1.75rem) + barra principal (h-14 = 3.5rem). */
-  --topbar-h: 5.25rem;
+     --topbar-h = faixa e-MAG (EMagAccessibilityBar, h-10 = 2.5rem) +
+     barra principal de navegação (h-14 = 3.5rem). */
+  --topbar-h: 6rem;
   --sidebar-w: 15rem;
   --sidebar-w-collapsed: 4rem;
 
@@ -144,7 +147,9 @@
   --surface: #ffffff;
   --surface-border: #e2e8f0;
   --surface-hover: #f1f5f9;
-  --muted: #64748b;
+  /* #52606d ≈ 5.4:1 sobre surface-hover (#f1f5f9) e ≈ 5.9:1 sobre #fff —
+     folga acima do mínimo AA (4.5:1) p/ texto pequeno secundário. A-04. */
+  --muted: #52606d;
   --primary: #1b365d;
   --primary-hover: #2563eb;
   --primary-foreground: #ffffff;
@@ -177,10 +182,33 @@
   --seal: #ffff00;
 }
 
+/* Escala de Tamanho de Fonte (Acessibilidade e-MAG Rondonópolis) — A+/A-/A
+   na EMagAccessibilityBar grava fontSizeScale no branding; o BrandingContext
+   reflete em html[data-font-scale=...] e o % abaixo redimensiona TODO o
+   documento (todas as medidas em rem/em acompanham). */
+html[data-font-scale="90"] {
+  font-size: 90%;
+}
+html[data-font-scale="110"] {
+  font-size: 110%;
+}
+html[data-font-scale="120"] {
+  font-size: 120%;
+}
+html[data-font-scale="130"] {
+  font-size: 130%;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Registro tipográfico: as serifadas ficam RESERVADAS ao topo da

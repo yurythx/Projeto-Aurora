@@ -173,13 +173,13 @@ func TestSplitAndTrim(t *testing.T) {
 func TestLoad_ProductionRejectsInsecureDefaultSecrets(t *testing.T) {
 	setRequiredEnv(t)
 	t.Setenv("APP_ENV", "production")
-	// Não define TYPESENSE_API_KEY / MINIO_* -> ficam no default inseguro.
+	// Não define MINIO_* -> ficam no default inseguro.
 
 	_, err := Load()
 	if err == nil {
 		t.Fatal("Load() deveria recusar produção com segredos no default inseguro")
 	}
-	for _, want := range []string{"TYPESENSE_API_KEY", "MINIO_ACCESS_KEY", "MINIO_SECRET_KEY"} {
+	for _, want := range []string{"MINIO_ACCESS_KEY", "MINIO_SECRET_KEY"} {
 		if !contains(err.Error(), want) {
 			t.Errorf("erro deveria citar %s: %v", want, err)
 		}
@@ -189,7 +189,6 @@ func TestLoad_ProductionRejectsInsecureDefaultSecrets(t *testing.T) {
 func TestLoad_ProductionAcceptsStrongSecrets(t *testing.T) {
 	setRequiredEnv(t)
 	t.Setenv("APP_ENV", "production")
-	t.Setenv("TYPESENSE_API_KEY", "b8f1c2d3e4f5a6b7c8d9e0f1a2b3c4d5")
 	t.Setenv("MINIO_ACCESS_KEY", "nova-prod-access")
 	t.Setenv("MINIO_SECRET_KEY", "nova-prod-secret-strong-value")
 

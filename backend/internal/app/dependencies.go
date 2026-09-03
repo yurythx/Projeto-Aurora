@@ -15,12 +15,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yurythx/projeto-aurora/internal/domain/events"
+	"github.com/yurythx/projeto-aurora/internal/platform/audit"
 	"github.com/yurythx/projeto-aurora/internal/platform/auth"
 	"github.com/yurythx/projeto-aurora/internal/platform/config"
 	"github.com/yurythx/projeto-aurora/internal/platform/configflags"
 	"github.com/yurythx/projeto-aurora/internal/platform/database"
 	"github.com/yurythx/projeto-aurora/internal/platform/httpserver"
 	"github.com/yurythx/projeto-aurora/internal/platform/idempotency"
+	"github.com/yurythx/projeto-aurora/internal/platform/lgpd"
 	"github.com/yurythx/projeto-aurora/internal/platform/logging"
 	"github.com/yurythx/projeto-aurora/internal/platform/messaging"
 	"github.com/yurythx/projeto-aurora/internal/platform/metrics"
@@ -29,7 +31,6 @@ import (
 	"github.com/yurythx/projeto-aurora/internal/platform/storage"
 	"github.com/yurythx/projeto-aurora/internal/platform/telemetry"
 	"github.com/yurythx/projeto-aurora/internal/platform/ws"
-	"github.com/yurythx/projeto-aurora/pkg/typesense"
 )
 
 // RateLimiters guarda todo rate limiter distribuído (baseado em Postgres —
@@ -39,7 +40,7 @@ import (
 // uma manter sua própria contagem independente em memória (e portanto
 // N×-generosa demais).
 type RateLimiters struct {
-	TestJob    httpserver.Limiter // POST .../diario-oficial/test
+	TestJob    httpserver.Limiter // POST .../integrations/{key}/test
 	WSTicket   httpserver.Limiter // POST /api/v1/ws/ticket
 	LocalLogin httpserver.Limiter // POST /api/v1/auth/login — chave por IP, não por usuário (§ Sistema de Login Local), já que quem chama ainda não está autenticado
 	// Mutations cobre as escritas autenticadas de baixa frequência humana
@@ -73,7 +74,8 @@ type Dependencies struct {
 	RateLimiters *RateLimiters
 	Idempotency  idempotency.Store
 	Flags        configflags.Store
-	Typesense    *typesense.Client
+	LGPDSvc      *lgpd.Service
+	AuditExp     *audit.Exporter
 
 	telemetryShutdown telemetry.Shutdown
 }
@@ -198,7 +200,8 @@ func NewDependencies(ctx context.Context, component string) (*Dependencies, erro
 		},
 		Idempotency: idempotency.NewPostgresStore(pool),
 		Flags:       configflags.NewPostgresStore(pool),
-		Typesense:   typesense.NewClient(cfg.Typesense.URL, cfg.Typesense.APIKey),
+		LGPDSvc:      lgpd.NewService(pool, logger),
+		AuditExp:     audit.NewExporter(pool, logger),
 
 		telemetryShutdown: telemetryShutdown,
 	}

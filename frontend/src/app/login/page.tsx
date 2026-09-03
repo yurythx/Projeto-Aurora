@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Suspense, type CSSProperties } from "react";
 
 import { LoginCard } from "@/components/auth/LoginCard";
+import { EMagAccessibilityBar } from "@/components/layout/EMagAccessibilityBar";
 import { Logo } from "@/components/ui/Logo";
 import { Seal } from "@/components/ui/Seal";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
@@ -28,7 +29,12 @@ export default async function LoginPage() {
   const initialTheme = themeCookie === "dark" || themeCookie === "light" ? themeCookie : undefined;
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen flex-col pt-10">
+      <header id="menu" className="fixed inset-x-0 top-0 z-50">
+        <EMagAccessibilityBar />
+      </header>
+
+      <main id="conteudo" tabIndex={-1} className="flex min-h-0 flex-1 outline-none">
       <div
         className="relative hidden overflow-hidden bg-brand-panel text-white lg:flex lg:w-[44%] lg:flex-col lg:justify-between lg:p-12"
         style={{ "--seal": "#d1524a" } as CSSProperties}
@@ -87,6 +93,11 @@ export default async function LoginPage() {
           ← Voltar para a página inicial
         </Link>
       </div>
+      </main>
+
+      <footer id="rodape" tabIndex={-1} className="sr-only">
+        Rodapé da página de login
+      </footer>
     </div>
   );
 }

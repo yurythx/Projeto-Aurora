@@ -5,12 +5,14 @@ import type { HTMLAttributes } from "react";
 // destacar status curtos em tabelas/cards.
 type Tone = "neutral" | "success" | "danger" | "warning" | "info";
 
+// Cores a partir dos tokens do design system (D-04), não da paleta crua
+// do Tailwind — assim seguem o tema e o modo e-MAG de alto contraste.
 const toneClasses: Record<Tone, string> = {
   neutral: "bg-black/5 text-foreground dark:bg-white/10",
-  success: "bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400",
-  danger: "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-400",
-  warning: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400",
-  info: "bg-blue-100 text-blue-800 dark:bg-blue-500/15 dark:text-blue-400",
+  success: "bg-success/10 text-success",
+  danger: "bg-danger/10 text-danger",
+  warning: "bg-warning/10 text-warning",
+  info: "bg-accent/10 text-accent",
 };
 
 export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {

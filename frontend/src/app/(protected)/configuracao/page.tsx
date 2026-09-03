@@ -4,6 +4,7 @@ import { FeatureFlagsPanel } from "@/components/settings/FeatureFlagsPanel";
 import { BrandingSettingsForm } from "@/components/settings/BrandingSettingsForm";
 import { ApiError } from "@/lib/api/client";
 import { serverApiGet } from "@/lib/api/server";
+import { featureFlagsListSchema } from "@/lib/validation/api-schemas";
 import type { FeatureFlag } from "@/types/api";
 
 export default async function SistemaPage() {
@@ -12,7 +13,10 @@ export default async function SistemaPage() {
   let errorMessage: string | null = null;
 
   try {
-    const { data } = await serverApiGet<FeatureFlag[]>("v1/admin/feature-flags");
+    const { data } = await serverApiGet<FeatureFlag[]>(
+      "v1/admin/feature-flags",
+      featureFlagsListSchema,
+    );
     flags = data;
   } catch (err) {
     if (err instanceof ApiError && err.status === 403) {
@@ -33,7 +37,7 @@ export default async function SistemaPage() {
       {/* 2. Feature Flags do Sistema */}
       <Card>
         <CardHeader>
-          <CardTitle>Feature flags & Módulos do Sistema</CardTitle>
+          <CardTitle as="h2">Feature flags & Módulos do Sistema</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-1">
           {forbidden && (

@@ -1,6 +1,14 @@
 "use client";
 
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { Toast, type ToastData, type ToastTone } from "@/components/ui/Toast";
 
@@ -23,8 +31,16 @@ const AUTO_DISMISS_MS = 6000;
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const idRef = useRef(0);
+  // P-05: guarda os timers de auto-dismiss para poder cancelá-los — sem
+  // isto um `setTimeout` órfão chamava setState após o unmount do provider.
+  const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const dismiss = useCallback((id: string) => {
+    const timer = timersRef.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      timersRef.current.delete(id);
+    }
     setToasts((current) => current.filter((t) => t.id !== id));
   }, []);
 
@@ -33,10 +49,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       idRef.current += 1;
       const id = `toast-${idRef.current}`;
       setToasts((current) => [...current, { id, title, description, tone }]);
-      setTimeout(() => dismiss(id), AUTO_DISMISS_MS);
+      timersRef.current.set(
+        id,
+        setTimeout(() => dismiss(id), AUTO_DISMISS_MS),
+      );
     },
     [dismiss],
   );
+
+  // Limpa todos os timers pendentes no unmount.
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      timers.forEach(clearTimeout);
+      timers.clear();
+    };
+  }, []);
 
   return (
     <ToastContext.Provider value={{ showToast }}>

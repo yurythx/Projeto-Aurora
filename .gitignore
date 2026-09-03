@@ -32,3 +32,6 @@ bin/
 # OS
 .DS_Store
 Thumbs.db
+
+# Projeto de referência (port da acessibilidade) — nunca versionar aqui
+Projeto-Nova/

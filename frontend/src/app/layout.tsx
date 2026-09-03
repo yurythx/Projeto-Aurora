@@ -28,6 +28,7 @@ const newsreader = Newsreader({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -46,23 +47,24 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const theme = cookieStore.get("nova-theme")?.value;
   const dataTheme = theme === "dark" || theme === "light" ? theme : undefined;
 
-  // Alto Contraste e-MAG também via cookie: sem isto o atributo só era
-  // aplicado por um useEffect no BrandingProvider, então a página piscava
-  // do contraste normal para o alto a cada refresh. Mesmo cookie que a
-  // Topbar escreve ao alternar (components/branding/brandingStore.ts).
-  const dataHighContrast = parseBrandingCookie(cookieStore.get(BRANDING_COOKIE)?.value).highContrast
-    ? "true"
-    : undefined;
+  // Branding lido server-side: Alto Contraste e escala de fonte e-MAG vão
+  // como atributos em <html> ANTES do 1º paint (sem flash na hidratação), e
+  // a config inteira desce como server snapshot do BrandingProvider. Mesmo
+  // cookie que a barra e-MAG escreve (components/branding/brandingStore.ts).
+  const initialBranding = parseBrandingCookie(cookieStore.get(BRANDING_COOKIE)?.value);
+  const dataHighContrast = initialBranding.highContrast ? "true" : undefined;
+  const dataFontScale = String(initialBranding.fontSizeScale || 100);
 
   return (
     <html
       lang="pt-BR"
       data-theme={dataTheme}
       data-high-contrast={dataHighContrast}
+      data-font-scale={dataFontScale}
       className={`${inter.variable} ${newsreader.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <Providers>{children}</Providers>
+        <Providers initialBranding={initialBranding}>{children}</Providers>
       </body>
     </html>
   );

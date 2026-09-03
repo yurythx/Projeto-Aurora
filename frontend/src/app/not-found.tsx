@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/Button";
+import { EMagAccessibilityBar } from "@/components/layout/EMagAccessibilityBar";
 
 // 404 no tema da aplicação (§ auditoria 2026-08) em vez da página padrão,
 // não estilizada, do Next.js. Server Component simples — cobre tanto
@@ -13,7 +14,15 @@ import { Button } from "@/components/ui/Button";
 // digitar uma URL errada, então usa Card em vez de EmptyState.
 export default function NotFound() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
+    <div className="flex min-h-screen flex-col pt-10">
+      <header id="menu" className="fixed inset-x-0 top-0 z-50">
+        <EMagAccessibilityBar />
+      </header>
+      <main
+        id="conteudo"
+        tabIndex={-1}
+        className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center outline-none"
+      >
       <p className="font-mono text-sm text-muted">404</p>
       <h1 className="text-2xl font-semibold text-foreground">Página não encontrada</h1>
       <p className="max-w-sm text-sm text-muted">
@@ -24,6 +33,7 @@ export default function NotFound() {
           Voltar para o início
         </Button>
       </Link>
+      </main>
     </div>
   );
 }

@@ -19,6 +19,9 @@ interface BrandingContextType {
   updateBranding: (newConfig: Partial<SystemBrandingConfig>) => void;
   resetBranding: () => void;
   toggleHighContrast: () => void;
+  increaseFontSize: () => void;
+  decreaseFontSize: () => void;
+  resetFontSize: () => void;
 }
 
 const BrandingContext = createContext<BrandingContextType | undefined>(undefined);
@@ -44,9 +47,9 @@ export function BrandingProvider({
     () => serverSnapshot,
   );
 
-  // Sincroniza o atributo e-MAG de Alto Contraste no <html> — este SIM é
-  // um uso legítimo de useEffect (sincronizar com um sistema externo, o
-  // DOM), e não chama setState.
+  // Sincroniza os atributos e-MAG (Alto Contraste + escala tipográfica) no
+  // <html> — uso legítimo de useEffect (sincronizar com um sistema externo,
+  // o DOM), sem chamar setState.
   useEffect(() => {
     if (typeof document === "undefined") return;
     const root = document.documentElement;
@@ -55,13 +58,29 @@ export function BrandingProvider({
     } else {
       root.removeAttribute("data-high-contrast");
     }
-  }, [branding.highContrast]);
+    root.setAttribute("data-font-scale", String(branding.fontSizeScale || 100));
+  }, [branding.highContrast, branding.fontSizeScale]);
+
+  const increaseFontSize = () => {
+    const current = branding.fontSizeScale || 100;
+    if (current < 130) updateBrandingStore({ fontSizeScale: current + 10 });
+  };
+
+  const decreaseFontSize = () => {
+    const current = branding.fontSizeScale || 100;
+    if (current > 90) updateBrandingStore({ fontSizeScale: current - 10 });
+  };
+
+  const resetFontSize = () => updateBrandingStore({ fontSizeScale: 100 });
 
   const value: BrandingContextType = {
     branding,
     updateBranding: updateBrandingStore,
     resetBranding: resetBrandingStore,
     toggleHighContrast: () => updateBrandingStore({ highContrast: !branding.highContrast }),
+    increaseFontSize,
+    decreaseFontSize,
+    resetFontSize,
   };
 
   return <BrandingContext.Provider value={value}>{children}</BrandingContext.Provider>;

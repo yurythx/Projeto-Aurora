@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 
 import { ModalShell, type ModalSize } from "@/components/ui/ModalShell";
 
@@ -33,20 +33,24 @@ export function Dialog({
   footer,
   children,
 }: DialogProps) {
+  // ids únicos por instância (A-09) — permite dois <Dialog> montados sem
+  // colisão de aria-labelledby/aria-describedby.
+  const titleId = useId();
+  const descId = useId();
   return (
     <ModalShell
       open={open}
       onClose={onClose}
       size={size}
-      labelledBy="dialog-title"
-      describedBy={description ? "dialog-description" : undefined}
+      labelledBy={titleId}
+      describedBy={description ? descId : undefined}
     >
       <div className="flex max-h-[calc(100dvh-2rem)] flex-col p-5">
-        <h2 id="dialog-title" className="shrink-0 text-base font-semibold">
+        <h2 id={titleId} className="shrink-0 text-base font-semibold">
           {title}
         </h2>
         {description && (
-          <p id="dialog-description" className="mt-1 shrink-0 text-sm text-muted">
+          <p id={descId} className="mt-1 shrink-0 text-sm text-muted">
             {description}
           </p>
         )}

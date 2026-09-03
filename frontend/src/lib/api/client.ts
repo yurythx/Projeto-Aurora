@@ -3,6 +3,10 @@
 // bearer token nunca precise chegar ao JavaScript executado no navegador
 // (§30).
 
+import type { ZodType } from "zod";
+
+import { APP_URL } from "@/lib/env";
+
 interface ErrorBody {
   code: string;
   message: string;
@@ -26,7 +30,11 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<{ data: T; meta?: unknown }> {
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  schema?: ZodType<T>,
+): Promise<{ data: T; meta?: unknown }> {
   let cleanPath = path.startsWith("/") ? path.slice(1) : path;
   if (cleanPath.startsWith("api/")) {
     cleanPath = cleanPath.slice(4);
@@ -35,9 +43,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<{ data: T; 
     cleanPath = cleanPath.slice(8);
   }
   const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
-  const baseUrl = typeof window !== "undefined"
-    ? ""
-    : (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000");
+  // No browser é same-origin (""); em SSR precisa da origem absoluta da app
+  // (parametrizada em lib/env.ts, default acompanhando a porta atual).
+  const baseUrl = typeof window !== "undefined" ? "" : APP_URL;
 
   const res = await fetch(`${baseUrl}/api/backend/${cleanPath}`, {
     ...init,
@@ -79,11 +87,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<{ data: T; 
     );
   }
 
+  // Validação de contrato (S-07): idêntica à de lib/api/server.ts.
+  if (schema) {
+    const parsed = schema.safeParse(json.data);
+    if (!parsed.success) {
+      throw new ApiError(
+        502,
+        "INVALID_RESPONSE",
+        "A resposta da API não corresponde ao formato esperado.",
+      );
+    }
+    return { data: parsed.data, meta: json.meta };
+  }
+
   return { data: json.data as T, meta: json.meta };
 }
 
 export const apiClient = {
-  get: <T>(path: string) => request<T>(path, { method: "GET" }),
+  get: <T>(path: string, schema?: ZodType<T>) => request<T>(path, { method: "GET" }, schema),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, {
       method: "POST",

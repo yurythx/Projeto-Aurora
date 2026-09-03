@@ -1,9 +1,11 @@
 import "server-only";
 
+import type { ZodType } from "zod";
+
 import { getServerToken } from "@/lib/auth/serverToken";
 import { accessTokenUsable } from "@/lib/auth/tokenState";
 import { ApiError } from "@/lib/api/client";
-import { BACKEND_INTERNAL_URL } from "@/lib/api/backendUrl";
+import { BACKEND_INTERNAL_URL } from "@/lib/env";
 
 // Busca de dados em Server Component (§ Migração pra Server Components —
 // auditoria 2026-08): antes desta mudança, TODA página autenticada
@@ -28,7 +30,10 @@ interface Envelope<T> {
   meta?: unknown;
 }
 
-export async function serverApiGet<T>(path: string): Promise<{ data: T; meta?: unknown }> {
+export async function serverApiGet<T>(
+  path: string,
+  schema?: ZodType<T>,
+): Promise<{ data: T; meta?: unknown }> {
   const token = await getServerToken();
   // Inclui a checagem de vencimento (ver lib/auth/tokenState.ts) — um
   // token local expirado ainda não carimbado com `error` no cookie não
@@ -66,6 +71,21 @@ export async function serverApiGet<T>(path: string): Promise<{ data: T; meta?: u
       json.error?.code ?? "UNKNOWN_ERROR",
       json.error?.message ?? "Algo deu errado. Tente novamente.",
     );
+  }
+
+  // Validação de contrato (S-07): quando quem chama passa um schema Zod, a
+  // resposta é conferida em runtime — um campo ausente/tipo errado vira um
+  // erro claro aqui, não um `undefined` propagando até a tela.
+  if (schema) {
+    const parsed = schema.safeParse(json.data);
+    if (!parsed.success) {
+      throw new ApiError(
+        502,
+        "INVALID_RESPONSE",
+        "A resposta da API não corresponde ao formato esperado.",
+      );
+    }
+    return { data: parsed.data, meta: json.meta };
   }
 
   return { data: json.data as T, meta: json.meta };

@@ -3,7 +3,6 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
-import { BRANDING_COOKIE, parseBrandingCookie } from "@/components/branding/brandingConfig";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { SWRProvider } from "@/lib/api/SWRProvider";
 import { authOptions } from "@/lib/auth/options";
@@ -41,7 +40,9 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
   // de "padrão → valor salvo" na hidratação. Escritas por
   // lib/layout/sidebarCollapsedStore.ts e components/branding/brandingStore.ts.
   const initialCollapsed = cookieStore.get("nova-sidebar-collapsed")?.value === "true";
-  const initialBranding = parseBrandingCookie(cookieStore.get(BRANDING_COOKIE)?.value);
+
+  // O branding (nome, Alto Contraste, escala de fonte) agora é provido na
+  // raiz — app/providers.tsx — para valer também nas páginas públicas.
 
   return (
     <SWRProvider>
@@ -49,7 +50,6 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
         userLabel={userLabel}
         initialTheme={initialTheme}
         initialCollapsed={initialCollapsed}
-        initialBranding={initialBranding}
       >
         {children}
       </DashboardShell>

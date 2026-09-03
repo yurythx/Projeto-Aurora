@@ -112,7 +112,7 @@ export default async function DashboardOverviewPage() {
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <span className="dateline">Projeto Aurora Base · {competencia}</span>
-            <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+            <span className="inline-flex items-center rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
               Versão Base Enterprise
             </span>
           </div>
@@ -199,7 +199,7 @@ export default async function DashboardOverviewPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="pt-0 flex items-center justify-between border-t border-surface-border/50 mt-2 py-3 text-xs">
-                  <span className="flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+                  <span className="flex items-center gap-1.5 font-medium text-success">
                     <CheckCircle2 size={14} />
                     {mod.status}
                   </span>

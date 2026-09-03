@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+
 import { accessTokenUsable } from "@/lib/auth/tokenState";
+import { API_PUBLIC_URL, MINIO_PUBLIC_URL, WS_PUBLIC_URL, toOrigin } from "@/lib/env";
 
 // O Next.js 16 renomeou a convenção middleware.ts para proxy.ts (mesmo
 // mecanismo, só o nome do arquivo/export mudou). Esta função tem duas
@@ -34,25 +36,46 @@ export async function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV === "development";
 
-  const wsOrigin = wsOriginFromPublicUrl(process.env.NEXT_PUBLIC_WS_URL);
-  const typesenseUrl = process.env.NEXT_PUBLIC_TYPESENSE_URL || "http://localhost:8109";
-  const typesenseOrigin = wsOriginFromPublicUrl(typesenseUrl);
-  // O navegador faz PUT/GET direto no MinIO usando as URLs pré-assinadas
-  // que o backend devolve. Essa origem precisa estar em connect-src.
-  const minioUrl = process.env.NEXT_PUBLIC_MINIO_URL || "http://localhost:9002";
-  const minioOrigin = wsOriginFromPublicUrl(minioUrl);
+  // Origens que o navegador acessa diretamente (WebSocket de notificações,
+  // MinIO via URL pré-assinada, e a própria API). Deduplicadas — API e WS
+  // costumam ser o mesmo host:porta em esquemas diferentes.
+  const apiOrigin = toOrigin(API_PUBLIC_URL);
+  const connectOrigins = [
+    ...new Set(
+      [
+        WS_PUBLIC_URL && toOrigin(WS_PUBLIC_URL),
+        MINIO_PUBLIC_URL && toOrigin(MINIO_PUBLIC_URL),
+        apiOrigin,
+        apiOrigin?.replace(/^http/, "ws"),
+      ].filter(Boolean) as string[],
+    ),
+  ].join(" ");
 
-  // unsafe-eval só em desenvolvimento: o React usa eval para reconstruir
-  // stack traces do servidor no navegador durante o dev; não é usado em
-  // produção nem pelo React nem pelo Next.js.
+  // VLibras (widget oficial de tradução para Libras — Governo Federal, ver
+  // components/accessibility/VLibrasWidget.tsx) roda um player em WebAssembly.
+  // O loader vlibras-plugin.js faz 302 para
+  // https://cdn.jsdelivr.net/gh/spbgovbr-vlibras/... — mas com 'strict-dynamic'
+  // no script-src isso NÃO precisa de host allowlist: o <script> nonce-ado
+  // que o next/script injeta é confiável e propaga a confiança ao script que
+  // ele carrega (mesmo após o redirect) e ao que ESSE injeta (o player
+  // Unity). Só o WASM exige 'wasm-unsafe-eval'.
+  //
+  // S-01/S-02 da auditoria: o script-src volta a ser nonce + strict-dynamic
+  // (sem 'unsafe-inline'/'unsafe-eval' em produção). style-src continua com
+  // 'unsafe-inline' — o VLibras injeta <style> sem nonce e um XSS de estilo
+  // é muito menos grave que um de script.
+  const vlibrasHosts = "https://vlibras.gov.br https://*.vlibras.gov.br https://cdn.jsdelivr.net";
   const connectSrcDev = isDev ? " http: https: ws: wss:" : "";
   const cspHeader = `
     default-src 'self';
-    script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""};
-    style-src 'self' 'nonce-${nonce}' 'unsafe-inline';
-    img-src 'self' blob: data:;
-    font-src 'self';
-    connect-src 'self' http://localhost:8109 http://127.0.0.1:8109 ws://localhost:8002 ws://127.0.0.1:8002 http://localhost:8002 http://127.0.0.1:8002 http://localhost:3002 http://127.0.0.1:3002${connectSrcDev}${wsOrigin ? ` ${wsOrigin}` : ""}${typesenseOrigin ? ` ${typesenseOrigin}` : ""}${minioOrigin ? ` ${minioOrigin}` : ""};
+    script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval'${isDev ? " 'unsafe-eval'" : ""};
+    style-src 'self' 'unsafe-inline' ${vlibrasHosts};
+    img-src 'self' blob: data: ${vlibrasHosts};
+    font-src 'self' data: ${vlibrasHosts};
+    connect-src 'self' blob: data: ${vlibrasHosts}${connectOrigins ? ` ${connectOrigins}` : ""}${connectSrcDev};
+    worker-src 'self' blob: data: https://vlibras.gov.br https://*.vlibras.gov.br;
+    child-src 'self' blob: data: https://vlibras.gov.br https://*.vlibras.gov.br;
+    frame-src 'self' blob: data: https://vlibras.gov.br https://*.vlibras.gov.br;
     object-src 'none';
     base-uri 'self';
     form-action 'self';
@@ -83,19 +106,6 @@ export async function proxy(request: NextRequest) {
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("Content-Security-Policy", cspHeader);
   return response;
-}
-
-// Extrai só "esquema://host:porta" de uma URL de WebSocket pública
-// (ws://localhost:8000/ws -> ws://localhost:8000), formato que
-// connect-src exige — um caminho (/ws) não é uma origem válida em CSP.
-function wsOriginFromPublicUrl(url: string | undefined): string | null {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    return `${parsed.protocol}//${parsed.host}`;
-  } catch {
-    return null;
-  }
 }
 
 export const config = {

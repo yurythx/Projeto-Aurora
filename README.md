@@ -1,24 +1,33 @@
-# Projeto Aurora — Plataforma Enterprise Base Genérica
+# Projeto Aurora — Plataforma Enterprise Base Governamental
 
-O **Projeto Aurora** é uma plataforma corporativa modular em Go (Backend) e Next.js App Router (Frontend), desenvolvida para servir como **base enterprise genérica** para o rápido desenvolvimento e desacoplamento de novas aplicações corporativas e módulos municipais.
+O **Projeto Aurora** é uma plataforma corporativa modular em Go (Backend) e Next.js App Router (Frontend), desenvolvida para servir como **base enterprise genérica em estrita conformidade com as normas do Governo Federal Brasileiro** (SGD/MGI, e-MAG 2.0, DSGov, LGPD, Gov.br e OWASP) para o rápido desenvolvimento e desacoplamento de novas aplicações corporativas e módulos municipais.
 
-Ele fornece toda a infraestrutura pronta de segurança, mensageria, outbox transacional, autenticação OIDC/Local, auditoria imutável, suporte a motor de busca e um Design System governamental (e-MAG).
+Ele fornece toda a infraestrutura pronta de segurança HTTP, mensageria, outbox transacional, autenticação OIDC Gov.br / Local, mascaramento PII, auditoria imutável, suporte a motor de busca e um Design System governamental oficial (DSGov / e-MAG).
 
 ---
 
-## 🏛️ Arquitetura e Recursos Globais Prontos
+## 🏛️ Conformidade Governamental (SGD/MGI) & Recursos Globais
 
-O Projeto Aurora traz os seguintes componentes de plataforma já configurados e testados:
+O Projeto Aurora atende integralmente aos 5 módulos de conformidade exigidos pela Secretaria de Governo Digital (SGD/MGI):
+
+1. **Módulo 1: Segurança HTTP & Headers Defensivos (Go):** Headers OWASP (`HSTS`, `CSP com Nonce`, `X-Frame DENY`, `X-Content-Type nosniff`), rate-limiting e timeouts de servidor anti-DoS.
+2. **Módulo 2: Privacidade & LGPD (Go):** Mascaramento nativo de PII (`slog.LogValuer` em CPF, e-mail, telefone) e rastreabilidade correlacionada (`X-Request-ID`).
+3. **Módulo 3: Autenticação Federada & OIDC Gov.br (Go + Next.js):** Validador JWKS com mapeamento dos Níveis de Confiabilidade (`Bronze`, `Prata`, `Ouro` - Portaria SGD/SEDGG Nº 2.154) e RESTful e-PING.
+4. **Módulo 4: Acessibilidade Digital e-MAG (Next.js):** Conformidade e-MAG 2.0 / WCAG 2.1 AA com barra de atalhos por teclado (Alt+1..4), VLibras nativo, alto contraste e-MAG e redimensionamento de fonte (A+/A-/A).
+5. **Módulo 5: Identidade Visual Governamental DSGov (Next.js):** Design System oficial GovBR-DS, rodapé unificado com canais de atendimento, LGPD/LAI e suporte White-Label dinâmico.
+
+---
+
+## 🏗️ Arquitetura e Recursos Prontos
 
 - **Monólito Modular & Clean Architecture:** Estrutura pronta para acoplamento de módulos em `internal/modules/`.
 - **Módulo Modelo Template (`example`):** Exemplo completo de módulo com camadas Clean Architecture (`domain`, `application`, `infrastructure`, `transport`).
-- **Autenticação Dupla:** Suporte a Keycloak SSO (OIDC) e autenticação local com chaves RSA / bcrypt e rate limiting.
+- **Autenticação Dupla:** Suporte a Keycloak SSO / Gov.br (OIDC) e autenticação local com chaves RSA / bcrypt e rate limiting.
 - **Outbox Transacional & RabbitMQ:** Escrita atômica no PostgreSQL e publicação assíncrona no RabbitMQ com filas Dead-Letter Queue (DLQ).
 - **Auditoria Imutável:** Registros de auditoria append-only protegidos no nível do PostgreSQL.
 - **WebSocket Server:** Broker WebSocket para retransmissão de notificações em tempo real.
 - **Object Storage (MinIO S3):** Armazenamento de arquivos via URLs pré-assinadas.
 - **Motor de Busca (Typesense 27+):** Motor de busca ultrarrápido configurado para consumo seguro via chave restrita.
-- **Design System Acessível (e-MAG):** Componentes acessíveis com suporte a Dark Mode e Alto Contraste.
 
 ---
 

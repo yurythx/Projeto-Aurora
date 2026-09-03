@@ -4,10 +4,26 @@ import type { HTMLAttributes, TdHTMLAttributes, ThHTMLAttributes } from "react";
 // num container com `overflow-x-auto` (para tabelas largas não quebrarem
 // o layout da página) e aplica a tipografia/espaçamento padrão; nenhuma
 // peça aqui sabe o que está sendo listado.
-export function Table({ className = "", ...rest }: HTMLAttributes<HTMLTableElement>) {
+// `caption`: legenda da tabela de dados (eMAG 3.6). Renderizada como
+// <caption> só para leitor de tela por padrão (sr-only); passe
+// `captionVisible` para exibi-la.
+export function Table({
+  className = "",
+  caption,
+  captionVisible = false,
+  children,
+  ...rest
+}: HTMLAttributes<HTMLTableElement> & { caption?: string; captionVisible?: boolean }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-surface-border">
-      <table className={`w-full text-left text-sm ${className}`} {...rest} />
+      <table className={`w-full text-left text-sm ${className}`} {...rest}>
+        {caption && (
+          <caption className={captionVisible ? "px-4 py-2 text-left text-xs text-muted" : "sr-only"}>
+            {caption}
+          </caption>
+        )}
+        {children}
+      </table>
     </div>
   );
 }

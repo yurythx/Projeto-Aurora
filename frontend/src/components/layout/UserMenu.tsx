@@ -1,32 +1,9 @@
 "use client";
 
 import { LogOut } from "lucide-react";
-import { signOut } from "next-auth/react";
 import { useEffect, useRef, useState } from "react";
 
-// Logout completo (RP-Initiated Logout — §30): 1) busca a URL de logout
-// do Keycloak ENQUANTO a sessão local ainda existe (precisa do
-// id_token_hint, lido server-side em /api/auth/keycloak-logout-url);
-// 2) só então limpa a sessão local (signOut, sem redirecionar ainda);
-// 3) navega o navegador até o Keycloak para encerrar a sessão lá também.
-// Chamar apenas signOut() deixaria a sessão viva no provedor de
-// identidade — outra aba, ou um login silencioso, reautenticaria sem
-// pedir credenciais de novo. Sessões do login local não têm id_token
-// nenhum (ver next-auth.d.ts) — a chamada de qualquer forma funciona
-// nesse caso, só resolve para logoutUrl = "/" (o valor padrão).
-async function fullSignOut() {
-  let logoutUrl = "/";
-  try {
-    const res = await fetch("/api/auth/keycloak-logout-url");
-    const data: { url: string } = await res.json();
-    logoutUrl = data.url;
-  } catch {
-    // Se a chamada falhar, ainda assim completamos o logout local abaixo
-    // — melhor encerrar só a sessão local do que travar o usuário logado.
-  }
-  await signOut({ redirect: false });
-  window.location.href = logoutUrl;
-}
+import { fullSignOut } from "@/lib/auth/logout";
 
 function initialsFrom(label: string): string {
   const parts = label.replace(/@.*/, "").split(/[.\s_-]+/).filter(Boolean);

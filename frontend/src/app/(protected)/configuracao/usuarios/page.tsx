@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/Table";
 import { ApiError } from "@/lib/api/client";
 import { serverApiGet } from "@/lib/api/server";
+import { usersListSchema } from "@/lib/validation/api-schemas";
 import type { PaginationMeta, User } from "@/types/api";
 
 const PAGE_SIZE = 20;
@@ -48,6 +49,7 @@ export default async function UsuariosPage({
   try {
     const { data, meta: responseMeta } = await serverApiGet<User[]>(
       `v1/users?page=${page}&page_size=${PAGE_SIZE}`,
+      usersListSchema,
     );
     users = data;
     meta = (responseMeta as PaginationMeta) ?? null;
@@ -69,7 +71,7 @@ export default async function UsuariosPage({
 
         {users && users.length > 0 && (
           <>
-            <Table>
+            <Table caption="Usuários que já fizeram login pelo menos uma vez, com e-mail, status e data do último acesso.">
               <TableHead>
                 <TableRow>
                   <TableHeaderCell>Nome</TableHeaderCell>

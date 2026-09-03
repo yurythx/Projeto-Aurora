@@ -11,7 +11,6 @@ volumes:
   sonarqube_logs: null
   scanning_workspace: null
   minio_data: null
-  typesense_data: null
 services:
   postgres:
     image: postgres:16-alpine
@@ -75,29 +74,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-  typesense:
-    image: typesense/typesense:27.1
-    restart: unless-stopped
-    command: >
-      --data-dir /data
-      --api-key=${TYPESENSE_API_KEY:-xyz123secret}
-      --enable-cors
-      --cors-domains=${TYPESENSE_CORS_DOMAINS:-http://localhost:3002,http://127.0.0.1:3002}
-    environment:
-      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:-xyz123secret}
-      TYPESENSE_DATA_DIR: /data
-    volumes:
-      - typesense_data:/data
-    networks:
-      - aurora_internal
-    ports:
-      - "${HOST_TYPESENSE_PORT:-8109}:8108"
-    healthcheck:
-      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/8108"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 5s
   backend-api:
     build:
       context: ./backend
@@ -117,8 +93,6 @@ services:
       MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9002}
       MINIO_BUCKET: ${MINIO_BUCKET:-aurora}
       MINIO_USE_SSL: "false"
-      TYPESENSE_URL: http://typesense:8108
-      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:-xyz123secret}
     volumes:
     - ./secrets:/run/secrets:ro
     networks:
@@ -155,8 +129,6 @@ services:
       DB_PORT: 5432
       DB_HOST: postgres
       RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-aurora}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/${RABBITMQ_DEFAULT_VHOST:-aurora}
-      TYPESENSE_URL: http://typesense:8108
-      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:-xyz123secret}
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
@@ -193,7 +165,6 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${API_PUBLIC_URL:-http://localhost:8002}
         NEXT_PUBLIC_WS_URL: ${WEBSOCKET_PUBLIC_URL:-ws://localhost:8002/ws}
-        NEXT_PUBLIC_TYPESENSE_URL: ${TYPESENSE_PUBLIC_URL:-http://localhost:8109}
         NEXT_PUBLIC_MINIO_URL: ${MINIO_PUBLIC_URL:-http://localhost:9002}
     restart: unless-stopped
     env_file:
@@ -201,7 +172,6 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: ${API_PUBLIC_URL:-http://localhost:8002}
       NEXT_PUBLIC_WS_URL: ${WEBSOCKET_PUBLIC_URL:-ws://localhost:8002/ws}
-      NEXT_PUBLIC_TYPESENSE_URL: ${TYPESENSE_PUBLIC_URL:-http://localhost:8109}
       NEXT_PUBLIC_MINIO_URL: ${MINIO_PUBLIC_URL:-http://localhost:9002}
       BACKEND_INTERNAL_URL: http://backend-api:${HTTP_PORT:-8002}
     networks:

@@ -7,10 +7,12 @@ export interface ToastData {
   tone: ToastTone;
 }
 
+// Borda-acento a partir dos tokens de status do design system (D-04),
+// não cores cruas do Tailwind.
 const toneBorder: Record<ToastTone, string> = {
-  info: "border-l-blue-500",
-  success: "border-l-green-500",
-  danger: "border-l-red-500",
+  info: "border-l-accent",
+  success: "border-l-status-online",
+  danger: "border-l-status-offline",
 };
 
 export function Toast({ toast, onDismiss }: { toast: ToastData; onDismiss: (id: string) => void }) {
@@ -33,9 +35,9 @@ export function Toast({ toast, onDismiss }: { toast: ToastData; onDismiss: (id: 
           type="button"
           onClick={() => onDismiss(toast.id)}
           aria-label="Dispensar notificação"
-          className="shrink-0 rounded p-1 text-muted hover:bg-black/5 dark:hover:bg-white/10"
+          className="shrink-0 rounded p-1 text-muted hover:bg-black/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:hover:bg-white/10"
         >
-          ✕
+          <span aria-hidden="true">✕</span>
         </button>
       </div>
     </div>

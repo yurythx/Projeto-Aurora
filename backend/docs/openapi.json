@@ -1,0 +1,115 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "API Base Governamental — Projeto Aurora",
+    "description": "Especificação de API RESTful em conformidade com o Padrão de Interoperabilidade do Governo Federal (e-PING) e diretrizes SGD/MGI.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Prefeitura Municipal de Rondonópolis — Tecnologia da Informação",
+      "url": "https://www.rondonopolis.mt.gov.br"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8002",
+      "description": "Ambiente de Desenvolvimento Local"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Healthcheck básico",
+        "description": "Retorna o status de liveness da API.",
+        "responses": {
+          "200": { "description": "API ativa e operante" }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "summary": "Readiness Probe",
+        "description": "Verifica o status de prontidão do PostgreSQL e RabbitMQ.",
+        "responses": {
+          "200": { "description": "Todas as dependências prontas" },
+          "503": { "description": "Dependência offline ou indisponível" }
+        }
+      }
+    },
+    "/api/v1/lgpd/status": {
+      "get": {
+        "summary": "Status do Consentimento LGPD",
+        "description": "Verifica se o usuário autenticado já aceitou a versão mais recente dos Termos de Privacidade.",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Status retornado com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accepted": { "type": "boolean" },
+                    "term_version": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lgpd/accept": {
+      "post": {
+        "summary": "Registrar Aceite dos Termos LGPD",
+        "description": "Registra o consentimento com IP e User-Agent na trilha de auditoria imutável.",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "term_version": { "type": "string", "example": "v1.0.0-2026" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Aceite registrado com sucesso" }
+        }
+      }
+    },
+    "/api/v1/users/me": {
+      "get": {
+        "summary": "Perfil do Usuário Autenticado",
+        "description": "Retorna os dados da identidade atual e roles concedidos.",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Perfil retornado" }
+        }
+      }
+    },
+    "/api/v1/integrations": {
+      "get": {
+        "summary": "Listar Integrações da Plataforma",
+        "description": "Retorna a lista de integrações cadastradas e seus estados de saúde.",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Lista de integrações" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Token JWT obtido via OIDC Gov.br/Keycloak ou Login Local"
+      }
+    }
+  }
+}

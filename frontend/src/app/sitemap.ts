@@ -1,5 +1,7 @@
 import type { MetadataRoute } from "next";
 
+import { APP_URL } from "@/lib/env";
+
 // Sitemap mínimo, honesto: só as duas rotas públicas de verdade (/ e
 // /sobre) têm metadados OG (ver page.tsx/sobre/page.tsx, § auditoria
 // 2026-08) — tudo abaixo de /dashboard, /integracoes, /configuracao,
@@ -11,7 +13,7 @@ import type { MetadataRoute } from "next";
 // construções de URL absoluta no frontend (ver
 // app/api/auth/keycloak-logout-url/route.ts), com o mesmo fallback pra
 // desenvolvimento local.
-const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+const baseUrl = APP_URL;
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [

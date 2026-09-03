@@ -12,7 +12,6 @@ import {
   Settings,
   ShieldCheck,
   UserCheck,
-  Zap,
 } from "lucide-react";
 import type { Metadata } from "next";
 import { connection } from "next/server";
@@ -20,8 +19,7 @@ import Link from "next/link";
 
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Logo } from "@/components/ui/Logo";
-import { Seal } from "@/components/ui/Seal";
+import { PublicShell } from "@/components/layout/PublicShell";
 
 const description =
   "Projeto Aurora — Plataforma Enterprise Base Genérica, pronta para acoplamento de múltiplos módulos de domínio com Clean Architecture e DevSecOps.";
@@ -33,20 +31,53 @@ export const metadata: Metadata = {
 };
 
 const pillars = [
-  { n: 1, label: "Autenticação OIDC / SSO + Local JWT" },
-  { n: 2, label: "Transactional Outbox Pattern" },
-  { n: 3, label: "RabbitMQ Mensageria & DLQ" },
-  { n: 4, label: "Design System & e-MAG Acessibilidade" },
-  { n: 5, label: "Rate Limiting & Idempotência" },
-  { n: 6, label: "Auditoria Imutável & Telemetria" },
+  { n: 1, label: "Autenticação OIDC Gov.br / Keycloak" },
+  { n: 2, label: "e-MAG Acessibilidade & VLibras" },
+  { n: 3, label: "Identidade Visual DSGov / White-Label" },
+  { n: 4, label: "LGPD & Mascaramento PII em Logs" },
+  { n: 5, label: "Headers Defensivos OWASP & CSP" },
+  { n: 6, label: "Auditoria Imutável & Interoperabilidade" },
+];
+
+const govModules = [
+  {
+    code: "M01",
+    title: "Segurança HTTP (OWASP / e-PING)",
+    description: "Headers defensivos (HSTS, CSP com nonce, X-Frame DENY) e timeouts de servidor para prevenir DoS/Slowloris.",
+    reason: "Protege a infraestrutura governamental contra ataques web clássicos e garante interoperabilidade segura.",
+  },
+  {
+    code: "M02",
+    title: "LGPD & Auditoria (Lei 13.709/2018)",
+    description: "Mascaramento PII nativo (CPF, email, telefone), logs estruturados log/slog e correlação X-Request-ID.",
+    reason: "Evita o vazamento acidental de dados sensíveis de cidadãos e servidores em logs e garante rastreabilidade.",
+  },
+  {
+    code: "M03",
+    title: "Autenticação OIDC Gov.br (Login Único)",
+    description: "Validação local JWKS do Keycloak/Gov.br com mapeamento dos Níveis de Confiabilidade Bronze, Prata e Ouro.",
+    reason: "Atende à Portaria SGD/SEDGG Nº 2.154 garantindo que apenas contas verificadas acessem serviços críticos.",
+  },
+  {
+    code: "M04",
+    title: "Acessibilidade e-MAG / WCAG 2.1 AA",
+    description: "Barra de atalhos (Alt+1..4), VLibras nativo, alto contraste e-MAG, escala de fonte A+/A-/A e linting jsx-a11y.",
+    reason: "Garante inclusão digital irrestrita para pessoas com deficiência visual, auditiva e motora no serviço público.",
+  },
+  {
+    code: "M05",
+    title: "Identidade Visual DSGov (Padrão Digital)",
+    description: "Design system oficial com cores institucionais, componentes unificados (GovHeader, GovFooter) e tipografia oficial.",
+    reason: "Promove padronização visual e transparência institucional em conformidade com o Guia de Identidade da SECOM/MGI.",
+  },
 ];
 
 const services = [
   {
     icon: LinkIcon,
-    title: "Arquitetura Modular",
+    title: "Arquitetura Modular Clean Code",
     description:
-      "Estrutura Clean Architecture isolada. Adicione novos módulos de negócio sem alterar o núcleo da plataforma.",
+      "Estrutura isolada em Go 1.25. Adicione novos módulos de negócio com total desacoplamento e governança.",
   },
   {
     icon: Bell,
@@ -56,15 +87,15 @@ const services = [
   },
   {
     icon: ScrollText,
-    title: "Trilha de Auditoria",
+    title: "Trilha de Auditoria LGPD",
     description:
-      "Toda ação de escrita é registrada em logs de auditoria imutáveis com proveniência e contexto.",
+      "Toda ação de escrita é registrada em logs de auditoria imutáveis no Postgres com proveniência e contexto.",
   },
   {
     icon: ShieldCheck,
-    title: "Resiliência & Outbox",
+    title: "Resiliência & Outbox Transacional",
     description:
-      "Escrita atômica no banco de dados e publicação em background no RabbitMQ sem perda de eventos.",
+      "Escrita atômica no banco de dados e publicação em background no RabbitMQ com entrega Exactly-Once.",
   },
 ];
 
@@ -85,33 +116,16 @@ export default async function LandingPage() {
   await connection();
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-5">
-        <span className="flex items-center gap-2.5 text-lg font-bold tracking-tight">
-          <Logo size={30} />
-          Projeto Aurora
-        </span>
-        <nav className="flex items-center gap-4 text-sm">
-          <Link href="/sobre" className="text-muted hover:text-foreground">
-            Sobre
-          </Link>
-          <Link href="/login">
-            <Button size="sm">Entrar</Button>
-          </Link>
-        </nav>
-      </header>
-
-      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-20 px-6 py-12">
+    <PublicShell>
+      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-20 px-6 py-12">
         <section className="flex flex-col gap-8">
           <div className="flex flex-col gap-5">
             <p className="dateline">Prefeitura Municipal de Rondonópolis · Plataforma Base</p>
             <h1 className="max-w-2xl text-4xl font-extrabold leading-[1.15] text-foreground sm:text-5xl">
-              Sua fundação enterprise para novas aplicações.
+              Sua fundação enterprise em conformidade com o Governo Federal.
             </h1>
-            <p className="max-w-xl text-muted text-base">
-              O <strong className="font-semibold text-foreground">Projeto Aurora</strong> oferece toda a
-              infraestrutura fundamental pré-configurada: autenticação SSO/Local, outbox transacional,
-              mensageria RabbitMQ, auditoria, idempotência e Design System oficial.
+            <p className="max-w-2xl text-muted text-base">
+              O <strong className="font-semibold text-foreground">Projeto Aurora</strong> oferece infraestrutura de alta performance pré-configurada em estrita conformidade com as normas federais: <strong className="text-foreground">e-MAG, DSGov, LGPD, Gov.br (OIDC) e OWASP Top 10</strong>.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <Link href="/login">
@@ -119,7 +133,7 @@ export default async function LandingPage() {
               </Link>
               <Link href="/sobre">
                 <Button size="md" variant="secondary">
-                  Documentação Base
+                  Documentação & Conformidade
                 </Button>
               </Link>
             </div>
@@ -137,12 +151,40 @@ export default async function LandingPage() {
           </ol>
         </section>
 
+        {/* Seção Principal de Conformidade com Padrões do Governo Federal */}
         <section className="flex flex-col gap-8">
           <div className="flex flex-col gap-2">
-            <p className="dateline">Segurança & Conformidade</p>
+            <p className="dateline">Conformidade com Padrões Governamentais (SGD/MGI)</p>
+            <h2 className="text-2xl font-bold text-foreground">Os 5 Módulos de Conformidade do Governo Federal</h2>
+            <p className="max-w-3xl text-sm text-muted">
+              Desenvolvido respeitando rigorosamente as diretrizes da Secretaria de Governo Digital (SGD/MGI), garantindo segurança, privacidade, acessibilidade e interoperabilidade.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {govModules.map((item) => (
+              <div key={item.code} className="flex flex-col gap-3 rounded-xl border border-surface-border bg-surface p-5 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-primary/10 text-primary">{item.code}</span>
+                  <span className="text-[11px] font-semibold text-success">100% Conforme</span>
+                </div>
+                <h3 className="text-sm font-bold text-foreground">{item.title}</h3>
+                <p className="text-xs text-muted leading-relaxed">{item.description}</p>
+                <div className="mt-auto pt-3 border-t border-surface-border">
+                  <p className="text-[11px] font-medium text-foreground/80">
+                    <strong className="text-seal">Justificativa:</strong> {item.reason}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="flex flex-col gap-8">
+          <div className="flex flex-col gap-2">
+            <p className="dateline">Segurança & AppSec</p>
             <h2 className="text-2xl font-bold text-foreground">OWASP Top 10 Enterprise</h2>
             <p className="max-w-2xl text-sm text-muted">
-              Padrões de segurança rigorosamente aplicados na fundação do sistema.
+              Padrões defensivos rigorosamente aplicados na fundação do sistema.
             </p>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -193,14 +235,7 @@ export default async function LandingPage() {
             })}
           </div>
         </section>
-      </main>
-
-      <footer className="mx-auto flex w-full max-w-5xl items-center gap-4 border-t border-surface-border px-6 py-6 text-xs text-muted">
-        <Seal size={40} decorative className="text-surface-border" />
-        <p>
-          © {new Date().getFullYear()} Prefeitura Municipal de Rondonópolis · Projeto Aurora Base
-        </p>
-      </footer>
-    </div>
+      </div>
+    </PublicShell>
   );
 }

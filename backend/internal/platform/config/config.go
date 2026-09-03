@@ -127,31 +127,7 @@ func (c WorkerConfig) MetricsAddr() string {
 	return fmt.Sprintf("%s:%d", c.MetricsHost, c.MetricsPort)
 }
 
-// DiarioOficialConfig guarda as configurações da integração com o Diário
-// Oficial. BaseURL vem com um default de verdade (ver
-// DefaultDiarioOficialBaseURL abaixo) — client.HTTPClient continua
-// tolerando BaseURL vazio (reportando a integração como indisponível em
-// vez de derrubar o processo) só porque isso é possível em teste
-// (construir um HTTPClient com "" na mão), não porque é alcançável via
-// configuração real desta plataforma.
-type DiarioOficialConfig struct {
-	BaseURL             string
-	Timeout             time.Duration
-	RondonopolisBaseURL string
-	RondonopolisToken   string
-	// WatcherTimeout é o timeout HTTP do Vigia (descoberta de edições no
-	// portal). Separado — e bem mais folgado — que Timeout porque é um job
-	// de fundo lendo uma página HTML grande e lenta do portal municipal,
-	// não um request de usuário; com 10s (o Timeout de health) a leitura do
-	// corpo estourava direto ("context deadline exceeded while reading body").
-	WatcherTimeout time.Duration
-}
-
-const DefaultDiarioOficialBaseURL = "https://comunicaapi.pje.jus.br/api/v1/comunicacao"
-const DefaultRondonopolisBaseURL = "https://www.rondonopolis.mt.gov.br/api/v1/diary/"
-const DefaultRondonopolisToken = "375d81a3db63187fc30967e367895581b35113e72a46893f08eb97e0815f3b16"
-
-// MinIOConfig guarda as credenciais para storage de PDFs de contratos e certidões.
+// MinIOConfig guarda as credenciais para storage de objetos (S3/MinIO).
 type MinIOConfig struct {
 	Endpoint  string // host:porta alcançável pelo backend (rede interna) — usado em Get/Put/Delete
 	AccessKey string
@@ -166,12 +142,6 @@ type MinIOConfig struct {
 	PublicUseSSL   bool
 }
 
-// TypesenseConfig guarda as credenciais do motor de busca Typesense.
-type TypesenseConfig struct {
-	URL    string
-	APIKey string
-}
-
 // Config é a configuração da aplicação já totalmente validada.
 type Config struct {
 	App       AppConfig
@@ -183,9 +153,7 @@ type Config struct {
 	Jobs      JobsConfig
 	Worker    WorkerConfig
 
-	DiarioOficial DiarioOficialConfig
-	MinIO         MinIOConfig
-	Typesense     TypesenseConfig
+	MinIO MinIOConfig
 
 	FrontendURL         string
 	APIPublicURL        string
@@ -360,18 +328,7 @@ func Load() (*Config, error) {
 			MetricsHost: l.str("WORKER_METRICS_HOST", false, "0.0.0.0"),
 			MetricsPort: l.intVal("WORKER_METRICS_PORT", false, 9100),
 		},
-		DiarioOficial: DiarioOficialConfig{
-			BaseURL:             l.str("DIARIO_OFICIAL_BASE_URL", false, DefaultDiarioOficialBaseURL),
-			Timeout:             l.durationVal("DIARIO_OFICIAL_TIMEOUT", false, 10*time.Second),
-			RondonopolisBaseURL: l.str("RONDONOPOLIS_DIARY_BASE_URL", false, DefaultRondonopolisBaseURL),
-			RondonopolisToken:   l.secret("RONDONOPOLIS_DIARY_TOKEN", false, DefaultRondonopolisToken),
-			WatcherTimeout:      l.durationVal("RONDONOPOLIS_WATCHER_TIMEOUT", false, 45*time.Second),
-		},
-		MinIO: minioConfig(l),
-		Typesense: TypesenseConfig{
-			URL:    l.str("TYPESENSE_URL", false, "http://localhost:8108"),
-			APIKey: l.secret("TYPESENSE_API_KEY", false, insecureTypesenseKey),
-		},
+		MinIO:               minioConfig(l),
 		FrontendURL:         l.str("FRONTEND_URL", false, "http://localhost:3000"),
 		APIPublicURL:        l.str("API_PUBLIC_URL", false, "http://localhost:8000"),
 		WebSocketPublicURL:  l.str("WEBSOCKET_PUBLIC_URL", false, "ws://localhost:8000/ws"),
@@ -406,9 +363,6 @@ func Load() (*Config, error) {
 	// como está, cujo default `:-` não força nada).
 	if cfg.App.Env == "production" {
 		var weak []string
-		if cfg.Typesense.APIKey == insecureTypesenseKey {
-			weak = append(weak, "TYPESENSE_API_KEY")
-		}
 		if cfg.MinIO.AccessKey == insecureMinioAccessKey {
 			weak = append(weak, "MINIO_ACCESS_KEY")
 		}
@@ -428,7 +382,6 @@ func Load() (*Config, error) {
 // Defaults inseguros: só existem para o fluxo dev/test funcionar sem
 // configuração. Ver a validação de produção em Load().
 const (
-	insecureTypesenseKey   = "xyz123secret"
 	insecureMinioAccessKey = "admin"
 	insecureMinioSecretKey = "password123"
 )

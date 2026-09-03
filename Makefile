@@ -88,6 +88,9 @@ seed-admin: ## Cria/reseta o usuário admin local com senha ALEATÓRIA
 	cd backend && DB_HOST=localhost DB_PORT=$(HOST_DB_PORT) DB_NAME=$(DB_NAME) DB_USER=$(DB_USER) DB_PASSWORD=$(DB_PASSWORD) \
 		go run ./cmd/seedadmin
 
+new-module: ## Gera o esqueleto Clean Architecture de um novo módulo (Uso: make new-module NAME=contratos)
+	@./scripts/create-module.sh $(NAME)
+
 ## --- Shells ---
 
 backend-shell: ## Abre um shell no container backend-api em execução

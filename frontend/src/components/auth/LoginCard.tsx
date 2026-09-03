@@ -58,7 +58,9 @@ export function LoginCard() {
   return (
     <div className="flex w-full max-w-sm flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Bem-vindo de volta</h1>
+        {/* h2, não h1 (A-01): o h1 da página é o do painel de marca em
+            app/login/page.tsx. */}
+        <h2 className="text-2xl font-bold text-foreground">Bem-vindo de volta</h2>
         <p className="mt-1 text-sm text-muted">Informe seu usuário e senha para continuar.</p>
       </div>
 
@@ -67,6 +69,9 @@ export function LoginCard() {
           Falha ao entrar. Tente novamente.
         </p>
       )}
+      {/* O erro de submit (localError) aparece no campo de senha via
+          <Input error> — que agora é role="alert" (A-05), então é anunciado
+          mesmo com o foco fora do campo. */}
 
       <form className="flex flex-col gap-3" onSubmit={handleLogin}>
         <Input

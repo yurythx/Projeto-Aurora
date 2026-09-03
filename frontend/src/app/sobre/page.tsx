@@ -1,21 +1,53 @@
-import { Layers, Lock, Radar, RefreshCw } from "lucide-react";
+import { Layers, Lock, Radar, RefreshCw, ShieldCheck } from "lucide-react";
 import type { Metadata } from "next";
 import { connection } from "next/server";
-import Link from "next/link";
 
-import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Logo } from "@/components/ui/Logo";
+import { PublicShell } from "@/components/layout/PublicShell";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/Table";
 
 const description =
-  "Visão geral da arquitetura do Projeto Aurora, base genérica enterprise com monólito modular em Go, Next.js, OIDC/Keycloak, Outbox e RabbitMQ.";
+  "Visão geral da arquitetura do Projeto Aurora e sua conformidade estrita com as normas do Governo Federal (e-MAG, DSGov, LGPD, OIDC Gov.br, e-PING e OWASP).";
 
 export const metadata: Metadata = {
-  title: "Sobre — Projeto Aurora",
+  title: "Sobre & Conformidade Governamental — Projeto Aurora",
   description,
-  openGraph: { title: "Sobre o Projeto Aurora", description, type: "website" },
+  openGraph: { title: "Sobre & Conformidade — Projeto Aurora", description, type: "website" },
 };
+
+// Detalhamento dos 5 Módulos de Conformidade Governamental
+const govConformityModules = [
+  {
+    module: "Módulo 1: Segurança HTTP & Headers (Go Backend)",
+    norm: "Portarias SGD/MGI & OWASP Top 10",
+    tech: "Middleware Go (httpserver/middleware.go), HSTS, CSP com Nonce, Rate Limiter Postgres",
+    justification: "Injeta cabeçalhos defensivos estritos em 100% das respostas HTTP (HSTS max-age=63072000, X-Frame-Options DENY, X-Content-Type-Options nosniff) e limita requisições por IP/token para prevenir ataques DoS/Slowloris e injeção de scripts maliciosos.",
+  },
+  {
+    module: "Módulo 2: Privacidade & LGPD (Go Backend)",
+    norm: "Lei Geral de Proteção de Dados (Lei 13.709/2018)",
+    tech: "log/slog nativo em JSON, slog.LogValuer (MaskCPF, MaskEmail, MaskPhone) e X-Request-ID",
+    justification: "Garante que dados pessoais sensíveis (PII) de cidadãos e servidores nunca vazem em texto puro nos logs do sistema. Toda requisição recebe um X-Request-ID correlacionado para rastreabilidade auditável de ponta a ponta.",
+  },
+  {
+    module: "Módulo 3: Autenticação Federada & Interoperabilidade",
+    norm: "Portaria SGD/SEDGG Nº 2.154 & e-PING",
+    tech: "go-oidc/v3, JWKS Keycloak/Gov.br, Níveis Bronze/Prata/Ouro e OpenAPI 3.0",
+    justification: "Realiza a verificação de assinatura JWT localmente via JWKS sem chamadas adicionais por requisição, mapeando os Níveis de Confiabilidade do Login Único Gov.br (Prata/Ouro) para autorização granular (RBAC). Expõe especificações RESTful e-PING.",
+  },
+  {
+    module: "Módulo 4: Acessibilidade Digital e-MAG",
+    norm: "e-MAG 2.0 / WCAG 2.1 Nível AA",
+    tech: "EMagAccessibilityBar, SkipLinks (Alt+1..4), VLibras nativo, Alto Contraste e eslint-plugin-jsx-a11y",
+    justification: "Assegura o direito de acesso à informação para pessoas com deficiência. Inclui barra e-MAG com atalhos de navegação por teclado, leitor visual de alto contraste (preto/amarelo), escala de fonte proporcional e tradutor de Libras em todas as páginas.",
+  },
+  {
+    module: "Módulo 5: Identidade Visual Governamental DSGov",
+    norm: "Padrão Digital de Governo (GovBR-DS)",
+    tech: "BrandingProvider Server-Side, Tokens Tailwind CSS v4, GovHeader, GovFooter e Fontes Oficiais",
+    justification: "Garante a padronização estática e dinâmica de portais públicos, com suporte White-Label dinâmico para prefeituras e órgãos, rodapé institucional completo com LGPD/LAI e eliminação total de flashes de layout na hidratação.",
+  },
+];
 
 // Resumo público da matriz OWASP
 const owaspMapping = [
@@ -34,27 +66,27 @@ const owaspMapping = [
 const principles = [
   {
     icon: Layers,
-    title: "Monólito modular",
+    title: "Monólito Modular Clean Code",
     description:
-      "Um único deployable, dividido em módulos com fronteiras claras — a simplicidade operacional de um monólito pronto para novos acoplamentos de negócio.",
+      "Um único deployable em Go 1.25, dividido em módulos isolados — simplicidade operacional com capacidade de escalar novas regras de negócio.",
   },
   {
     icon: RefreshCw,
-    title: "Resiliência & Outbox",
+    title: "Resiliência & Outbox Transacional",
     description:
-      "Circuit breaker e retry com backoff em toda chamada externa, fila de mensagens mortas (DLQ) e um transactional outbox.",
+      "Publicação de eventos no RabbitMQ via Transactional Outbox Pattern com suporte a filas de mensagens mortas (DLQ).",
   },
   {
     icon: Lock,
-    title: "Segurança por padrão",
+    title: "DevSecOps & Privacidade",
     description:
-      "Autenticação via Keycloak (OIDC) ou login local com chave RSA própria, CSP com nonce, auditoria imutável e rate limiting.",
+      "Autenticação Gov.br / Keycloak OIDC, mascaramento de PII em logs, CSP estrita com nonce e trilhas de auditoria imutáveis no Postgres.",
   },
   {
     icon: Radar,
-    title: "Observabilidade",
+    title: "Acessibilidade & Observabilidade",
     description:
-      "Métricas Prometheus, tracing OpenTelemetry e logs estruturados correlacionados por request id em toda a pilha.",
+      "Conformidade e-MAG 2.0 / WCAG 2.1 AA com VLibras, métricas Prometheus e rastreamento correlacionado de requisições.",
   },
 ];
 
@@ -62,28 +94,56 @@ export default async function AboutPage() {
   await connection();
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between px-6 py-5">
-        <Link href="/" className="flex items-center gap-2 text-lg font-semibold">
-          <Logo size={32} />
-          Projeto Aurora
-        </Link>
-        <nav className="flex items-center gap-4 text-sm">
-          <Link href="/" className="text-muted hover:text-foreground">
-            Início
-          </Link>
-          <Link href="/login">
-            <Button size="sm">Entrar</Button>
-          </Link>
-        </nav>
-      </header>
-
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-12 px-6 py-12">
+    <PublicShell>
+      <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-12 px-6 py-12">
         <section className="flex flex-col gap-4">
-          <h1 className="text-3xl font-bold text-foreground">Sobre a Plataforma Aurora Base</h1>
-          <p className="text-muted">
-            O <strong>Projeto Aurora</strong> é uma plataforma base genérica enterprise de alta performance, estruturada para servir de fundação para novos módulos de aplicações públicas e corporativas. Com arquitetura limpa em Go 1.25 no backend e Next.js 16 no frontend, ele abstrai a complexidade de autenticação SSO, segurança AppSec, mensageria via RabbitMQ e auditoria.
+          <div className="flex items-center gap-2 text-xs font-bold font-mono text-primary uppercase tracking-wider">
+            <ShieldCheck size={16} className="text-success" />
+            Conformidade Federal SGD/MGI
+          </div>
+          <h1 className="text-3xl font-bold text-foreground">Sobre a Plataforma Aurora & Diretrizes Governamentais</h1>
+          <p className="text-muted leading-relaxed">
+            O <strong>Projeto Aurora</strong> foi projetado para servir como infraestrutura base reutilizável para a Prefeitura Municipal de Rondonópolis e órgãos governamentais. Ele unifica em um único template os rígidos padrões de <strong>Segurança (OWASP), Acessibilidade (e-MAG / WCAG 2.1 AA), Identidade Visual (DSGov), Privacidade (LGPD) e Interoperabilidade (OIDC / e-PING)</strong>.
           </p>
+        </section>
+
+        {/* Tabela detalhada de Conformidade Governamental */}
+        <section className="flex flex-col gap-4">
+          <div>
+            <h2 className="text-xl font-semibold text-foreground">Conformidade com Normas Governamentais (SGD/MGI)</h2>
+            <p className="mt-1 text-sm text-muted">
+              Mapeamento dos 5 módulos de conformidade implementados na base do Projeto Aurora e suas justificativas técnicas.
+            </p>
+          </div>
+          <div className="overflow-hidden rounded-xl border border-surface-border bg-surface">
+            <Table caption="Detalhamento das diretrizes federais e justificativas de implementação.">
+              <TableHead>
+                <TableRow>
+                  <TableHeaderCell>Módulo & Norma</TableHeaderCell>
+                  <TableHeaderCell>Tecnologias & Métodos</TableHeaderCell>
+                  <TableHeaderCell>Justificativa Técnica de Uso</TableHeaderCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {govConformityModules.map((item) => (
+                  <TableRow key={item.module}>
+                    <TableCell className="align-top font-medium text-foreground">
+                      <div className="flex flex-col gap-1">
+                        <span className="font-bold text-xs text-primary">{item.module}</span>
+                        <span className="text-[11px] font-mono text-seal">{item.norm}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top font-mono text-xs text-muted">
+                      {item.tech}
+                    </TableCell>
+                    <TableCell className="align-top text-xs text-muted leading-relaxed">
+                      {item.justification}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </section>
 
         <section className="flex flex-col gap-4">
@@ -115,7 +175,7 @@ export default async function AboutPage() {
               Tratado como checklist de engenharia desde o primeiro commit. A coluna da direita descreve a prática hoje na base do Projeto Aurora.
             </p>
           </div>
-          <Table>
+          <Table caption="Riscos do OWASP Top 10 e a prática correspondente adotada na plataforma.">
             <TableHead>
               <TableRow>
                 <TableHeaderCell>Risco</TableHeaderCell>
@@ -136,20 +196,16 @@ export default async function AboutPage() {
           </Table>
         </section>
 
-        <section className="flex flex-col gap-3">
-          <h2 className="text-xl font-semibold text-foreground">Stack de Tecnologias</h2>
-          <p className="text-muted">
-            <strong>Backend em Go (Clean Architecture):</strong> Monólito modular (Golang 1.25), PostgreSQL 16, RabbitMQ (AMQP), MinIO S3 Storage e motor Typesense.
+        <section className="flex flex-col gap-3 rounded-xl border border-surface-border bg-surface p-6">
+          <h2 className="text-xl font-semibold text-foreground">Stack Tecnológica & Padrões de Projeto</h2>
+          <p className="text-sm text-muted leading-relaxed">
+            <strong className="text-foreground">Backend (Go 1.25):</strong> Arquitetura Limpa (Clean Architecture), roteador Chi v5, banco de dados PostgreSQL 16 com `pgxpool`, mensageria RabbitMQ via AMQP, `log/slog` com mascaramento PII, e suporte a testes unitários com 100% de mocks zerados.
           </p>
-          <p className="text-muted">
-            <strong>Frontend em Next.js (App Router):</strong> React 19 com TypeScript, Tailwind CSS, NextAuth.js com SSO Keycloak + JWT local e WebSockets para eventos em tempo real.
+          <p className="text-sm text-muted leading-relaxed">
+            <strong className="text-foreground">Frontend (Next.js 16 App Router):</strong> React 19 em TypeScript estrito, Tailwind CSS v4 com temas DSGov/e-MAG, `NextAuth.js` com SSO Keycloak/Gov.br, widget VLibras desacoplado da hidratação, e auditoria de acessibilidade por `jsx-a11y`.
           </p>
         </section>
-      </main>
-
-      <footer className="border-t border-surface-border px-6 py-6 text-center text-xs text-muted">
-        © {new Date().getFullYear()} Projeto Aurora — Plataforma Base Enterprise
-      </footer>
-    </div>
+      </div>
+    </PublicShell>
   );
 }

@@ -17,7 +17,7 @@ export function Footer() {
       <div className="px-4 py-8 sm:px-8">
         <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
           {/* Coluna 1: Nome da Aplicação e Orgão */}
-          <div className="space-y-3">
+          <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2 font-bold text-foreground text-sm">
               <Logo size={20} />
               <span>{branding.appName}</span>
@@ -27,9 +27,9 @@ export function Footer() {
           </div>
 
           {/* Coluna 2: Canais de Suporte e Atendimento */}
-          <div className="space-y-2.5">
+          <div className="flex flex-col gap-2.5">
             <h4 className="font-bold text-foreground text-xs uppercase tracking-wider">Suporte & Atendimento</h4>
-            <ul className="space-y-2">
+            <ul className="flex flex-col gap-2">
               <li className="flex items-center gap-2">
                 <Mail className="h-4 w-4 text-primary shrink-0" />
                 <a href={`mailto:${branding.supportEmail}`} className="hover:text-primary transition-colors">
@@ -48,9 +48,9 @@ export function Footer() {
           </div>
 
           {/* Coluna 3: Conformidade & Links Institucionais */}
-          <div className="space-y-2.5">
+          <div className="flex flex-col gap-2.5">
             <h4 className="font-bold text-foreground text-xs uppercase tracking-wider">Conformidade</h4>
-            <ul className="space-y-1.5">
+            <ul className="flex flex-col gap-1.5">
               <li>Lei de Acesso à Informação (LAI 12.527/2011)</li>
               <li>Lei Geral de Proteção de Dados (LGPD 13.709/2018)</li>
               <li>Instrução Normativa SCL nº 01/2019</li>

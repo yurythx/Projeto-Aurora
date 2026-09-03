@@ -17,8 +17,15 @@ export function CardHeader({ className = "", ...rest }: HTMLAttributes<HTMLDivEl
   return <div className={`px-5 pt-5 ${className}`} {...rest} />;
 }
 
-export function CardTitle({ className = "", ...rest }: HTMLAttributes<HTMLHeadingElement>) {
-  return <h3 className={`text-sm font-semibold text-foreground ${className}`} {...rest} />;
+// `as` permite ajustar o nível do cabeçalho para não pular níveis (A-02):
+// h3 é o padrão (Card dentro de uma seção com h2), mas quando o Card é a
+// primeira subdivisão sob um h1 use `as="h2"`.
+export function CardTitle({
+  as: Tag = "h3",
+  className = "",
+  ...rest
+}: HTMLAttributes<HTMLHeadingElement> & { as?: "h2" | "h3" | "h4" }) {
+  return <Tag className={`text-sm font-semibold text-foreground ${className}`} {...rest} />;
 }
 
 export function CardDescription({ className = "", ...rest }: HTMLAttributes<HTMLParagraphElement>) {
