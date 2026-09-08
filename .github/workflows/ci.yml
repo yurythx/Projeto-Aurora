@@ -63,3 +63,66 @@ jobs:
 
       - name: Build Next.js Production Bundle
         run: cd frontend && npm run build
+
+  docker-build-healthcheck:
+    name: 🐳 Docker (build + healthcheck de todos os serviços)
+    runs-on: ubuntu-latest
+    # Roda além de (não em vez de) backend-ci/frontend-ci: `go test`/`npm
+    # test` nunca constroem as imagens de runtime nem batem no
+    # HEALTHCHECK do docker-compose.yml — foi exatamente por isso que um
+    # `wget` ausente na imagem runtime (node:22-bookworm-slim/
+    # debian:bookworm-slim não vêm com wget, ao contrário da Alpine
+    # anterior) deixou frontend/backend-api/backend-worker permanentemente
+    # "unhealthy" sem que nenhum CI verde acusasse (achado de auditoria).
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Prepare local env (.env + chave RSA do login local)
+        run: |
+          cp .env.example .env
+          mkdir -p secrets
+          openssl genrsa -out secrets/local_auth_private_key.pem 2048
+
+      - name: Build all images
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml build
+
+      - name: Start the stack
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+      - name: Wait for every service to report healthy
+        run: |
+          services="postgres rabbitmq minio backend-api backend-worker frontend"
+          deadline=$((SECONDS + 180))
+          for svc in $services; do
+            while true; do
+              # Recalcula o cid a cada volta (não só antes do loop): logo
+              # após `up -d`, "ps -q" pode devolver vazio um instante antes
+              # do container existir — se isso caísse direto no fallback
+              # "no-healthcheck" do inspect, o loop passava sem esperar
+              # nada de verdade.
+              cid=$(docker compose -f docker-compose.yml -f docker-compose.dev.yml ps -q "$svc")
+              status="starting"
+              if [ -n "$cid" ]; then
+                status=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || echo "no-healthcheck")
+              fi
+              if [ "$status" = "healthy" ] || [ "$status" = "no-healthcheck" ]; then
+                echo "$svc: $status"
+                break
+              fi
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "$svc nunca ficou healthy (último status: $status)"
+                docker compose -f docker-compose.yml -f docker-compose.dev.yml logs "$svc"
+                exit 1
+              fi
+              sleep 3
+            done
+          done
+
+      - name: Dump logs (sempre, ajuda a depurar falhas intermitentes)
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
