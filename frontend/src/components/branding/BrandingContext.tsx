@@ -9,6 +9,7 @@ import {
   subscribeBranding,
   updateBrandingStore,
 } from "./brandingStore";
+import { safeResourceUrl } from "@/lib/security/safe-url";
 
 // Re-export para não quebrar imports antigos (BrandingSettingsForm etc.).
 export { DEFAULT_BRANDING };
@@ -60,6 +61,35 @@ export function BrandingProvider({
     }
     root.setAttribute("data-font-scale", String(branding.fontSizeScale || 100));
   }, [branding.highContrast, branding.fontSizeScale]);
+
+  // Favicon white-label: branding.faviconUrl era um campo declarado desde
+  // sempre (tipo + default + persistido no cookie), mas nada o lia — o
+  // <link rel="icon"> ficava sempre no favicon padrão do Projeto Aurora
+  // (achado de auditoria). safeResourceUrl (S-03) aplica a mesma
+  // allowlist de esquema que a logo já usa: só https:// vira href de
+  // verdade. marca um data-attribute próprio no <link> pra saber, na
+  // próxima rodada, se foi ESTE efeito que o escreveu (nunca mexe num
+  // <link rel="icon"> que já estivesse lá por outro motivo antes do
+  // primeiro branding customizado, e volta ao arquivo estático de
+  // app/icon.svg/favicon.ico assim que a URL é removida/fica inválida).
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const safeFavicon = safeResourceUrl(branding.faviconUrl);
+    const marker = "data-aurora-branding-favicon";
+    let link = document.querySelector<HTMLLinkElement>(`link[rel="icon"][${marker}]`);
+
+    if (!safeFavicon) {
+      link?.remove();
+      return;
+    }
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      link.setAttribute(marker, "true");
+      document.head.appendChild(link);
+    }
+    link.href = safeFavicon;
+  }, [branding.faviconUrl]);
 
   const increaseFontSize = () => {
     const current = branding.fontSizeScale || 100;

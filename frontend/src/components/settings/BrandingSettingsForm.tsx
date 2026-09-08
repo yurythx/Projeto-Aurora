@@ -18,6 +18,7 @@ export function BrandingSettingsForm() {
 
   const [form, setForm] = useState<SystemBrandingConfig>(branding);
   const [logoPreviewError, setLogoPreviewError] = useState(false);
+  const [faviconPreviewError, setFaviconPreviewError] = useState(false);
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
 
   // Ressincroniza o formulário quando o branding do contexto muda (após
@@ -31,6 +32,7 @@ export function BrandingSettingsForm() {
   const handleChange = (field: keyof SystemBrandingConfig, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     if (field === "logoUrl") setLogoPreviewError(false);
+    if (field === "faviconUrl") setFaviconPreviewError(false);
   };
 
   const handleSave = (e: React.FormEvent) => {
@@ -54,8 +56,10 @@ export function BrandingSettingsForm() {
     });
   };
 
-  // S-03: só usa a URL da logo como <img src> se for https:// bem-formada.
+  // S-03: só usa a URL da logo/favicon como <img src>/<link href> se for
+  // https:// bem-formada.
   const safeLogo = logoPreviewError ? null : safeResourceUrl(form.logoUrl);
+  const safeFavicon = faviconPreviewError ? null : safeResourceUrl(form.faviconUrl);
 
   return (
     <Card className="border border-surface-border bg-surface">
@@ -150,6 +154,48 @@ export function BrandingSettingsForm() {
                     <ShieldCheck className="h-6 w-6 text-primary" aria-hidden="true" />
                     <span className="text-xs font-semibold">{form.appName || "Projeto Aurora"}</span>
                     <span className="text-[10px] text-muted">(fallback vetorial)</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Input
+                  label="URL do Favicon (ICO/PNG/SVG)"
+                  name="faviconUrl"
+                  type="url"
+                  inputMode="url"
+                  autoComplete="off"
+                  value={form.faviconUrl}
+                  onChange={(e) => handleChange("faviconUrl", e.target.value)}
+                  placeholder="https://exemplo.gov.br/favicon.png"
+                />
+                <p className="text-[11px] text-muted">
+                  Apenas URLs <code className="font-mono">https://</code> são aceitas. Sem isto, a
+                  aplicação usa o selo padrão do Projeto Aurora.
+                </p>
+              </div>
+
+              {/* Preview — mesmo raciocínio de CLS do preview da logo acima. */}
+              <div className="flex min-h-[100px] flex-col items-center justify-center rounded-lg border border-surface-border bg-surface-hover/30 p-4">
+                <span className="mb-2 text-[10px] font-bold uppercase text-muted">
+                  Pré-visualização do Favicon
+                </span>
+                {safeFavicon ? (
+                  <span className="inline-flex h-8 w-8 items-center justify-center overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={safeFavicon}
+                      alt="Favicon personalizado"
+                      width={32}
+                      height={32}
+                      onError={() => setFaviconPreviewError(true)}
+                      className="h-8 w-8 object-contain"
+                    />
+                  </span>
+                ) : (
+                  <div className="flex items-center gap-2 text-muted">
+                    <ShieldCheck className="h-6 w-6 text-primary" aria-hidden="true" />
+                    <span className="text-[10px] text-muted">(favicon padrão)</span>
                   </div>
                 )}
               </div>
