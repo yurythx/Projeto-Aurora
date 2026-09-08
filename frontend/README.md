@@ -1,6 +1,6 @@
-# Projeto Nova — Frontend
+# Projeto Aurora — Frontend
 
-Dashboard em Next.js (App Router) + TypeScript para o Projeto Nova. Veja o
+Dashboard em Next.js (App Router) + TypeScript para o Projeto Aurora. Veja o
 [README raiz do repositório](../README.md) para a visão geral completa do
 projeto, a configuração do Keycloak e como rodar toda a stack via Docker
 Compose.

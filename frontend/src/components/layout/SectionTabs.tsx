@@ -12,8 +12,8 @@ export interface SectionTab {
  * Tira de abas horizontal para sub-navegação de uma seção (Integrações,
  * Configurações…). Mesmo visual/lógica de estado ativo da que
  * configuracao/layout.tsx tem embutida — extraído porque outras seções
- * precisam da mesma tira mas não podem usar um layout Next (o Kanban, por
- * ex., tem container de altura fixa próprio).
+ * precisam da mesma tira mas não podem usar um layout Next (ex.: uma
+ * seção com container de altura fixa próprio).
  *
  * `exactFirst`: quando true, a primeira aba (a "índice" da seção) só fica
  * ativa em match exato — as demais casam por prefixo de segmento.

@@ -24,13 +24,13 @@ describe("swrFetcher", () => {
 
   it("resolve com o campo data do envelope, não o envelope inteiro", async () => {
     mockFetchOnce(200, { data: { job_id: "abc" }, error: null });
-    await expect(swrFetcher<{ job_id: string }>("v1/scanning/scans/abc")).resolves.toEqual({
+    await expect(swrFetcher<{ job_id: string }>("v1/examples/abc")).resolves.toEqual({
       job_id: "abc",
     });
   });
 
   it("propaga ApiError sem embrulhar num erro genérico do SWR", async () => {
     mockFetchOnce(404, { data: null, error: { code: "NOT_FOUND", message: "scan not found" } });
-    await expect(swrFetcher("v1/scanning/scans/unknown")).rejects.toBeInstanceOf(ApiError);
+    await expect(swrFetcher("v1/examples/unknown")).rejects.toBeInstanceOf(ApiError);
   });
 });

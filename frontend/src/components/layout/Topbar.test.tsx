@@ -54,9 +54,9 @@ describe("Topbar", () => {
   it("repassa userLabel pro UserMenu", () => {
     render(
       <BrandingProvider>
-        <Topbar userLabel="ana@projeto-nova.local" connectionState="open" onToggleSidebar={() => {}} />
+        <Topbar userLabel="ana@projeto-aurora.local" connectionState="open" onToggleSidebar={() => {}} />
       </BrandingProvider>
     );
-    expect(screen.getByTestId("user-menu-stub")).toHaveTextContent("ana@projeto-nova.local");
+    expect(screen.getByTestId("user-menu-stub")).toHaveTextContent("ana@projeto-aurora.local");
   });
 });

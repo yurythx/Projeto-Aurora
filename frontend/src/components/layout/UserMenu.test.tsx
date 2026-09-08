@@ -32,7 +32,7 @@ describe("UserMenu", () => {
   });
 
   it("com um e-mail, usa a parte antes do @ pra derivar as iniciais", () => {
-    render(<UserMenu userLabel="ana.silva@projeto-nova.local" />);
+    render(<UserMenu userLabel="ana.silva@projeto-aurora.local" />);
     expect(screen.getByRole("button", { name: /Menu do usuário/ })).toHaveTextContent("AS");
   });
 
@@ -43,12 +43,12 @@ describe("UserMenu", () => {
 
   it("clicar no avatar abre o menu com o label completo e o botão Sair", async () => {
     const user = userEvent.setup();
-    render(<UserMenu userLabel="admin@projeto-nova.local" />);
+    render(<UserMenu userLabel="admin@projeto-aurora.local" />);
 
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Menu do usuário/ }));
     expect(screen.getByRole("menu")).toBeInTheDocument();
-    expect(screen.getByText("admin@projeto-nova.local")).toBeInTheDocument();
+    expect(screen.getByText("admin@projeto-aurora.local")).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Sair" })).toBeInTheDocument();
   });
 
@@ -82,7 +82,7 @@ describe("UserMenu", () => {
   // sessão local (signOut), e só então navega até essa URL — nunca a
   // ordem inversa, que deixaria a sessão viva no Keycloak.
   it("Sair busca a URL de logout do Keycloak, encerra a sessão local e navega até ela", async () => {
-    mockLogoutUrlFetch("https://keycloak.example.com/realms/projeto-nova/protocol/openid-connect/logout");
+    mockLogoutUrlFetch("https://keycloak.example.com/realms/projeto-aurora/protocol/openid-connect/logout");
     const user = userEvent.setup();
     render(<UserMenu userLabel="admin" />);
 
@@ -92,7 +92,7 @@ describe("UserMenu", () => {
     expect(fetch).toHaveBeenCalledWith("/api/auth/keycloak-logout-url");
     expect(signOut).toHaveBeenCalledWith({ redirect: false });
     expect(window.location.href).toBe(
-      "https://keycloak.example.com/realms/projeto-nova/protocol/openid-connect/logout",
+      "https://keycloak.example.com/realms/projeto-aurora/protocol/openid-connect/logout",
     );
   });
 

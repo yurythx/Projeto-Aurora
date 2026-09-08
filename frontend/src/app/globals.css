@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Paleta Institucional Governamental (Projeto Nova — White-Label)
+/* Paleta Institucional Governamental (Projeto Aurora — White-Label)
    Cores inspiradas em portais municipais oficiais: Azul Escuro Institucional,
    elementos neutros Slate de alto contraste, suporte a e-MAG (Alto Contraste).
 
@@ -213,8 +213,7 @@ body {
 
 /* Registro tipográfico: as serifadas ficam RESERVADAS ao topo da
    hierarquia (título de página e de seção). h3 pra baixo — inclusive
-   CardTitle e cabeçalho de coluna do Kanban — seguem a sans, o que
-   mantém os componentes densos calmos. */
+   CardTitle — seguem a sans, o que mantém os componentes densos calmos. */
 h1,
 h2 {
   font-family: var(--font-display);
@@ -240,24 +239,6 @@ h2 {
   width: 1.5rem;
   height: 2px;
   background: var(--seal);
-}
-
-/* Scrollbar fina para as colunas do Kanban (antes `scrollbar-thin` era
-   uma classe morta — nenhum plugin a definia). */
-.scrollbar-thin {
-  scrollbar-width: thin;
-  scrollbar-color: var(--surface-border) transparent;
-}
-.scrollbar-thin::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-.scrollbar-thin::-webkit-scrollbar-thumb {
-  background: var(--surface-border);
-  border-radius: 9999px;
-}
-.scrollbar-thin::-webkit-scrollbar-track {
-  background: transparent;
 }
 
 /* Entrada/saída dos modais <dialog> (ModalShell / Dialog) — transição

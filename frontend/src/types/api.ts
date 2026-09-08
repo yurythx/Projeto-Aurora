@@ -41,7 +41,7 @@ export interface PaginationMeta {
   total_pages: number;
 }
 
-// GET /api/v1/admin/feature-flags (restrito a nova-admin) — ver docs/openapi.yaml.
+// GET /api/v1/admin/feature-flags (restrito a aurora-admin) — ver docs/openapi.yaml.
 export interface FeatureFlag {
   key: string;
   enabled: boolean;

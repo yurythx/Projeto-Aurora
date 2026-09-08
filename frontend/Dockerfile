@@ -32,7 +32,13 @@ RUN npm run build
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-RUN groupadd -r nix && useradd -r -g nix nix
+# wget: exigido pelo HEALTHCHECK do docker-compose.yml (`wget --spider`) —
+# node:22-bookworm-slim, ao contrário da imagem Alpine anterior (busybox
+# embutido), não vem com wget/curl. Sem isto o container ficava
+# permanentemente "unhealthy" mesmo servindo requisições normalmente.
+RUN apt-get update && apt-get install -y --no-install-recommends wget && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd -r nix && useradd -r -g nix nix
 
 COPY --from=builder --chown=nix:nix /app/public ./public
 COPY --from=builder --chown=nix:nix /app/.next/standalone ./

@@ -9,7 +9,6 @@ import type { ToastTone } from "@/components/ui/Toast";
 import {
   integrationStatusPayloadSchema,
   jobEventPayloadSchema,
-  scanCompletedPayloadSchema,
   type EventEnvelope,
 } from "@/lib/validation/schemas";
 import type { ConnectionState } from "@/lib/websocket/client";
@@ -54,39 +53,6 @@ export function NotificationCenter({
           const tone: ToastTone = result.data.status === "online" ? "success" : "danger";
           const notification = {
             title: `Integração ${result.data.key} agora está ${result.data.status}`,
-            tone,
-          };
-          showToast(notification);
-          pushHistory(notification);
-          return;
-        }
-
-        case "scanning.scan.completed": {
-          const result = scanCompletedPayloadSchema.safeParse(event.payload);
-          if (!result.success) {
-            logParseFailure(event.type, result.error);
-            return;
-          }
-          const { scanners, findings_count, critical_count, high_count } = result.data;
-          let description = "Nenhum achado.";
-          let tone: ToastTone = "success";
-
-          if (findings_count > 0) {
-            if (critical_count > 0) {
-              description = `${findings_count} achado(s), ${critical_count} crítico(s)!`;
-              tone = "danger";
-            } else if (high_count > 0) {
-              description = `${findings_count} achado(s), ${high_count} alto(s)`;
-              tone = "danger";
-            } else {
-              description = `${findings_count} achado(s)`;
-              tone = "info";
-            }
-          }
-
-          const notification = {
-            title: `Scan concluído (${scanners.join(", ")})`,
-            description,
             tone,
           };
           showToast(notification);

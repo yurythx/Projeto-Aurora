@@ -73,7 +73,7 @@ describe("apiClient", () => {
 
     const form = new FormData();
     form.set("name", "test-project");
-    await apiClient.postForm("v1/scanning/projects", form);
+    await apiClient.postForm("v1/examples/upload", form);
 
     const [, init] = fetchMock.mock.calls[0] ?? [];
     const headers = init.headers as Record<string, string>;

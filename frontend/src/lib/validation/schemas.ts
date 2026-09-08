@@ -32,18 +32,6 @@ export const integrationStatusPayloadSchema = z.object({
   status: z.enum(["unknown", "online", "offline", "degraded", "disabled"]),
 });
 
-// Payload do evento scanning.scan.completed — espelha
-// application.scanCompletedPayload no backend.
-export const scanCompletedPayloadSchema = z.object({
-  scan_id: z.string(),
-  scanners: z.array(z.string()),
-  target: z.string(),
-  findings_count: z.number(),
-  critical_count: z.number().default(0),
-  high_count: z.number().default(0),
-});
-
-
 /** Faz o parse e valida uma mensagem bruta de WebSocket; retorna null para
  * qualquer entrada malformada em vez de lançar exceção, para que uma
  * mensagem ruim nunca derrube o pipeline de notificações inteiro. */

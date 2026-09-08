@@ -111,11 +111,11 @@ export const apiClient = {
       body: body !== undefined ? JSON.stringify(body) : undefined,
     }),
   // postForm: caminho separado de post() pra um corpo multipart/form-data
-  // (Fase 10 — projeto criado por upload .zip) — nunca passa por
-  // JSON.stringify, e nunca define Content-Type manualmente: o browser
-  // precisa gerar esse header sozinho a partir do FormData, incluindo o
-  // boundary multipart, que request() (Content-Type: application/json
-  // fixo) sobrescreveria e quebraria a requisição inteira.
+  // (ex.: upload de arquivo) — nunca passa por JSON.stringify, e nunca
+  // define Content-Type manualmente: o browser precisa gerar esse header
+  // sozinho a partir do FormData, incluindo o boundary multipart, que
+  // request() (Content-Type: application/json fixo) sobrescreveria e
+  // quebraria a requisição inteira.
   postForm: <T>(path: string, form: FormData) =>
     request<T>(path, { method: "POST", body: form, headers: {} }),
   patch: <T>(path: string, body?: unknown) =>
@@ -123,10 +123,9 @@ export const apiClient = {
       method: "PATCH",
       body: body !== undefined ? JSON.stringify(body) : undefined,
     }),
-  // put/delete (Fase 14 — Maturidade de AppSec): triar/reabrir um achado
-  // (PUT/DELETE .../findings/{fingerprint}/triage) — os dois primeiros
-  // usos destes verbos neste cliente; mesmo formato de corpo/erro que
-  // post/patch já têm, nada específico de triagem aqui.
+  // put/delete: nenhum módulo atual os usa ainda — mantidos por
+  // completude do cliente HTTP genérico, mesmo formato de corpo/erro que
+  // post/patch já têm.
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, {
       method: "PUT",

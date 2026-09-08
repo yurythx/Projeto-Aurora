@@ -16,7 +16,7 @@ import type { FeatureFlag } from "@/types/api";
 // já buscou a lista antes de renderizar — § Migração pra Server
 // Components) — este componente só existe pra ficar "use client" e
 // possuir o estado otimista do toggle/PATCH, que é genuinamente
-// interativo; ele não busca mais nada sozinho no mount. O caso 403 (restrito a nova-admin) já é tratado por quem chama, antes deste
+// interativo; ele não busca mais nada sozinho no mount. O caso 403 (restrito a aurora-admin) já é tratado por quem chama, antes deste
 // componente sequer ser montado.
 export function FeatureFlagsPanel({ initialFlags }: { initialFlags: FeatureFlag[] }) {
   const { showToast } = useToast();

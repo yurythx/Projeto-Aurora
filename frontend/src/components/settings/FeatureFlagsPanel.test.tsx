@@ -20,7 +20,7 @@ function mockFetchOnce(status: number, body: unknown) {
 
 function makeFlag(overrides: Partial<FeatureFlag> = {}): FeatureFlag {
   return {
-    key: "scanning_noise_filter_enabled",
+    key: "module_exemplos_enabled",
     enabled: false,
     description: "Filtro de ruído",
     ...overrides,
@@ -54,7 +54,7 @@ describe("FeatureFlagsPanel", () => {
 
   it("alternar liga otimista (antes da resposta) e persiste via PATCH", async () => {
     mockFetchOnce(200, {
-      data: { key: "scanning_noise_filter_enabled", enabled: true },
+      data: { key: "module_exemplos_enabled", enabled: true },
       error: null,
     });
     const user = userEvent.setup();
@@ -68,7 +68,7 @@ describe("FeatureFlagsPanel", () => {
     expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "true");
 
     const [path, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
-    expect(path).toBe("/api/backend/v1/admin/feature-flags/scanning_noise_filter_enabled");
+    expect(path).toBe("/api/backend/v1/admin/feature-flags/module_exemplos_enabled");
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body as string)).toEqual({ enabled: true });
   });
@@ -87,7 +87,7 @@ describe("FeatureFlagsPanel", () => {
 
     await user.click(screen.getByRole("switch"));
     expect(
-      await screen.findByText('Não foi possível alterar "scanning_noise_filter_enabled"'),
+      await screen.findByText('Não foi possível alterar "module_exemplos_enabled"'),
     ).toBeInTheDocument();
     expect(screen.getByText("flag desconhecida")).toBeInTheDocument();
     // Desfeito: volta pro estado original (desligado), não fica travado

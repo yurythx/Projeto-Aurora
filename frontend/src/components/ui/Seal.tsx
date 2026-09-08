@@ -1,8 +1,8 @@
-// Selo circular — o elemento de assinatura do Projeto Nova (§ redesenho
+// Selo circular — o elemento de assinatura do Projeto Aurora (§ redesenho
 // 2026-08). Um carimbo de repartição: anéis concêntricos, borda pontilhada,
-// dizeres curvos e um miolo com o "N" da marca sobre a referência da IN SCL
-// 01/2019. Aparece como marca d'água discreta no painel de login e na home
-// pública — nunca como enfeite repetido pela interface toda.
+// dizeres curvos e um miolo com o monograma da marca sobre os dizeres de
+// documento oficial. Aparece como marca d'água discreta no painel de login
+// e na home pública — nunca como enfeite repetido pela interface toda.
 //
 // Usa `currentColor` em todos os traços/textos: quem chama controla a cor
 // (branco sobre o painel institucional, tinta de carimbo sobre fundo claro)
@@ -10,7 +10,7 @@
 export function Seal({
   size = 220,
   className = "",
-  topText = "PROJETO NOVA ✦ FISCALIZAÇÃO DE CONTRATOS",
+  topText = "PROJETO AURORA ✦ PLATAFORMA ENTERPRISE BASE",
   bottomText = "RONDONÓPOLIS ✦ MATO GROSSO",
   decorative = false,
 }: {
@@ -29,15 +29,15 @@ export function Seal({
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       role={decorative ? undefined : "img"}
-      aria-label={decorative ? undefined : "Selo do Projeto Nova"}
+      aria-label={decorative ? undefined : "Selo do Projeto Aurora"}
       aria-hidden={decorative || undefined}
       focusable="false"
       className={`shrink-0 ${className}`}
       style={{ color: "currentColor" }}
     >
       <defs>
-        <path id="nova-seal-top" d="M 26 100 A 74 74 0 0 1 174 100" />
-        <path id="nova-seal-bottom" d="M 32 100 A 68 68 0 0 0 168 100" />
+        <path id="aurora-seal-top" d="M 26 100 A 74 74 0 0 1 174 100" />
+        <path id="aurora-seal-bottom" d="M 32 100 A 68 68 0 0 0 168 100" />
       </defs>
 
       <circle cx="100" cy="100" r="96" stroke="currentColor" strokeWidth="2" />
@@ -60,7 +60,7 @@ export function Seal({
         fill="currentColor"
         style={{ fontFamily: "var(--font-mono, monospace)" }}
       >
-        <textPath href="#nova-seal-top" startOffset="50%" textAnchor="middle">
+        <textPath href="#aurora-seal-top" startOffset="50%" textAnchor="middle">
           {topText}
         </textPath>
       </text>
@@ -71,16 +71,17 @@ export function Seal({
         fill="currentColor"
         style={{ fontFamily: "var(--font-mono, monospace)" }}
       >
-        <textPath href="#nova-seal-bottom" startOffset="50%" textAnchor="middle">
+        <textPath href="#aurora-seal-bottom" startOffset="50%" textAnchor="middle">
           {bottomText}
         </textPath>
       </text>
 
-      {/* Miolo: o "N" do selo sobre a referência normativa */}
+      {/* Miolo: monograma "A" de Aurora (mesmo desenho de Logo.tsx/icon.svg,
+          escalado pro selo) sobre os dizeres de documento oficial. */}
       <g transform="translate(100 92)">
-        <rect x="-15" y="-15" width="4" height="30" fill="currentColor" />
-        <rect x="11" y="-15" width="4" height="30" fill="currentColor" />
-        <polygon points="-11,-15 -11,-3 11,15 11,3" fill="currentColor" />
+        <polygon points="0,-15 -9,15 -15,15" fill="currentColor" />
+        <polygon points="0,-15 15,15 9,15" fill="currentColor" />
+        <rect x="-5.25" y="1.5" width="10.5" height="2.4" fill="currentColor" />
       </g>
       <path d="M 74 118 H 126" stroke="currentColor" strokeWidth="1.5" />
       <text
@@ -93,7 +94,7 @@ export function Seal({
         fill="currentColor"
         style={{ fontFamily: "var(--font-mono, monospace)" }}
       >
-        IN SCL 01/2019
+        DOCUMENTO OFICIAL
       </text>
     </svg>
   );

@@ -125,9 +125,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ pa
   return proxy(req, path);
 }
 
-// PUT/DELETE (Fase 14 — Maturidade de AppSec): triar/reabrir um achado
-// (PUT|DELETE /api/v1/scanning/projects/{projectID}/findings/{fingerprint}/triage)
-// — mesmo encaminhamento, sem lógica própria.
+// PUT/DELETE: nenhum módulo atual os usa ainda (ver apiClient.put/.delete
+// em lib/api/client.ts) — encaminhados por completude do proxy, mesmo
+// esquema dos outros métodos, sem lógica própria.
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
   return proxy(req, path);

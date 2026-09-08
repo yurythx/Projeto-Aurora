@@ -64,75 +64,6 @@ describe("NotificationCenter", () => {
     expect(screen.getByTestId("history-count")).toHaveTextContent("1");
   });
 
-  it("scanning.scan.completed sem achados vira toast de sucesso", () => {
-    renderCenter();
-    act(() =>
-      capturedHandler!(
-        envelope("scanning.scan.completed", {
-          scan_id: "scan-1",
-          scanners: ["trivy", "semgrep"],
-          target: "https://github.com/org/repo.git",
-          findings_count: 0,
-        }),
-      ),
-    );
-
-    expect(screen.getByText("Scan concluído (trivy, semgrep)")).toBeInTheDocument();
-    expect(screen.getByText("Nenhum achado.")).toBeInTheDocument();
-  });
-
-  it("scanning.scan.completed com achados menciona a contagem", () => {
-    renderCenter();
-    act(() =>
-      capturedHandler!(
-        envelope("scanning.scan.completed", {
-          scan_id: "scan-1",
-          scanners: ["gitleaks"],
-          target: "https://github.com/org/repo.git",
-          findings_count: 3,
-        }),
-      ),
-    );
-
-    expect(screen.getByText("3 achado(s)")).toBeInTheDocument();
-  });
-
-  it("scanning.scan.completed com CRITICAL destaca a contagem e usa tom de perigo", () => {
-    renderCenter();
-    act(() =>
-      capturedHandler!(
-        envelope("scanning.scan.completed", {
-          scan_id: "scan-1",
-          scanners: ["trivy"],
-          target: "https://github.com/org/repo.git",
-          findings_count: 5,
-          critical_count: 2,
-          high_count: 1,
-        }),
-      ),
-    );
-
-    expect(screen.getByText("5 achado(s), 2 crítico(s)!")).toBeInTheDocument();
-  });
-
-  it("scanning.scan.completed sem CRITICAL mas com HIGH menciona só o HIGH", () => {
-    renderCenter();
-    act(() =>
-      capturedHandler!(
-        envelope("scanning.scan.completed", {
-          scan_id: "scan-1",
-          scanners: ["semgrep"],
-          target: "https://github.com/org/repo.git",
-          findings_count: 4,
-          critical_count: 0,
-          high_count: 3,
-        }),
-      ),
-    );
-
-    expect(screen.getByText("4 achado(s), 3 alto(s)")).toBeInTheDocument();
-  });
-
   it("eventos de job (job.completed) usam o schema genérico de job_id", () => {
     renderCenter();
     act(() =>
@@ -145,7 +76,7 @@ describe("NotificationCenter", () => {
 
   it("um tipo de evento desconhecido é ignorado, sem toast nem histórico", () => {
     renderCenter();
-    act(() => capturedHandler!(envelope("something.nix.never.emits", { whatever: true })));
+    act(() => capturedHandler!(envelope("something.nobody.emits", { whatever: true })));
 
     expect(screen.getByTestId("history-count")).toHaveTextContent("0");
   });

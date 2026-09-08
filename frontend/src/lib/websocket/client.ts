@@ -91,7 +91,7 @@ export class NotificationClient {
     socket.onmessage = (ev) => {
       const parsed = parseEventEnvelope(typeof ev.data === "string" ? ev.data : "");
       if (!parsed) {
-        console.warn("projeto-nova: dropped malformed WebSocket message");
+        console.warn("projeto-aurora: dropped malformed WebSocket message");
         return;
       }
       this.opts.onMessage(parsed);
