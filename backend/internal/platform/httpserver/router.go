@@ -58,7 +58,12 @@ func New(opts Options) chi.Router {
 	r.Use(timeoutExceptWebSocket(opts.RequestTimeout))
 	r.Use(Metrics)
 
+	// GET e HEAD: healthcheck do Docker (wget --spider, ver
+	// Dockerfile.api/docker-compose.yml) manda HEAD — chi não promove
+	// GET pra HEAD automaticamente, então sem o registro explícito o
+	// container nunca fica "healthy" (405 Method Not Allowed).
 	r.Get("/health", HealthHandler())
+	r.Head("/health", HealthHandler())
 	r.Handle("/metrics", promhttp.Handler())
 
 	return r

@@ -16,6 +16,7 @@ CREATE INDEX IF NOT EXISTS idx_user_consents_user_id ON user_consents (user_id);
 CREATE INDEX IF NOT EXISTS idx_user_consents_accepted_at ON user_consents (accepted_at DESC);
 
 -- Trigger para registrar a aceitação no audit_logs imutável
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION log_lgpd_consent_audit()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -34,6 +35,7 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 CREATE TRIGGER trg_user_consents_audit
     AFTER INSERT ON user_consents
