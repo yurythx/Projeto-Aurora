@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
 	"github.com/yurythx/projeto-aurora/internal/platform/auth"
@@ -22,10 +23,18 @@ func NewExporter(db *pgxpool.Pool, logger *slog.Logger) *Exporter {
 	return &Exporter{db: db, logger: logger}
 }
 
-func (e *Exporter) RegisterRoutes(r interface {
-	Get(path string, fn http.HandlerFunc)
-}) {
-	r.Get("/api/v1/audit/export", e.handleExportCSV)
+// RegisterRoutes monta a exportação CSV da trilha de auditoria, restrita a
+// quem tem auth.PermAuditRead (achado de revisão: o handler em si só
+// checava autenticação, não a permissão — qualquer usuário autenticado
+// conseguia baixar as últimas 1000 linhas de audit_logs de TODOS os
+// usuários, IPs incluídos, não só as próprias). Recebe um chi.Router (não
+// a interface mínima de antes) porque a exigência de permissão precisa de
+// With, que a interface antiga não expunha. r já vem escopado em /api/v1
+// (ver internal/app/router.go) — o caminho aqui é relativo a isso (outro
+// achado: estava registrado em /api/v1/api/v1/audit/export, inalcançável
+// no caminho documentado em openapi.yaml).
+func (e *Exporter) RegisterRoutes(r chi.Router) {
+	r.With(auth.RequirePermission(e.logger, auth.PermAuditRead)).Get("/audit/export", e.handleExportCSV)
 }
 
 func (e *Exporter) handleExportCSV(w http.ResponseWriter, r *http.Request) {

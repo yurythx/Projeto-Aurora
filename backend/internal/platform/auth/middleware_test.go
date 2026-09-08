@@ -138,14 +138,14 @@ func testHandlerEchoIdentity() http.Handler {
 
 func TestRequireAuthentication_ValidToken(t *testing.T) {
 	provider := newTestOIDCProvider(t)
-	verifier := newTestVerifier(t, provider, "projeto-nova-api", "projeto-nova-api")
+	verifier := newTestVerifier(t, provider, "aurora-backend", "aurora-backend")
 	logger := slog.Default()
 
 	token := provider.signToken(t, tokenOpts{
 		subject:           "sub-1",
 		preferredUsername: "jdoe",
 		email:             "jdoe@example.com",
-		audience:          "projeto-nova-api",
+		audience:          "aurora-backend",
 		realmRoles:        []string{RoleUser},
 		expiresAt:         time.Now().Add(time.Hour),
 	})
@@ -168,7 +168,7 @@ func TestRequireAuthentication_ValidToken(t *testing.T) {
 
 func TestRequireAuthentication_MissingHeader(t *testing.T) {
 	provider := newTestOIDCProvider(t)
-	verifier := newTestVerifier(t, provider, "projeto-nova-api", "projeto-nova-api")
+	verifier := newTestVerifier(t, provider, "aurora-backend", "aurora-backend")
 	handler := RequireAuthentication(verifier, slog.Default())(testHandlerEchoIdentity())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
@@ -182,12 +182,12 @@ func TestRequireAuthentication_MissingHeader(t *testing.T) {
 
 func TestRequireAuthentication_ExpiredToken(t *testing.T) {
 	provider := newTestOIDCProvider(t)
-	verifier := newTestVerifier(t, provider, "projeto-nova-api", "projeto-nova-api")
+	verifier := newTestVerifier(t, provider, "aurora-backend", "aurora-backend")
 	handler := RequireAuthentication(verifier, slog.Default())(testHandlerEchoIdentity())
 
 	token := provider.signToken(t, tokenOpts{
 		subject:   "sub-1",
-		audience:  "projeto-nova-api",
+		audience:  "aurora-backend",
 		expiresAt: time.Now().Add(-time.Hour), // already expired
 	})
 
@@ -203,7 +203,7 @@ func TestRequireAuthentication_ExpiredToken(t *testing.T) {
 
 func TestRequireAuthentication_WrongAudience(t *testing.T) {
 	provider := newTestOIDCProvider(t)
-	verifier := newTestVerifier(t, provider, "projeto-nova-api", "projeto-nova-api")
+	verifier := newTestVerifier(t, provider, "aurora-backend", "aurora-backend")
 	handler := RequireAuthentication(verifier, slog.Default())(testHandlerEchoIdentity())
 
 	token := provider.signToken(t, tokenOpts{
@@ -224,7 +224,7 @@ func TestRequireAuthentication_WrongAudience(t *testing.T) {
 
 func TestRequireAuthentication_MalformedScheme(t *testing.T) {
 	provider := newTestOIDCProvider(t)
-	verifier := newTestVerifier(t, provider, "projeto-nova-api", "projeto-nova-api")
+	verifier := newTestVerifier(t, provider, "aurora-backend", "aurora-backend")
 	handler := RequireAuthentication(verifier, slog.Default())(testHandlerEchoIdentity())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)

@@ -133,8 +133,8 @@ func doLogin(h *Handlers, username, password string) *httptest.ResponseRecorder 
 func TestLogin_CorrectCredentialsIssuesToken(t *testing.T) {
 	id := uuid.New()
 	store := newFakeStore(&Account{
-		ID: id, Username: "admin", Email: "admin@nix.local",
-		PasswordHash: mustHash(t, "Admin123!"), Roles: []string{"nix-admin"}, Active: true,
+		ID: id, Username: "admin", Email: "admin@aurora.local",
+		PasswordHash: mustHash(t, "Admin123!"), Roles: []string{"aurora-admin"}, Active: true,
 	})
 	h := NewHandlers(store, testSigner(t), nil, testLogger())
 

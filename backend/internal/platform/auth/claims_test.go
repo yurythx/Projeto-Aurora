@@ -11,14 +11,14 @@ func TestToIdentity_MergesRealmAndClientRoles(t *testing.T) {
 		Subject:           "sub-123",
 		PreferredUsername: "jdoe",
 		Email:             "jdoe@example.com",
-		RealmAccess:       roleContainer{Roles: []string{"nix-user", "offline_access"}},
+		RealmAccess:       roleContainer{Roles: []string{"aurora-user", "offline_access"}},
 		ResourceAccess: map[string]roleContainer{
-			"projeto-nova-api": {Roles: []string{"projeto-nova-integration-manager"}},
-			"other-client":     {Roles: []string{"should-not-appear"}},
+			"aurora-backend": {Roles: []string{"aurora-integration-manager"}},
+			"other-client":   {Roles: []string{"should-not-appear"}},
 		},
 	}
 
-	identity := claims.toIdentity("projeto-nova-api")
+	identity := claims.toIdentity("aurora-backend")
 
 	if identity.Subject != "sub-123" {
 		t.Errorf("Subject = %q", identity.Subject)
@@ -32,7 +32,7 @@ func TestToIdentity_MergesRealmAndClientRoles(t *testing.T) {
 
 	got := append([]string{}, identity.Roles...)
 	sort.Strings(got)
-	want := []string{"nix-user", "offline_access", "projeto-nova-integration-manager"}
+	want := []string{"aurora-user", "offline_access", "aurora-integration-manager"}
 	sort.Strings(want)
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Roles = %v, want %v", got, want)
@@ -41,9 +41,9 @@ func TestToIdentity_MergesRealmAndClientRoles(t *testing.T) {
 
 func TestToIdentity_DeduplicatesRoles(t *testing.T) {
 	claims := accessTokenClaims{
-		RealmAccess: roleContainer{Roles: []string{"nix-user", "nix-user"}},
+		RealmAccess: roleContainer{Roles: []string{"aurora-user", "aurora-user"}},
 		ResourceAccess: map[string]roleContainer{
-			"api": {Roles: []string{"nix-user"}},
+			"api": {Roles: []string{"aurora-user"}},
 		},
 	}
 
@@ -56,15 +56,15 @@ func TestToIdentity_DeduplicatesRoles(t *testing.T) {
 
 func TestToIdentity_UnknownClientIDYieldsRealmRolesOnly(t *testing.T) {
 	claims := accessTokenClaims{
-		RealmAccess: roleContainer{Roles: []string{"nix-user"}},
+		RealmAccess: roleContainer{Roles: []string{"aurora-user"}},
 		ResourceAccess: map[string]roleContainer{
-			"some-other-client": {Roles: []string{"nix-admin"}},
+			"some-other-client": {Roles: []string{"aurora-admin"}},
 		},
 	}
 
-	identity := claims.toIdentity("projeto-nova-api")
+	identity := claims.toIdentity("aurora-backend")
 
-	if !reflect.DeepEqual(identity.Roles, []string{"nix-user"}) {
-		t.Errorf("Roles = %v, want [nix-user]", identity.Roles)
+	if !reflect.DeepEqual(identity.Roles, []string{"aurora-user"}) {
+		t.Errorf("Roles = %v, want [aurora-user]", identity.Roles)
 	}
 }

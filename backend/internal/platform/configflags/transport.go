@@ -19,7 +19,7 @@ const ActionFeatureFlagChanged = "feature_flag.changed"
 // Handlers expõe a API administrativa de feature flags — GET para
 // listar, PATCH para alternar. Registrado atrás de
 // auth.RequirePermission(auth.PermFeatureFlagsManage), ou seja, restrito
-// ao papel nix-admin (§ Feature Flags & Configuração Dinâmica).
+// ao papel aurora-admin (§ Feature Flags & Configuração Dinâmica).
 type Handlers struct {
 	store  Store
 	audit  *audit.Writer
@@ -121,7 +121,7 @@ func (h *Handlers) Set(w http.ResponseWriter, r *http.Request) {
 
 // RegisterRoutes monta as rotas administrativas de feature flags. r já
 // deve estar atrás de auth.RequireAuthentication; este método adiciona
-// por cima a exigência de auth.PermFeatureFlagsManage (nix-admin) para
+// por cima a exigência de auth.PermFeatureFlagsManage (aurora-admin) para
 // ambas as rotas — mesmo a leitura, já que a lista de flags revela
 // detalhes operacionais internos (quais integrações existem, se estão
 // habilitadas) que não são para qualquer usuário autenticado ver.

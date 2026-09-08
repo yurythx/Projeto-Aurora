@@ -25,9 +25,9 @@ func TestSplitRoles(t *testing.T) {
 		in   string
 		want []string
 	}{
-		{"nova-admin,nova-user", []string{"nova-admin", "nova-user"}},
-		{"nova-admin, nova-user", []string{"nova-admin", "nova-user"}},
-		{"nova-admin,,nova-user", []string{"nova-admin", "nova-user"}},
+		{"aurora-admin,aurora-user", []string{"aurora-admin", "aurora-user"}},
+		{"aurora-admin, aurora-user", []string{"aurora-admin", "aurora-user"}},
+		{"aurora-admin,,aurora-user", []string{"aurora-admin", "aurora-user"}},
 		{"", []string{}},
 		{"  ", []string{}},
 	}

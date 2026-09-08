@@ -5,10 +5,10 @@ package auth
 // que as checagens de autorização no código não espalhem strings literais
 // (evitando erro de digitação silencioso).
 const (
-	RoleUser               RoleName = "nova-user"
-	RoleAdmin              RoleName = "nova-admin"
-	RoleIntegrationManager RoleName = "projeto-nova-integration-manager"
-	RoleAuditor            RoleName = "nova-auditor"
+	RoleUser               RoleName = "aurora-user"
+	RoleAdmin              RoleName = "aurora-admin"
+	RoleIntegrationManager RoleName = "aurora-integration-manager"
+	RoleAuditor            RoleName = "aurora-auditor"
 )
 
 type RoleName = string
@@ -29,16 +29,16 @@ const (
 	PermIntegrationsManage Permission = "integrations:manage"
 	PermAuditRead          Permission = "audit:read"
 	// PermFeatureFlagsManage não é concedida a nenhum role em
-	// rolePermissions abaixo — só o nova-admin a possui, através do atalho
-	// em HasPermission. Alternar feature flags em produção afeta todo
+	// rolePermissions abaixo — só o aurora-admin a possui, através do
+	// atalho em HasPermission. Alternar feature flags em produção afeta todo
 	// mundo imediatamente, então é deliberadamente restrito ao papel mais
 	// privilegiado, sem meio-termo por role.
 	PermFeatureFlagsManage Permission = "feature_flags:manage"
 )
 
-// rolePermissions concede ao nova-admin toda permissão implicitamente
+// rolePermissions concede ao aurora-admin toda permissão implicitamente
 // (verificado à parte em HasPermission) e dá aos demais roles o conjunto
-// mínimo implicado pelo próprio nome — ex.: um "nova-auditor" só pode ler
+// mínimo implicado pelo próprio nome — ex.: um "aurora-auditor" só pode ler
 // (audit, users, integrations), nunca escrever.
 var rolePermissions = map[RoleName][]Permission{
 	RoleUser: {
@@ -57,7 +57,7 @@ var rolePermissions = map[RoleName][]Permission{
 }
 
 // HasPermission reporta se os roles de identity concedem permission.
-// nova-admin sempre tem toda permissão, independente do mapa acima.
+// aurora-admin sempre tem toda permissão, independente do mapa acima.
 func HasPermission(identity Identity, permission Permission) bool {
 	if identity.HasRole(RoleAdmin) {
 		return true

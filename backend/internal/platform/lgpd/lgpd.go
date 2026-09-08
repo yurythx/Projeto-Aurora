@@ -59,13 +59,18 @@ func (s *Service) RecordConsent(ctx context.Context, userID uuid.UUID, termVersi
 	return nil
 }
 
-// RegisterRoutes registra os endpoints REST de consentimento LGPD.
+// RegisterRoutes registra os endpoints REST de consentimento LGPD. r já
+// vem escopado em /api/v1 (ver internal/app/router.go) — os caminhos aqui
+// são relativos a isso, nunca prefixados com /api/v1 de novo (achado de
+// auditoria: os dois endpoints estavam registrados em
+// /api/v1/api/v1/lgpd/*, inalcançáveis nos caminhos que o frontend/o
+// openapi.yaml de fato documentam, silenciosamente quebrando o consentimento LGPD).
 func (s *Service) RegisterRoutes(r interface {
 	Get(path string, fn http.HandlerFunc)
 	Post(path string, fn http.HandlerFunc)
 }) {
-	r.Get("/api/v1/lgpd/status", s.handleStatus)
-	r.Post("/api/v1/lgpd/accept", s.handleAccept)
+	r.Get("/lgpd/status", s.handleStatus)
+	r.Post("/lgpd/accept", s.handleAccept)
 }
 
 func (s *Service) handleStatus(w http.ResponseWriter, r *http.Request) {

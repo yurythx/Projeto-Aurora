@@ -107,7 +107,7 @@ func TestGetCurrentUser_KeycloakIdentitySyncsViaUpsert(t *testing.T) {
 }
 
 func TestGetCurrentUser_LocalIdentityFetchesDirectlyWithoutUpsert(t *testing.T) {
-	existing := &domain.User{ID: uuid.New(), Username: "admin", Email: "admin@nix.local", Active: true}
+	existing := &domain.User{ID: uuid.New(), Username: "admin", Email: "admin@aurora.local", Active: true}
 	repo := newFakeRepository(existing)
 	h := NewHandlers(application.NewService(repo, nil), testLogger(), 50)
 
