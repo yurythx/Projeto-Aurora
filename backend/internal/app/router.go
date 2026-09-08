@@ -17,6 +17,7 @@ import (
 	"github.com/yurythx/projeto-aurora/internal/platform/idempotency"
 	"github.com/yurythx/projeto-aurora/internal/platform/keycloakconfig"
 	"github.com/yurythx/projeto-aurora/internal/platform/localauth"
+	"github.com/yurythx/projeto-aurora/internal/platform/outbox"
 	"github.com/yurythx/projeto-aurora/internal/platform/ws"
 )
 
@@ -82,6 +83,7 @@ func NewRouter(deps *Dependencies) chi.Router {
 		integrationsTransport.RegisterRoutes(api, deps.Modules.Integrations.Handlers)
 		configflags.RegisterRoutes(api, deps.Modules.ConfigFlags.Handlers, deps.Logger)
 		keycloakconfig.RegisterRoutes(api, deps.Modules.KeycloakConfig.Handlers, deps.Logger)
+		outbox.RegisterStatsRoutes(api, deps.Modules.OutboxStats.Handlers, deps.Logger)
 		exampleTransport.RegisterRoutes(api, deps.Modules.Example.Handlers)
 		deps.LGPDSvc.RegisterRoutes(api)
 		deps.AuditExp.RegisterRoutes(api)

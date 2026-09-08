@@ -64,6 +64,7 @@ type Dependencies struct {
 	Messaging    *messaging.Connection
 	Publisher    events.EventPublisher
 	Outbox       *outbox.Writer
+	OutboxStats  *outbox.Stats
 	Storage      storage.Provider
 	Hub          *ws.Hub
 	Tickets      *ws.TicketStore
@@ -208,6 +209,7 @@ func NewDependencies(ctx context.Context, component string) (*Dependencies, erro
 		Messaging:   mqConn,
 		Publisher:   publisher,
 		Outbox:      outbox.NewWriter(OutboxSource),
+		OutboxStats: outbox.NewStats(pool),
 		Storage:     minioProvider,
 		Hub:         ws.NewHub(logger),
 		Tickets:     ws.NewTicketStore(ws.TicketTTL),

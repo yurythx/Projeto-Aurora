@@ -5,6 +5,7 @@ import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { Footer } from "@/components/layout/Footer";
+import { ConnectionStateProvider } from "@/components/layout/ConnectionStateContext";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import { NotificationHistoryProvider } from "@/components/notifications/NotificationHistoryProvider";
 import { ToastProvider } from "@/components/notifications/ToastProvider";
@@ -105,7 +106,7 @@ export function DashboardShell({
             tabIndex={-1}
             className="flex-1 overflow-x-auto px-4 pb-8 outline-none sm:px-8 sm:pb-10"
           >
-            {children}
+            <ConnectionStateProvider value={connectionState}>{children}</ConnectionStateProvider>
           </main>
           <div id="rodape">
             <Footer />

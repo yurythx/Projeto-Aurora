@@ -20,7 +20,30 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { StatusIndicator } from "@/components/ui/StatusIndicator";
+import { useConnectionState } from "@/components/layout/ConnectionStateContext";
+import { apiClient } from "@/lib/api/client";
 import type { IntegrationStatus } from "@/types/api";
+import type { ConnectionState } from "@/lib/websocket/client";
+
+// Mesmos rótulos de Topbar.tsx (a outra tela que mostra este estado) —
+// não reexportado de lá pra não acoplar os dois componentes por um
+// detalhe puramente de cópia/cor.
+const connectionCopy: Record<ConnectionState, { label: string; tone: string }> = {
+  idle: { label: "Conectando…", tone: "text-muted" },
+  connecting: { label: "Conectando…", tone: "text-muted" },
+  open: { label: "Ativa", tone: "text-success" },
+  closed: { label: "Reconectando…", tone: "text-warning" },
+  unauthorized: { label: "Sessão expirada", tone: "text-danger" },
+};
+
+// GET /api/v1/monitoring/outbox-stats (ver docs/openapi.yaml) — essa,
+// diferente de /api/health, É uma chamada de negócio normal através do
+// proxy BFF de sempre (exige o bearer que apiClient já injeta).
+interface OutboxStatsResponse {
+  pending: number;
+  published: number;
+  failed: number;
+}
 
 interface SystemHealthResponse {
   status: "ok" | "degraded" | "unhealthy";
@@ -51,6 +74,10 @@ const fetcher = async (url: string): Promise<SystemHealthResponse> => {
 
 export function PlatformMonitoringDashboard() {
   const [lastCheckTime, setLastCheckTime] = useState<string>(new Date().toLocaleTimeString("pt-BR"));
+  // Estado REAL da conexão WebSocket (DashboardShell → ConnectionStateProvider
+  // → aqui) — o card "Conexão WebSocket" mostrava "Ativa" fixo no
+  // código-fonte antes disto, mesmo desconectado (achado de auditoria).
+  const connectionState = useConnectionState();
 
   const { data: health, error, mutate, isValidating } = useSWR<SystemHealthResponse>(
     "/api/health",
@@ -64,6 +91,12 @@ export function PlatformMonitoringDashboard() {
       // auto-refresh de 10s continua atualizando os dados por trás.
       onSuccess: () => setLastCheckTime(new Date().toLocaleTimeString("pt-BR")),
     }
+  );
+
+  const { data: outboxStats } = useSWR<OutboxStatsResponse>(
+    "v1/monitoring/outbox-stats",
+    (path: string) => apiClient.get<OutboxStatsResponse>(path).then((res) => res.data),
+    { refreshInterval: 10000, revalidateOnFocus: true },
   );
 
   const handleRefresh = () => {
@@ -213,8 +246,16 @@ export function PlatformMonitoringDashboard() {
           <CardContent className="pt-4 flex items-center justify-between">
             <div className="flex flex-col gap-1">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted">Outbox Event Queue</span>
-              <span className="text-xl font-bold text-foreground">0 Pendentes</span>
-              <span className="text-[11px] text-muted">EventBus processado sem atraso</span>
+              <span className="text-xl font-bold text-foreground">
+                {outboxStats ? `${outboxStats.pending} Pendentes` : "—"}
+              </span>
+              <span className={`text-[11px] ${outboxStats && outboxStats.failed > 0 ? "text-danger" : "text-muted"}`}>
+                {!outboxStats
+                  ? "GET /api/v1/monitoring/outbox-stats"
+                  : outboxStats.failed > 0
+                    ? `${outboxStats.failed} com falha (Dead Letter)`
+                    : "EventBus processado sem atraso"}
+              </span>
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Zap size={20} />
@@ -241,7 +282,9 @@ export function PlatformMonitoringDashboard() {
           <CardContent className="pt-4 flex items-center justify-between">
             <div className="flex flex-col gap-1">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted">Conexão WebSocket</span>
-              <span className="text-xl font-bold text-success">Ativa</span>
+              <span className={`text-xl font-bold ${connectionCopy[connectionState].tone}`}>
+                {connectionCopy[connectionState].label}
+              </span>
               <span className="text-[11px] text-muted">Notificações em tempo real</span>
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/10 text-purple-500">

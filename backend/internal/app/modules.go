@@ -17,6 +17,7 @@ import (
 	"github.com/yurythx/projeto-aurora/internal/platform/configflags"
 	"github.com/yurythx/projeto-aurora/internal/platform/keycloakconfig"
 	"github.com/yurythx/projeto-aurora/internal/platform/localauth"
+	"github.com/yurythx/projeto-aurora/internal/platform/outbox"
 )
 
 // Modules guarda o serviço de aplicação e os handlers HTTP de todo módulo
@@ -35,6 +36,9 @@ type Modules struct {
 	}
 	KeycloakConfig struct {
 		Handlers *keycloakconfig.Handlers
+	}
+	OutboxStats struct {
+		Handlers *outbox.StatsHandlers
 	}
 	LocalAuth struct {
 		Handlers *localauth.Handlers
@@ -67,6 +71,9 @@ func buildModules(deps *Dependencies) *Modules {
 
 	// Configuração dinâmica do Keycloak (menu Configurações > Keycloak)
 	m.KeycloakConfig.Handlers = keycloakconfig.NewHandlers(deps.KeycloakCfg, deps.Verifier, deps.Config.Keycloak, auditWriter, deps.Logger)
+
+	// Estatísticas do Outbox (painel de Monitoramento)
+	m.OutboxStats.Handlers = outbox.NewStatsHandlers(deps.OutboxStats, deps.Logger)
 
 	localAuthStore := localauth.NewPostgresStore(deps.DB)
 	m.LocalAuth.Handlers = localauth.NewHandlers(localAuthStore, deps.LocalSigner, auditWriter, deps.Logger)

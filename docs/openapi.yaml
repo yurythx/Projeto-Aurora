@@ -73,6 +73,12 @@ tags:
     description: >
       Exportação da trilha de auditoria imutável (audit_logs) em CSV, para
       fins de transparência/LAI. Restrito a `audit:read`.
+  - name: monitoring
+    description: >
+      Métricas operacionais consumidas pelo painel de Monitoramento do
+      frontend (contagem do Transactional Outbox). Restrito a
+      `audit:read` — mesmo dado operacional interno, sem justificar uma
+      permissão dedicada só pra si.
   - name: example
     description: >
       Módulo Modelo (`internal/modules/example`) — blueprint de referência
@@ -710,6 +716,45 @@ paths:
             text/csv:
               schema:
                 type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/monitoring/outbox-stats:
+    get:
+      tags: [monitoring]
+      summary: Contagem de outbox_events por status
+      operationId: getOutboxStats
+      description: >
+        Restrito a `audit:read`. Consulta o Postgres diretamente a cada
+        chamada, sem cache (mesmo espírito de configflags/ratelimit) —
+        usado pelo painel de Monitoramento do frontend para mostrar a
+        fila do Transactional Outbox de verdade, em vez do "0 Pendentes"
+        fixo no código-fonte que existia antes deste endpoint (achado de
+        auditoria).
+      security:
+        - bearerAuth: [audit:read]
+      responses:
+        "200":
+          description: Contagem atual por status.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          pending:
+                            type: integer
+                          published:
+                            type: integer
+                          failed:
+                            type: integer
+                        required: [pending, published, failed]
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
