@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Menu, LogOut } from "lucide-react";
+import { Menu } from "lucide-react";
 import Link from "next/link";
 
 import { NotificationBell } from "@/components/notifications/NotificationBell";
@@ -11,7 +11,6 @@ import { EMagAccessibilityBar } from "@/components/layout/EMagAccessibilityBar";
 import { Logo } from "@/components/ui/Logo";
 import { useBranding } from "@/components/branding/BrandingContext";
 import { safeResourceUrl } from "@/lib/security/safe-url";
-import { fullSignOut } from "@/lib/auth/logout";
 import type { ConnectionState } from "@/lib/websocket/client";
 
 const connectionCopy: Record<ConnectionState, { label: string; dotClass: string }> = {
@@ -133,21 +132,6 @@ export function Topbar({
           <div className="ml-1">
             <UserMenu userLabel={userLabel} />
           </div>
-          {/* "Portinha" de saída rápida — mesmo ícone/rótulo/ação (fullSignOut)
-              de PublicShell, sempre visível em vez de escondida atrás de um
-              clique extra no menu do usuário (achado de consistência: era a
-              única diferença de comportamento entre as duas barras). O "Sair"
-              dentro de UserMenu continua existindo (útil pra quem já abriu o
-              menu por outro motivo) — os dois chamam a mesma função. */}
-          <button
-            type="button"
-            onClick={() => void fullSignOut()}
-            aria-label="Sair da conta"
-            title="Sair"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted transition-colors hover:bg-black/5 hover:text-danger dark:hover:bg-white/5"
-          >
-            <LogOut size={18} aria-hidden="true" />
-          </button>
         </div>
       </div>
     </header>

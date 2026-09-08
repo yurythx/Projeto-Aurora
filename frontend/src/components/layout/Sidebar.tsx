@@ -7,7 +7,16 @@ import { useEffect } from "react";
 
 import useSWR from "swr";
 import { apiClient } from "@/lib/api/client";
+import { useBranding } from "@/components/branding/BrandingContext";
 import type { FeatureFlag } from "@/types/api";
+import packageJson from "../../../package.json";
+
+// Versão do próprio frontend (package.json) — só informativa, mostrada no
+// rodapé da barra lateral (ver o retângulo abaixo). Não é a mesma coisa
+// que uma versão de API/release do sistema como um todo (este projeto não
+// tem esse conceito hoje), mas já ajuda a identificar o build em suporte
+// ("qual versão você está vendo?") sem precisar abrir o DevTools.
+const FRONTEND_VERSION = packageJson.version;
 
 const links: { href: string; label: string; icon: typeof LayoutDashboard; flag?: string; match?: string[] }[] = [
   { href: "/dashboard", label: "Visão Geral", icon: LayoutDashboard },
@@ -29,6 +38,7 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
+  const { branding } = useBranding();
 
   const { data: featureFlags } = useSWR<FeatureFlag[]>(
     "v1/admin/feature-flags",
@@ -89,7 +99,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
             Menu Principal
           </div>
         )}
-        <ul className={`flex flex-col gap-0.5 px-2 pb-3 ${collapsed ? "pt-3" : "pt-2"}`}>
+        <ul className={`flex flex-1 flex-col gap-0.5 px-2 pb-3 ${collapsed ? "pt-3" : "pt-2"}`}>
           {visibleLinks.map((link) => {
             const Icon = link.icon;
             const active = link.href === activeHref;
@@ -118,6 +128,22 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
             );
           })}
         </ul>
+
+        {/* Rodapé informativo — NUNCA identidade/logout do usuário: esses
+            continuam só no menu do usuário na Topbar (mesmo padrão do
+            GovBR-DS/gov.br/SEI! — cabeçalho concentra conta+sessão, a
+            barra lateral é navegação pura). Só nome do sistema + versão
+            do build, útil pra suporte ("qual versão você está vendo?"). */}
+        <div
+          className={`mt-auto shrink-0 border-t border-surface-border px-3 py-3 text-[11px] leading-tight text-muted
+            ${collapsed ? "md:px-0 md:text-center" : ""}`}
+          title={`${branding.appName} · v${FRONTEND_VERSION}`}
+        >
+          <p className={`truncate font-medium text-foreground/70 ${collapsed ? "md:hidden" : ""}`}>
+            {branding.appName}
+          </p>
+          <p className={collapsed ? "md:hidden" : ""}>v{FRONTEND_VERSION}</p>
+        </div>
       </nav>
     </>
   );
