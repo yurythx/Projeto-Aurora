@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // NotificationBell/ThemeToggle/UserMenu têm sua própria lógica (e seus
 // próprios testes) — mockados aqui como stubs pra isolar só o que é
@@ -18,11 +18,26 @@ vi.mock("@/components/layout/UserMenu", () => ({
   ),
 }));
 
+// fullSignOut() (chamado pela "portinha" de saída rápida) usa signOut do
+// next-auth/react e fetch — mesmo mock de UserMenu.test.tsx.
+const { signOut } = vi.hoisted(() => ({ signOut: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("next-auth/react", () => ({ signOut }));
+
 import { Topbar } from "./Topbar";
 
 import { BrandingProvider } from "@/components/branding/BrandingContext";
 
 describe("Topbar", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    signOut.mockClear();
+    // @ts-expect-error jsdom não implementa navegação real — ver o mesmo
+    // padrão em UserMenu.test.tsx.
+    delete window.location;
+    // @ts-expect-error idem.
+    window.location = {};
+  });
+
   it("clicar no botão de menu chama onToggleSidebar", async () => {
     const user = userEvent.setup();
     const onToggleSidebar = vi.fn();
@@ -58,5 +73,44 @@ describe("Topbar", () => {
       </BrandingProvider>
     );
     expect(screen.getByTestId("user-menu-stub")).toHaveTextContent("ana@projeto-aurora.local");
+  });
+
+  // Achado de consistência: sem uma logo branca configurada, o Topbar
+  // mostrava um ShieldCheck genérico em vez do selo institucional
+  // (components/ui/Logo) que /login, o rodapé e as páginas públicas
+  // (PublicShell) já usavam — a única tela do sistema que divergia.
+  it("sem logo branca configurada, mostra o mesmo selo institucional das páginas públicas", () => {
+    render(
+      <BrandingProvider>
+        <Topbar userLabel="admin" connectionState="open" onToggleSidebar={() => {}} />
+      </BrandingProvider>
+    );
+    expect(screen.getByRole("img", { name: "Projeto Aurora" })).toBeInTheDocument();
+  });
+
+  it("mostra o link Sobre, igual às páginas públicas", () => {
+    render(
+      <BrandingProvider>
+        <Topbar userLabel="admin" connectionState="open" onToggleSidebar={() => {}} />
+      </BrandingProvider>
+    );
+    expect(screen.getByRole("link", { name: "Sobre" })).toHaveAttribute("href", "/sobre");
+  });
+
+  // "Portinha" de saída rápida (achado de consistência com PublicShell):
+  // antes só existia dentro do dropdown do UserMenu, um clique a mais.
+  it("a portinha de sair chama fullSignOut (encerra a sessão e navega)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ json: async () => ({ url: "/" }) }));
+    const user = userEvent.setup();
+    render(
+      <BrandingProvider>
+        <Topbar userLabel="admin" connectionState="open" onToggleSidebar={() => {}} />
+      </BrandingProvider>
+    );
+
+    await user.click(screen.getByRole("button", { name: "Sair da conta" }));
+
+    expect(signOut).toHaveBeenCalledWith({ redirect: false });
+    expect(window.location.href).toBe("/");
   });
 });

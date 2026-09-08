@@ -1,15 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Menu, ShieldCheck } from "lucide-react";
+import { Menu, LogOut } from "lucide-react";
 import Link from "next/link";
 
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { UserMenu } from "@/components/layout/UserMenu";
 import { EMagAccessibilityBar } from "@/components/layout/EMagAccessibilityBar";
+import { Logo } from "@/components/ui/Logo";
 import { useBranding } from "@/components/branding/BrandingContext";
 import { safeResourceUrl } from "@/lib/security/safe-url";
+import { fullSignOut } from "@/lib/auth/logout";
 import type { ConnectionState } from "@/lib/websocket/client";
 
 const connectionCopy: Record<ConnectionState, { label: string; dotClass: string }> = {
@@ -81,9 +83,12 @@ export function Topbar({
                 />
               </span>
             ) : (
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold shadow-sm group-hover:bg-primary-hover transition-colors">
-                <ShieldCheck size={20} />
-              </div>
+              // Mesmo selo institucional usado em /login, no rodapé e nas
+              // páginas públicas (PublicShell) — sem uma logo branca
+              // configurada, o dashboard mostrava um ShieldCheck genérico
+              // em vez da marca de verdade, a única tela do sistema que
+              // divergia desse padrão (achado de revisão de consistência).
+              <Logo size={30} />
             )}
 
             <span className="flex flex-col">
@@ -110,6 +115,16 @@ export function Topbar({
             <span className="hidden md:inline">{status.label}</span>
             <span className="sr-only md:hidden">Conexão: {status.label}</span>
           </div>
+
+          {/* Mesmo link "Sobre" das páginas públicas (PublicShell) — a
+              navegação de negócio continua vindo da Sidebar, este é só o
+              link institucional que as demais telas do sistema já têm. */}
+          <Link
+            href="/sobre"
+            className="hidden md:inline text-xs text-muted hover:text-foreground transition-colors md:ml-2"
+          >
+            Sobre
+          </Link>
         </div>
 
         <div className="flex items-center gap-2">
@@ -118,6 +133,21 @@ export function Topbar({
           <div className="ml-1">
             <UserMenu userLabel={userLabel} />
           </div>
+          {/* "Portinha" de saída rápida — mesmo ícone/rótulo/ação (fullSignOut)
+              de PublicShell, sempre visível em vez de escondida atrás de um
+              clique extra no menu do usuário (achado de consistência: era a
+              única diferença de comportamento entre as duas barras). O "Sair"
+              dentro de UserMenu continua existindo (útil pra quem já abriu o
+              menu por outro motivo) — os dois chamam a mesma função. */}
+          <button
+            type="button"
+            onClick={() => void fullSignOut()}
+            aria-label="Sair da conta"
+            title="Sair"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted transition-colors hover:bg-black/5 hover:text-danger dark:hover:bg-white/5"
+          >
+            <LogOut size={18} aria-hidden="true" />
+          </button>
         </div>
       </div>
     </header>
