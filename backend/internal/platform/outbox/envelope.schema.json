@@ -15,7 +15,7 @@
       "type": "string",
       "minLength": 1,
       "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)+$",
-      "description": "Convenção <contexto>.<entidade>.<ação> (§9), ex.: diario_oficial.job.completed — exige pelo menos um ponto (ex.: notification.created, com só duas partes, também é um type real e válido na plataforma), não exatamente três segmentos."
+      "description": "Convenção <contexto>.<entidade>.<ação> (§9), ex.: example.job.completed — exige pelo menos um ponto (ex.: notification.created, com só duas partes, também é um type real e válido na plataforma), não exatamente três segmentos."
     },
     "version": {
       "type": "integer",

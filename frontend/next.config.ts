@@ -77,19 +77,19 @@ const nextConfig: NextConfig = {
       { source: "/dashboard/settings", destination: "/configuracao", permanent: true },
       {
         source: "/dashboard/settings/integrations/diario",
-        destination: "/integracoes/diario-oficial",
+        destination: "/integracoes",
         permanent: true,
       },
       { source: "/dashboard/integrations", destination: "/integracoes", permanent: true },
       {
         source: "/dashboard/integrations/diario",
-        destination: "/integracoes/diario-oficial",
+        destination: "/integracoes",
         permanent: true,
       },
       { source: "/configuracao/integracoes", destination: "/integracoes", permanent: true },
       {
         source: "/configuracao/integracoes/diario",
-        destination: "/integracoes/diario-oficial",
+        destination: "/integracoes",
         permanent: true,
       },
     ];

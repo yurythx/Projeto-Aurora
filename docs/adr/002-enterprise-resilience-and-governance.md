@@ -17,8 +17,8 @@ aproximava de um perfil de produção enterprise:
    criava dois jobs em vez de um — cada um gerando seu próprio evento de
    outbox, sua própria chamada ao provedor externo, sua própria
    notificação.
-2. **Sem circuit breaker.** Se o Diário Oficial ou o VirusTotal
-   começassem a falhar ou a responder devagar, cada nova tentativa ainda
+2. **Sem circuit breaker.** Se um provedor externo como o VirusTotal
+   começasse a falhar ou a responder devagar, cada nova tentativa ainda
    pagava o timeout HTTP inteiro (§48) antes de desistir — sob volume,
    isso segura workers/goroutines e insiste contra um provedor que já se
    mostrou indisponível, adiando a recuperação dele.
@@ -117,8 +117,8 @@ nenhum para uma rota nova ganhar suporte a idempotência.
 ### B. Circuit Breaker — `internal/platform/resilience`
 
 Construído sobre `github.com/sony/gobreaker/v2` (genérico — `Breaker[T]`
-com `T = *http.Response` para os dois clientes HTTP), aplicado ao
-`HTTPClient` do Diário Oficial e ao `Client` do VirusTotal.
+com `T = *http.Response`), aplicado ao `Client` do VirusTotal e a outros
+clientes HTTP de provedores externos.
 
 ```mermaid
 stateDiagram-v2
@@ -183,7 +183,7 @@ imediatamente em toda réplica**, sem janela de propagação.
 ```mermaid
 flowchart LR
     A["nix-admin\nPATCH /api/v1/admin/feature-flags/{key}"] --> B[(Postgres\nfeature_flags)]
-    B --> C{"CreateTestJob\ndo diario_oficial\nou do secops"}
+    B --> C{"CreateTestJob\ndo secops"}
     C -->|enabled=true| D[cria o job normalmente]
     C -->|enabled=false| E["503 FEATURE_DISABLED\n(nenhum job criado)"]
 ```
@@ -200,7 +200,7 @@ outro papel em `rolePermissions`: alternar uma flag em produção afeta
 todo mundo imediatamente, sem meio-termo por role.
 
 `Service.flags` é opcional (`nil`-tolerante) nos serviços de aplicação
-do `diario_oficial` e do `secops` — quando `nil`, a checagem é pulada e a
+que usam esse padrão (ex.: `secops`) — quando `nil`, a checagem é pulada e a
 funcionalidade correspondente é tratada como sempre habilitada. Isso
 manteve toda a suíte de testes de aplicação já existente (que já roda
 contra Postgres real, mas não se importa com feature flags) funcionando
@@ -272,7 +272,7 @@ contra um schema já compilado.
 
 **Custos e trade-offs assumidos**
 
-- `CreateTestJob` de `diario_oficial`/`secops` ganhou um parâmetro a mais
+- `CreateTestJob` de `secops` ganhou um parâmetro a mais
   no construtor (`flags configflags.Store`) — mitigado por ser
   `nil`-tolerante, então nenhum teste existente precisou de mudança além
   de passar `nil` no lugar.

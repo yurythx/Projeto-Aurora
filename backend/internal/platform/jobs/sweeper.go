@@ -19,10 +19,10 @@ const sweepInterval = 5 * time.Minute
 // StaleJobHandler dá o desfecho TERMINAL certo pra um job encontrado
 // preso em "processing" — normalmente dead-lettering, com os MESMOS
 // efeitos colaterais (evento de outbox, auditoria, notificação) que um
-// dead-letter "normal" (esgotado pelo RabbitMQ) já tem, ver
-// scanning.Service.HandleScanDeadLetter/diario_oficial.Service.
-// HandleDeadLetter — os dois módulos que hoje usam o pipeline
-// job→outbox→worker. reason descreve por que o sweeper decidiu que este
+// dead-letter "normal" (esgotado pelo RabbitMQ) já tem — o handler é
+// registrado pelo módulo de negócio que usa o pipeline job→outbox→worker
+// (nenhum registra um hoje; o mapa de handlers nasce vazio, ver
+// app.NewWorker). reason descreve por que o sweeper decidiu que este
 // job está órfão (nunca "max retries exceeded" — isto não passou pelo
 // RabbitMQ retry nenhum, o worker que o processava simplesmente nunca
 // voltou a se manifestar).
@@ -61,12 +61,11 @@ type StaleJobHandler func(ctx context.Context, jobID, correlationID uuid.UUID, r
 func SweepStale(pool *pgxpool.Pool, handlers map[string]StaleJobHandler, staleAfter time.Duration, logger *slog.Logger) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
 		// Roda IMEDIATAMENTE ao subir, antes de entrar no loop — mesmo
-		// raciocínio de scanning.worker.PostureSnapshotLoop/
-		// diario_oficial.worker.DiarioOficialSyncLoop: um job órfão
-		// deixado por ANTES deste worker existir (ex.: o worker anterior
-		// morreu, este é o substituto) merece ser recuperado assim que
-		// alguém estiver de pé pra fazer isso, não só no primeiro tick
-		// (staleAfter + sweepInterval depois).
+		// raciocínio do loop de sincronização periódica de um módulo de
+		// negócio: um job órfão deixado por ANTES deste worker existir
+		// (ex.: o worker anterior morreu, este é o substituto) merece
+		// ser recuperado assim que alguém estiver de pé pra fazer isso,
+		// não só no primeiro tick (staleAfter + sweepInterval depois).
 		sweepOnce(ctx, pool, handlers, staleAfter, logger)
 
 		ticker := time.NewTicker(sweepInterval)

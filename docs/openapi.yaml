@@ -25,7 +25,7 @@ info:
     ADR [002](adr/002-enterprise-resilience-and-governance.md).
 
     **Resiliência e disponibilidade condicional**: chamadas que dependem
-    de um provedor externo (ex.: Diário Oficial) podem retornar 503
+    de um provedor externo podem retornar 503
     por dois motivos distintos, diferenciados pelo `error.code`:
     `CIRCUIT_OPEN` (o circuit breaker interno detectou falhas consecutivas
     e está poupando o provedor — tentativas vão voltar a funcionar
@@ -56,13 +56,11 @@ tags:
     description: O chamador autenticado e o diretório de usuários.
   - name: integrations
     description: Status de cada integração externa configurada.
-  - name: diario-oficial
-    description: Verificação de conectividade com o Diário Oficial (job assíncrono).
   - name: scanning
     description: >
       SecOps Orchestrator (ver docs/roadmap-secops-orchestrator.md): dispara
       scanners de segurança registrados (hoje: trivy) contra um alvo e
-      consulta os achados. Job assíncrono, mesmo padrão de diario-oficial.
+      consulta os achados. Job assíncrono.
   - name: websocket
     description: Emissão de ticket para notificações em tempo real.
   - name: admin
@@ -70,10 +68,7 @@ tags:
   - name: contratos
     description: >
       Cadastro e ciclo de vida dos contratos administrativos municipais.
-      Leitura exige `contratos:read`; escrita `contratos:manage`. O detalhe
-      de um contrato (`GET /contratos/{id}`) traz as publicações do Diário
-      Oficial vinculadas automaticamente pelo casador (worker
-      `contratos.diario_matcher`, a cada 6h).
+      Leitura exige `contratos:read`; escrita `contratos:manage`.
   - name: demands
     description: >
       Kanban de 6 etapas da liquidação de pagamento mensal (IN SCL
@@ -83,14 +78,6 @@ tags:
       mover o card e anexar documentos de compliance são ações fiscais e
       exigem `demands:manage` (papel `nova-fiscal` recebe as duas). As
       escritas passam por rate limiting por usuário.
-  - name: diario-oficial-rondonopolis
-    description: >
-      Feeds e busca do Diário Oficial de Rondonópolis (DIORONDON): atos de
-      pessoal, extratos de contrato, feed cru e catálogo de edições
-      ingeridas. A fila de revisão expõe os findings de baixa confiança
-      para triagem manual (promover/marcar/descartar). `search-config`
-      entrega ao frontend uma chave do Typesense RESTRITA a
-      `documents:search` — a chave admin nunca chega ao navegador.
 
 security:
   - bearerAuth: []
@@ -361,240 +348,6 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
-
-  /api/v1/integrations/diario-oficial/test:
-    post:
-      tags: [diario-oficial]
-      summary: Dispara uma verificação assíncrona de conectividade com o Diário Oficial
-      operationId: testDiarioOficial
-      description: >
-        Não executa a verificação em si. Cria um job, o persiste junto com
-        um evento de outbox em uma única transação, e retorna
-        imediatamente — o worker o processa, e o frontend é notificado via
-        WebSocket quando ele concluir ou falhar (§34/§72). Sujeito a rate
-        limiting por chamador. Aceita `Idempotency-Key` — recomendado para
-        evitar criar jobs duplicados num duplo clique ou retry automático
-        do cliente.
-      security:
-        - bearerAuth: [integrations:test]
-      parameters:
-        - $ref: "#/components/parameters/IdempotencyKey"
-      responses:
-        "202":
-          $ref: "#/components/responses/TestJobAccepted"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "409":
-          $ref: "#/components/responses/IdempotencyConflict"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "503":
-          $ref: "#/components/responses/IntegrationUnavailable"
-
-  /api/v1/diario-oficial/monitored-terms:
-    post:
-      tags: [diario-oficial]
-      summary: Cadastra um termo pra monitorar no Diário Oficial (MVP real via DJEN)
-      operationId: createMonitoredTerm
-      description: >
-        Pelo menos um critério de busca é obrigatório: `oab_number`+`oab_uf` (sempre juntos),
-        `process_number`, ou `free_text`. O worker sincroniza todo termo ATIVO contra o DJEN
-        (Diário de Justiça Eletrônico Nacional, CNJ) a cada 6h — este endpoint só cadastra, nunca
-        busca no DJEN diretamente.
-      security:
-        - bearerAuth: [diario_oficial:manage]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                label: { type: string, example: "Dr. Fulano — OAB/MG 419" }
-                oab_number: { type: string, example: "419" }
-                oab_uf: { type: string, example: "MG" }
-                process_number: { type: string, example: "50015349420258130351" }
-                free_text: { type: string }
-              required: [label]
-      responses:
-        "201":
-          description: Termo cadastrado.
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Envelope"
-                  - type: object
-                    properties:
-                      data: { $ref: "#/components/schemas/MonitoredTerm" }
-        "400":
-          description: Corpo inválido (JSON malformado).
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "422":
-          description: >
-            Nenhum critério de busca preenchido, ou `oab_number` sem `oab_uf` (ou vice-versa).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-    get:
-      tags: [diario-oficial]
-      summary: Lista todo termo monitorado, mais recente primeiro
-      operationId: listMonitoredTerms
-      security:
-        - bearerAuth: [diario_oficial:read]
-      responses:
-        "200":
-          description: Lista de termos monitorados.
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Envelope"
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items: { $ref: "#/components/schemas/MonitoredTerm" }
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-
-  /api/v1/diario-oficial/monitored-terms/{termID}:
-    delete:
-      tags: [diario-oficial]
-      summary: Remove um termo monitorado
-      operationId: deleteMonitoredTerm
-      description: >
-        Publicações/matches já encontrados pra este termo são removidos em cascata — o histórico de
-        um termo apagado não continua aparecendo no feed de publicações recentes. Responde 200 com
-        um envelope vazio (nunca 204 sem corpo — o proxy BFF/cliente desta plataforma sempre espera
-        um Envelope JSON na resposta).
-      security:
-        - bearerAuth: [diario_oficial:manage]
-      parameters:
-        - name: termID
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        "200":
-          description: Termo removido.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-        "400":
-          description: termID não é um UUID válido.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          description: Termo não encontrado.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-
-  /api/v1/diario-oficial/monitored-terms/{termID}/publications:
-    get:
-      tags: [diario-oficial]
-      summary: Lista as publicações que casaram com um termo, mais recentes primeiro
-      operationId: listPublicationsForTerm
-      security:
-        - bearerAuth: [diario_oficial:read]
-      parameters:
-        - name: termID
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-        - $ref: "#/components/parameters/Page"
-        - $ref: "#/components/parameters/PageSize"
-      responses:
-        "200":
-          description: >
-            Página de publicações casadas — um termID inexistente devolve uma página vazia, não 404
-            (a mesma escolha que o resto desta API já faz pra listagens escopadas por id).
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Envelope"
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items: { $ref: "#/components/schemas/MatchedPublication" }
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-
-  /api/v1/diario-oficial/publications:
-    get:
-      tags: [diario-oficial]
-      summary: Feed agregado de publicações casadas entre TODO termo monitorado
-      operationId: listRecentPublications
-      security:
-        - bearerAuth: [diario_oficial:read]
-      parameters:
-        - $ref: "#/components/parameters/Page"
-        - $ref: "#/components/parameters/PageSize"
-      responses:
-        "200":
-          description: Página de publicações casadas, mais recentes primeiro.
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Envelope"
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items: { $ref: "#/components/schemas/MatchedPublication" }
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-
-  /api/v1/diario-oficial/health:
-    get:
-      tags: [diario-oficial]
-      summary: Checagem síncrona da saúde da fonte de dados configurada (DJEN)
-      operationId: getDiarioOficialHealth
-      description: >
-        Nunca cria job, nunca grava nada — uma leitura direta (timeout de 5s) pra uma tela mostrar
-        "a fonte está respondendo?" antes do usuário estranhar por que nenhuma publicação nova
-        apareceu. Equivalente diario_oficial de GET /api/v1/scanning/scanners/health.
-      security:
-        - bearerAuth: [diario_oficial:read]
-      responses:
-        "200":
-          description: Resultado da checagem — sempre 200, mesmo com a fonte fora do ar (isso é dado do payload, não erro HTTP).
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Envelope"
-                  - type: object
-                    properties:
-                      data: { $ref: "#/components/schemas/SourceHealth" }
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
 
   /api/v1/scanning/scans:
     post:
@@ -1210,7 +963,7 @@ paths:
       operationId: listFeatureFlags
       description: >
         Restrito ao papel nix-admin. Inclui as flags semeadas por migration
-        (`diario_oficial_scraping_enabled`) e qualquer outra já criada via
+        (`module_exemplos_enabled`) e qualquer outra já criada via
         PATCH.
       security:
         - bearerAuth: [feature_flags:manage]
@@ -1252,7 +1005,7 @@ paths:
           required: true
           schema:
             type: string
-          example: "diario_oficial_scraping_enabled"
+          example: "module_exemplos_enabled"
       requestBody:
         required: true
         content:
@@ -1361,15 +1114,13 @@ paths:
   /api/v1/contratos/{id}:
     get:
       tags: [contratos]
-      summary: Detalhe de um contrato (com diario_refs e aditivos)
+      summary: Detalhe de um contrato (com aditivos)
       operationId: getContrato
       security: [{ bearerAuth: [contratos:read] }]
       parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
       responses:
         "200":
-          description: >
-            Contrato completo. `diario_refs` são as publicações do Diário
-            Oficial vinculadas automaticamente pelo casador (número/CNPJ).
+          description: Contrato completo.
           content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/Contrato" } } }] } } }
         "400": { description: "id não é um UUID válido." }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -1394,21 +1145,6 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: "Contrato não encontrado." }
         "422": { description: "Transição de status não permitida." }
-
-  /api/v1/contratos/{id}/diario-refs:
-    post:
-      tags: [contratos]
-      summary: Vincula manualmente uma publicação do Diário Oficial ao contrato
-      operationId: addContratoDiarioRef
-      security: [{ bearerAuth: [contratos:manage] }]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      requestBody:
-        required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/DiarioRef" } } }
-      responses:
-        "200": { description: "Referência vinculada (idempotente por edição).", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
 
   # ─────────────────────────── DEMANDS ────────────────────────────
   /api/v1/demands:
@@ -1629,154 +1365,6 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "429": { description: "Rate limit por usuário excedido." }
 
-  # ─────────────────── DIÁRIO OFICIAL — RONDONÓPOLIS ───────────────────
-  /api/v1/diario-oficial/search-config:
-    get:
-      tags: [diario-oficial-rondonopolis]
-      summary: Chave do Typesense restrita a documents:search (para busca client-side)
-      operationId: getSearchConfig
-      security: [{ bearerAuth: [diario_oficial:read] }]
-      responses:
-        "200": { description: "`{ search_key }` — escopada a diorondon_personnel_acts e diorondon_articles.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /api/v1/diario-oficial/rondonopolis/hr-events:
-    get:
-      tags: [diario-oficial-rondonopolis]
-      summary: Atos de pessoal extraídos do DIORONDON (fallback do Typesense)
-      operationId: listRondonopolisHREvents
-      security: [{ bearerAuth: [diario_oficial:read] }]
-      parameters:
-        - { name: event_type, in: query, schema: { type: string, enum: [NOMEACAO_EFETIVO, NOMEACAO_COMISSIONADO, CONTRATACAO_TEMPORARIA, EXONERACAO, RESCISAO, RELOTACAO, DESIGNACAO_FUNCAO] } }
-        - { name: search, in: query, schema: { type: string } }
-      responses:
-        "200":
-          description: "Lista de HREvent."
-          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/HREvent" } } } }] } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /api/v1/diario-oficial/rondonopolis/contracts:
-    get:
-      tags: [diario-oficial-rondonopolis]
-      summary: Extratos de contrato + designação de fiscal extraídos do DIORONDON
-      operationId: listRondonopolisContracts
-      security: [{ bearerAuth: [diario_oficial:read] }]
-      parameters: [{ name: search, in: query, schema: { type: string } }]
-      responses:
-        "200":
-          description: "Lista de PublicContract."
-          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/PublicContract" } } } }] } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /api/v1/diario-oficial/rondonopolis/raw-feed:
-    get:
-      tags: [diario-oficial-rondonopolis]
-      summary: Feed cru de matérias do DIORONDON (sem classificação)
-      operationId: listRondonopolisRawFeed
-      security: [{ bearerAuth: [diario_oficial:read] }]
-      responses:
-        "200": { description: "Lista de itens de texto por edição/página.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /api/v1/diario-oficial/rondonopolis/editions:
-    get:
-      tags: [diario-oficial-rondonopolis]
-      summary: Catálogo das edições ingeridas e seu status de ETL
-      operationId: listRondonopolisEditions
-      security: [{ bearerAuth: [diario_oficial:read] }]
-      responses:
-        "200": { description: "Edições com status PENDING/PROCESSING/COMPLETED/FAILED, retry_count, records_count.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /api/v1/diario-oficial/rondonopolis/review-queue:
-    get:
-      tags: [diario-oficial-rondonopolis]
-      summary: Findings de baixa confiança pendentes de revisão manual
-      operationId: listReviewQueue
-      security: [{ bearerAuth: [diario_oficial:read] }]
-      parameters: [{ name: limit, in: query, schema: { type: integer, default: 100 } }]
-      responses:
-        "200":
-          description: "Lista de ReviewFinding (confidence=low, reviewed_at nulo)."
-          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/ReviewFinding" } } } }] } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /api/v1/diario-oficial/rondonopolis/review-queue/{id}:
-    patch:
-      tags: [diario-oficial-rondonopolis]
-      summary: Promover — corrige os campos e sobe o finding para a busca
-      operationId: promoteReviewFinding
-      security: [{ bearerAuth: [diario_oficial:manage] }]
-      description: >
-        Sobrescreve os campos extraídos com a versão corrigida, ajusta a
-        confiança (`high`|`medium`), carimba `reviewed_at`/`reviewed_by` e
-        dispara o reindex da edição no Typesense.
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [act_type, confidence]
-              properties:
-                act_type: { type: string }
-                confidence: { type: string, enum: [high, medium] }
-                servidor_nome: { type: string, nullable: true }
-                cpf: { type: string, nullable: true }
-                matricula: { type: string, nullable: true }
-                empresa_nome: { type: string, nullable: true }
-                cnpj: { type: string, nullable: true }
-                valor: { type: number, nullable: true }
-                secretaria: { type: string, nullable: true }
-                job_role: { type: string, nullable: true }
-                das_level: { type: string, nullable: true }
-                portaria_number: { type: string, nullable: true }
-                review_note: { type: string }
-      responses:
-        "200": { description: "Finding atualizado.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
-        "400": { description: "act_type/confidence inválidos, ou sem servidor_nome nem empresa_nome." }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { description: "Finding não encontrado." }
-        "429": { description: "Rate limit por usuário excedido." }
-    delete:
-      tags: [diario-oficial-rondonopolis]
-      summary: Descartar — remove o finding em definitivo (ruído do parser)
-      operationId: discardReviewFinding
-      security: [{ bearerAuth: [diario_oficial:manage] }]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses:
-        "200": { description: "Finding descartado.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { description: "Finding não encontrado." }
-        "429": { description: "Rate limit por usuário excedido." }
-
-  /api/v1/diario-oficial/rondonopolis/review-queue/{id}/ack:
-    post:
-      tags: [diario-oficial-rondonopolis]
-      summary: Marcar como revisado — tira da fila sem promover (é low mas legítimo)
-      operationId: ackReviewFinding
-      security: [{ bearerAuth: [diario_oficial:manage] }]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      requestBody:
-        required: false
-        content: { application/json: { schema: { type: object, properties: { review_note: { type: string } } } } }
-      responses:
-        "200": { description: "Finding marcado como revisado.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
-        "400": { description: "Corpo presente e malformado." }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { description: "Finding não encontrado." }
-        "429": { description: "Rate limit por usuário excedido." }
-
 components:
   securitySchemes:
     bearerAuth:
@@ -1892,12 +1480,12 @@ components:
               summary: Circuit breaker aberto
               value:
                 data: null
-                error: { code: "CIRCUIT_OPEN", message: "diario-oficial: temporarily unavailable (circuit breaker open)" }
+                error: { code: "CIRCUIT_OPEN", message: "sonarqube: temporarily unavailable (circuit breaker open)" }
             feature_disabled:
               summary: Feature flag desabilitada por um administrador
               value:
                 data: null
-                error: { code: "FEATURE_DISABLED", message: "the \"diario_oficial_scraping_enabled\" feature is currently disabled" }
+                error: { code: "FEATURE_DISABLED", message: "the \"module_exemplos_enabled\" feature is currently disabled" }
 
     Unauthorized:
       description: Access token ausente, inválido ou expirado.
@@ -2008,7 +1596,7 @@ components:
           format: uuid
         key:
           type: string
-          example: "diario-oficial"
+          example: "sonarqube"
         name:
           type: string
         type:
@@ -2199,71 +1787,13 @@ components:
           type: string
           format: date-time
 
-    SourceHealth:
-      type: object
-      description: >
-        Resultado da checagem de saúde da fonte de dados do Diário Oficial (DJEN hoje). Mesmo shape
-        de ScannerHealth (source no lugar de scanner). Ver GET /api/v1/diario-oficial/health.
-      properties:
-        source:
-          type: string
-          example: "djen"
-        healthy:
-          type: boolean
-        message:
-          type: string
-          description: Ausente quando healthy=true; o motivo (não configurado, inalcançável, erro de rede) caso contrário.
-        checked_at:
-          type: string
-          format: date-time
-
-    MonitoredTerm:
-      type: object
-      description: >
-        MVP de monitoramento real do Diário Oficial via DJEN — o que o usuário quer acompanhar.
-        Pelo menos um critério é preenchido: oab_number+oab_uf, process_number, ou free_text.
-      properties:
-        id: { type: string, format: uuid }
-        label: { type: string, example: "Dr. Fulano — OAB/MG 419" }
-        oab_number: { type: string }
-        oab_uf: { type: string }
-        process_number: { type: string }
-        free_text: { type: string }
-        active: { type: boolean }
-        last_synced_at:
-          type: string
-          format: date-time
-          description: Ausente se este termo ainda nunca foi sincronizado pelo worker.
-        created_at: { type: string, format: date-time }
-      required: [id, label, active, created_at]
-
-    MatchedPublication:
-      type: object
-      description: >
-        Uma publicação do DJEN que casou com um MonitoredTerm — persistida pelo worker
-        (nunca buscada sob demanda), com o resultado do casamento junto.
-      properties:
-        id: { type: string, format: uuid }
-        tribunal: { type: string, example: "TJMG" }
-        orgao: { type: string }
-        tipo_comunicacao: { type: string, example: "Intimação" }
-        texto: { type: string }
-        process_number: { type: string }
-        process_number_masked: { type: string, example: "5001534-94.2025.8.13.0351" }
-        availability_date: { type: string, format: date }
-        link: { type: string, description: "URL da publicação original no sistema do tribunal." }
-        monitored_term_id: { type: string, format: uuid }
-        monitored_term_label: { type: string }
-        matched_at: { type: string, format: date-time }
-      required: [id, tribunal, orgao, tipo_comunicacao, texto, process_number, process_number_masked, availability_date, monitored_term_id, monitored_term_label, matched_at]
-
     FeatureFlag:
       type: object
       description: Uma feature flag alterável em tempo de execução (§ Feature Flags & Configuração Dinâmica).
       properties:
         key:
           type: string
-          example: "diario_oficial_scraping_enabled"
+          example: "module_exemplos_enabled"
         enabled:
           type: boolean
         description:
@@ -2285,12 +1815,12 @@ components:
           format: uuid
         type:
           type: string
-          example: "diario_oficial.job.completed"
+          example: "example.job.completed"
         version:
           type: integer
         source:
           type: string
-          example: "nix.diario_oficial"
+          example: "nix.example"
         occurred_at:
           type: string
           format: date-time
@@ -2302,16 +1832,6 @@ components:
       required: [id, type, version, source, occurred_at, correlation_id, payload]
 
     # ─── Contratos & Demandas (Kanban IN SCL 01/2019) ───
-    DiarioRef:
-      type: object
-      description: Publicação do Diário Oficial vinculada a um contrato.
-      properties:
-        edition_number: { type: string }
-        tipo_evento: { type: string, description: "CONTRATO | RESCISAO | RELOTACAO | FISCALIZACAO | NOMEACAO | ADITIVO | MENCAO" }
-        publicado_em: { type: string, format: date, nullable: true }
-        contexto: { type: string, description: "Trecho do texto centrado no número do contrato." }
-        doc_url: { type: string, description: "URL do PDF oficial, com âncora #page=N quando conhecida." }
-
     Aditivo:
       type: object
       properties:
@@ -2337,10 +1857,6 @@ components:
         data_vigencia_fim: { type: string, format: date, nullable: true }
         status: { type: string, enum: [rascunho, em_analise, aprovado, vigente, encerrado, cancelado] }
         status_label: { type: string }
-        diario_refs:
-          type: array
-          items: { $ref: "#/components/schemas/DiarioRef" }
-          description: "Só em GET /contratos/{id} (detalhe)."
         aditivos:
           type: array
           items: { $ref: "#/components/schemas/Aditivo" }
@@ -2480,62 +1996,3 @@ components:
         correlation_id: { type: string, format: uuid, nullable: true }
         created_at: { type: string, format: date-time }
 
-    # ─── DIÁRIO OFICIAL — Rondonópolis ───
-    HREvent:
-      type: object
-      description: Ato de pessoal extraído do DIORONDON.
-      properties:
-        type: { type: string, enum: [NOMEACAO_EFETIVO, NOMEACAO_COMISSIONADO, CONTRATACAO_TEMPORARIA, EXONERACAO, RESCISAO, RELOTACAO, DESIGNACAO_FUNCAO] }
-        servidor: { type: string }
-        servidor_cpf: { type: string, nullable: true }
-        servidor_matricula: { type: string, nullable: true }
-        secretaria: { type: string, nullable: true }
-        cargo: { type: string, nullable: true }
-        das_level: { type: string, nullable: true }
-        portaria_number: { type: string }
-        edition_number: { type: string }
-        context_snippet: { type: string }
-        doc_url: { type: string }
-        publication_date: { type: string, format: date }
-
-    PublicContract:
-      type: object
-      description: Extrato de contrato / designação de fiscal extraído do DIORONDON.
-      properties:
-        id: { type: string }
-        contract_number: { type: string }
-        contract_type: { type: string }
-        portaria_number: { type: string }
-        object: { type: string }
-        contractor: { type: string }
-        contractor_cnpj: { type: string }
-        value: { type: string }
-        fiscal_nome: { type: string }
-        fiscal_matricula: { type: string }
-        suplente_nome: { type: string }
-        edition_number: { type: string }
-        publication_date: { type: string, format: date }
-        doc_url: { type: string, nullable: true }
-        status: { type: string }
-
-    ReviewFinding:
-      type: object
-      description: Finding de baixa confiança na fila de revisão.
-      properties:
-        id: { type: string, format: uuid }
-        act_type: { type: string }
-        servidor_nome: { type: string, nullable: true }
-        empresa_nome: { type: string, nullable: true }
-        cpf: { type: string, nullable: true }
-        matricula: { type: string, nullable: true }
-        cnpj: { type: string, nullable: true }
-        valor: { type: number, nullable: true }
-        secretaria: { type: string, nullable: true }
-        job_role: { type: string, nullable: true }
-        das_level: { type: string, nullable: true }
-        portaria_number: { type: string, nullable: true }
-        raw_content: { type: string }
-        pdf_page_number: { type: integer }
-        edition_number: { type: string, nullable: true }
-        pdf_url: { type: string, nullable: true }
-        confidence: { type: string, enum: [high, medium, low] }

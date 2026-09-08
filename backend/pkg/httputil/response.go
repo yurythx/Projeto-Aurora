@@ -55,7 +55,8 @@ func WriteCreated(w http.ResponseWriter, data any) {
 }
 
 // WriteAccepted escreve um envelope 202 Accepted — usado pelos endpoints
-// de criação de job assíncrono, como o gatilho de teste do Diário Oficial.
+// de criação de job assíncrono, como o gatilho de teste de conectividade
+// de uma integração.
 func WriteAccepted(w http.ResponseWriter, data any) {
 	WriteJSON(w, http.StatusAccepted, data, nil)
 }

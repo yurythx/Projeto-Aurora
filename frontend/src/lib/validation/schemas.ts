@@ -18,7 +18,7 @@ export const eventEnvelopeSchema = z.object({
 
 export type EventEnvelope = z.infer<typeof eventEnvelopeSchema>;
 
-// Payload dos eventos do ciclo de vida de um job (diario_oficial.job.*,
+// Payload dos eventos do ciclo de vida de um job (example.job.*,
 // integration.test.completed) — só o id do job, usado para montar a
 // mensagem do toast (ver NotificationCenter).
 export const jobEventPayloadSchema = z.object({

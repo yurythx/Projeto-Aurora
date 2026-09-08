@@ -12,7 +12,7 @@ type samplePayload struct {
 
 func TestNew_BuildsValidEnvelope(t *testing.T) {
 	corr := uuid.New()
-	ev, err := New("diario_oficial.job.completed", "nix.diario_oficial", corr, samplePayload{JobID: "abc"})
+	ev, err := New("example.job.completed", "nix.example", corr, samplePayload{JobID: "abc"})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -20,13 +20,13 @@ func TestNew_BuildsValidEnvelope(t *testing.T) {
 	if ev.ID == uuid.Nil {
 		t.Error("expected non-nil ID")
 	}
-	if ev.Type != "diario_oficial.job.completed" {
+	if ev.Type != "example.job.completed" {
 		t.Errorf("Type = %q", ev.Type)
 	}
 	if ev.Version != EnvelopeVersion {
 		t.Errorf("Version = %d, want %d", ev.Version, EnvelopeVersion)
 	}
-	if ev.Source != "nix.diario_oficial" {
+	if ev.Source != "nix.example" {
 		t.Errorf("Source = %q", ev.Source)
 	}
 	if ev.OccurredAt.IsZero() {

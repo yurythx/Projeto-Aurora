@@ -1,5 +1,13 @@
 # Roadmap — SecOps Orchestrator: Trivy, Semgrep, TruffleHog, SonarQube e OWASP ZAP como parte do NIX Platform
 
+> **Nota (limpeza pós-genericização, 2026-09):** o módulo `scanning`
+> (SecOps Orchestrator) descrito neste documento inteiro, e o módulo
+> `diario_oficial` citado na seção "Diário Oficial — monitoramento real via
+> DJEN" mais abaixo, foram ambos removidos do código-base na genericização
+> da plataforma em "Projeto Aurora". Este documento é mantido como registro
+> histórico das decisões de arquitetura da época — não descreve código
+> atualmente existente no repositório.
+
 - **Fase 14 (Maturidade de AppSec — triagem, paginação de verdade, notificação de crítico, postura
   de segurança, exportação CSV) ✅ completa**, sua **continuação (expiração de triagem + tendência
   histórica) ✅ completa**, e a **revisão de exibição de resultados (mestre-detalhe, navegação por

@@ -94,8 +94,8 @@
   --color-status-unknown: var(--status-unknown);
 
   /* Tipografia deliberada (§ redesenho 2026-08):
-     - display  → Newsreader: serifada de notícia/editorial, o registro do
-                  Diário Oficial. Só em h1/h2 (título de página e de seção).
+     - display  → Newsreader: serifada de notícia/editorial, o registro de
+                  imprensa/documento oficial. Só em h1/h2 (título de página e de seção).
      - sans     → Inter: neutra e densa, para toda a UI e dados.
      - mono     → Geist Mono: só onde o monoespaçado carrega significado
                   (nº de contrato, matrícula, competência, código de

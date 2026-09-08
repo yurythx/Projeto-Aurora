@@ -105,8 +105,8 @@ func TestPostgresLimiter_SharedAcrossInstances(t *testing.T) {
 }
 
 // TestPostgresLimiter_DifferentBucketsWithSameKeyDoNotInterfere reproduz o
-// bug real encontrado em auditoria: scanning.RateLimitKey e
-// diario_oficial.RateLimitKey devolvem o MESMO valor (o subject do
+// bug real encontrado em auditoria: dois RateLimitKey de módulos
+// diferentes devolvem o MESMO valor (o subject do
 // usuário autenticado) pro mesmo usuário — antes de "bucket" existir, os
 // dois limiters (janelas de tamanhos DIFERENTES) escreviam na mesma
 // linha de rate_limit_buckets, e cada um recalculava window_start com o

@@ -21,7 +21,7 @@ const EnvelopeVersion = 1
 // Event é o envelope padrão que toda mensagem publicada/consumida carrega.
 // Type também serve como routing key do RabbitMQ e precisa seguir a
 // convenção "<contexto>.<entidade>.<ação>", ex.:
-// "diario_oficial.job.completed".
+// "example.job.completed".
 type Event struct {
 	ID            uuid.UUID       `json:"id"`
 	Type          string          `json:"type"`

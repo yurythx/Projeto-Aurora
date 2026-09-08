@@ -24,10 +24,32 @@ func testPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-// Estes testes dependem da linha "diario-oficial" semeada pela migration 000006.
+// A tabela integrations nasce vazia (baseline — ver migrations/000001):
+// nenhuma migration semeia mais uma linha fixa, então estes testes
+// semeiam e limpam a sua própria, em vez de depender de dado fixo do
+// schema.
+const testIntegrationKey = "test-provider"
+
+func seedIntegration(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	ctx := context.Background()
+	_, err := pool.Exec(ctx, `
+		INSERT INTO integrations (key, name, type, enabled, status)
+		VALUES ($1, 'Test Provider', 'webhook', true, 'unknown')
+		ON CONFLICT (key) DO UPDATE
+			SET status = 'unknown', last_error = NULL, last_success_at = NULL`,
+		testIntegrationKey)
+	if err != nil {
+		t.Fatalf("seed integration: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM integrations WHERE key = $1`, testIntegrationKey)
+	})
+}
 
 func TestPostgresRepository_List_IncludesSeeded(t *testing.T) {
 	pool := testPool(t)
+	seedIntegration(t, pool)
 	repo := NewPostgresRepository(pool)
 
 	list, err := repo.List(context.Background())
@@ -37,32 +59,27 @@ func TestPostgresRepository_List_IncludesSeeded(t *testing.T) {
 
 	found := false
 	for _, i := range list {
-		if i.Key == "diario-oficial" {
+		if i.Key == testIntegrationKey {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected the seeded diario-oficial integration to be present")
+		t.Errorf("expected the seeded %q integration to be present", testIntegrationKey)
 	}
 }
 
 func TestPostgresRepository_UpdateStatusTx_ReportsChange(t *testing.T) {
 	pool := testPool(t)
+	seedIntegration(t, pool)
 	repo := NewPostgresRepository(pool)
 	ctx := context.Background()
-
-	// Reseta para uma base conhecida, para que o teste independa da ordem.
-	_, err := pool.Exec(ctx, `UPDATE integrations SET status = 'unknown', last_error = NULL WHERE key = 'diario-oficial'`)
-	if err != nil {
-		t.Fatalf("reset baseline: %v", err)
-	}
 
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		t.Fatalf("Begin: %v", err)
 	}
 
-	updated, changed, err := repo.UpdateStatusTx(ctx, tx, "diario-oficial", true, nil)
+	updated, changed, err := repo.UpdateStatusTx(ctx, tx, testIntegrationKey, true, nil)
 	if err != nil {
 		t.Fatalf("UpdateStatusTx: %v", err)
 	}
@@ -84,7 +101,7 @@ func TestPostgresRepository_UpdateStatusTx_ReportsChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Begin: %v", err)
 	}
-	_, changedAgain, err := repo.UpdateStatusTx(ctx, tx, "diario-oficial", true, nil)
+	_, changedAgain, err := repo.UpdateStatusTx(ctx, tx, testIntegrationKey, true, nil)
 	if err != nil {
 		t.Fatalf("UpdateStatusTx (2nd): %v", err)
 	}
@@ -99,7 +116,7 @@ func TestPostgresRepository_UpdateStatusTx_ReportsChange(t *testing.T) {
 		t.Fatalf("Begin: %v", err)
 	}
 	errMsg := "connection timeout"
-	updated, changed, err = repo.UpdateStatusTx(ctx, tx, "diario-oficial", false, &errMsg)
+	updated, changed, err = repo.UpdateStatusTx(ctx, tx, testIntegrationKey, false, &errMsg)
 	if err != nil {
 		t.Fatalf("UpdateStatusTx (failure): %v", err)
 	}

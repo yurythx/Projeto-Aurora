@@ -32,7 +32,7 @@ describe("apiClient", () => {
 
   it("throws ApiError when the envelope carries an error", async () => {
     mockFetchOnce(422, { data: null, error: { code: "VALIDATION_ERROR", message: "bad input" } });
-    await expect(apiClient.post("v1/integrations/diario-oficial/test")).rejects.toMatchObject({
+    await expect(apiClient.post("v1/integrations/example/test")).rejects.toMatchObject({
       code: "VALIDATION_ERROR",
       message: "bad input",
       status: 422,

@@ -200,8 +200,8 @@ func (h *Handlers) rejectInvalidCredentials(w http.ResponseWriter, r *http.Reque
 }
 
 // RateLimitKey limita tentativas de login por IP — não há identidade
-// autenticada ainda para usar como chave (ao contrário de
-// diario_oficial.RateLimitKey, que usa o subject do chamador).
+// autenticada ainda para usar como chave (ao contrário do rate limit de
+// um endpoint autenticado, que usa o subject do chamador).
 // Defesa em profundidade além disso: o bloqueio por conta em
 // Store.RegisterFailedAttempt cobre o caso de um atacante distribuído
 // (múltiplos IPs), que este rate limit por IP sozinho não pegaria.

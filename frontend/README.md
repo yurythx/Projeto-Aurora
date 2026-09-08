@@ -32,8 +32,8 @@ npm run dev
 
 - `src/app` — rotas (App Router): landing page, `/sobre`, `/login`, as
   rotas autenticadas em `(protected)/**` (`/dashboard`, `/contratos`,
-  `/pessoal`, `/diario`, `/diario-oficial`, `/monitoramento`,
-  `/integracoes`, `/configuracao`), o route handler do NextAuth e o proxy
+  `/pessoal`, `/monitoramento`, `/integracoes`, `/configuracao`), o route
+  handler do NextAuth e o proxy
   BFF `/api/backend/*`.
 - `src/lib/auth` — configuração do NextAuth: login local usuário/senha
   (CredentialsProvider, RS256) **ou** SSO Keycloak (Authorization Code +

@@ -24,7 +24,7 @@ import (
 // acabou de ser gravado nessa mesma transação (ex.: criar um Job e seu
 // evento "job.created" juntos, ou os dois ou nenhum dos dois).
 type Writer struct {
-	source string // events.Event.Source para todo evento que este writer constrói, ex.: "nix.diario_oficial"
+	source string // events.Event.Source para todo evento que este writer constrói, ex.: "nix.example"
 }
 
 // NewWriter constrói um Writer que carimba todo evento com source.

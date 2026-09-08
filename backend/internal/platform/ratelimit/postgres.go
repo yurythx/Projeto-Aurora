@@ -35,7 +35,7 @@ import (
 // (ex.: ScanJob, janela de 60s, e TestJob, janela de 10s) escreviam na
 // MESMA linha sempre que o "key" calculado por quem chama (tipicamente o
 // subject do usuário autenticado) coincidia entre rotas — o que é o caso
-// comum, já que scanning.RateLimitKey e diario_oficial.RateLimitKey
+// comum, já que dois RateLimitKey de módulos diferentes tipicamente
 // devolvem literalmente o mesmo valor pro mesmo usuário. Cada limiter
 // recalculava window_start com o SEU PRÓPRIO windowSeconds, quase nunca
 // batendo com o que a última chamada (de um limiter DIFERENTE) tinha

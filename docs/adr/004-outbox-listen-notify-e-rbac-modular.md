@@ -67,14 +67,21 @@ pontos de arquitetura precisaram de decisão registrada:
 
 ### 4.3. Casador Contrato↔Diário atômico (Transactional Outbox correto)
 
-- `matchOne` processa **um contrato numa única `database.WithTx`**: os
+> **Nota (limpeza pós-genericização):** o módulo `diario_oficial` e o
+> casador `contratos.diario_matcher` descritos nesta seção foram
+> removidos do código-base; a correção de atomicidade abaixo não se
+> aplica mais a nenhum código existente. Mantido apenas como registro
+> histórico da decisão.
+
+- `matchOne` processava **um contrato numa única `database.WithTx`**: os
   `INSERT` das refs/alertas e os `outbox.Write` dos eventos
-  (`contrato.diario_ref.linked`, `contrato.fiscal_alert`) commitam juntos
-  ou dão rollback juntos.
+  (`contrato.diario_ref.linked`, `contrato.fiscal_alert`) commitavam
+  juntos ou davam rollback juntos.
 - Repositório: `LinkDiarioRef`/`RecordAlertOnce` → variantes
   `...Tx(tx pgx.Tx)` (SQL compartilhado via helper com interface
-  `pgxExec`); `ListDiarioRefsTx` passa a enxergar as refs recém-inseridas
-  na mesma tx (corrige um falso `SEM_VINCULO_DIARIO` latente).
+  `pgxExec`); `ListDiarioRefsTx` passava a enxergar as refs
+  recém-inseridas na mesma tx (corrigia um falso `SEM_VINCULO_DIARIO`
+  latente).
 - `OutboxEmitter` / `ContratoEventEmitter` removidos.
 
 ## Consequências
@@ -83,9 +90,9 @@ pontos de arquitetura precisaram de decisão registrada:
   Postgres cai (só quando há evento ou a cada 15 s); a persona do fiscal
   ganha menor privilégio real; o casador deixa de poder perder eventos.
 - **Custos:** uma conexão do pool fica permanentemente dedicada ao
-  `LISTEN` por réplica de worker (via `Hijack`); a superfície de
-  `WithDiarioMatching` cresceu (recebe `*pgxpool.Pool` + `*outbox.Writer`).
-- **Migrations relacionadas:** `000035` (fila de revisão), `000036`
+  `LISTEN` por réplica de worker (via `Hijack`).
+- **Migrations relacionadas (na numeração histórica, pré-consolidação em
+  `000001_baseline`):** `000035` (fila de revisão), `000036`
   (`contrato_diario_alertas`), `000037`/`000038` (índices de hardening,
   `idx_contract_occurrences_open` único), `000039` (índices trigram do
-  casador).
+  casador) — todas removidas na genericização da base (§4.3).

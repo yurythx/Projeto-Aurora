@@ -1,8 +1,8 @@
 // Package jobs fornece a entidade e o repositório compartilhados de job
 // assíncrono (§33), usados por todo módulo que executa trabalho via
-// RabbitMQ + um worker (hoje: diario_oficial). É infraestrutura de
-// plataforma, não um módulo de negócio em si — os módulos dependem dele,
-// nunca o contrário.
+// RabbitMQ + um worker (nenhum módulo de negócio consome isto hoje — é
+// infraestrutura de plataforma pronta para o primeiro que precisar). Os
+// módulos dependem dele, nunca o contrário.
 package jobs
 
 import (
@@ -66,9 +66,9 @@ func CanTransition(from, to Status) bool {
 }
 
 // Job é uma unidade de trabalho assíncrono (§33) — o registro persistido
-// que representa, por exemplo, "rodar o teste de conectividade do Diário
-// Oficial" desde o momento em que a API o cria até o worker terminar de
-// processá-lo (com sucesso, falha, ou esgotando os retries).
+// que representa, por exemplo, "rodar o teste de conectividade de uma
+// integração" desde o momento em que a API o cria até o worker terminar
+// de processá-lo (com sucesso, falha, ou esgotando os retries).
 type Job struct {
 	ID            uuid.UUID
 	Type          string

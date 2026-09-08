@@ -83,7 +83,7 @@ func RequestID(ctx context.Context) string {
 
 // WithCorrelationID retorna um context carregando o correlation id
 // informado — usado para rastrear um único fluxo de negócio (ex.: "rodar
-// o teste do Diário Oficial") por HTTP, Postgres, RabbitMQ, o worker e as
+// o teste de uma integração") por HTTP, Postgres, RabbitMQ, o worker e as
 // notificações via WebSocket, mesmo cruzando processos (§50).
 func WithCorrelationID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, correlationIDKey, id)

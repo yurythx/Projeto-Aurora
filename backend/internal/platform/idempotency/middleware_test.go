@@ -112,7 +112,7 @@ func TestMiddleware_SecondRequestReplaysStoredResponse(t *testing.T) {
 	handler := Middleware(store, testLogger())(countingHandler(&calls, http.StatusAccepted, `{"job_id":"1"}`))
 
 	newReq := func() *http.Request {
-		r := httptest.NewRequest(http.MethodPost, "/api/v1/diario-oficial/test", strings.NewReader(`{}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/integrations/example/test", strings.NewReader(`{}`))
 		r.Header.Set(Header, "same-key")
 		return withIdentity(r, "user-1")
 	}
