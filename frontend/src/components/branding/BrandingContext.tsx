@@ -65,30 +65,41 @@ export function BrandingProvider({
   // Favicon white-label: branding.faviconUrl era um campo declarado desde
   // sempre (tipo + default + persistido no cookie), mas nada o lia — o
   // <link rel="icon"> ficava sempre no favicon padrão do Projeto Aurora
-  // (achado de auditoria). safeResourceUrl (S-03) aplica a mesma
+  // (achado de auditoria original). safeResourceUrl (S-03) aplica a mesma
   // allowlist de esquema que a logo já usa: só https:// vira href de
-  // verdade. marca um data-attribute próprio no <link> pra saber, na
-  // próxima rodada, se foi ESTE efeito que o escreveu (nunca mexe num
-  // <link rel="icon"> que já estivesse lá por outro motivo antes do
-  // primeiro branding customizado, e volta ao arquivo estático de
-  // app/icon.svg/favicon.ico assim que a URL é removida/fica inválida).
+  // verdade.
+  //
+  // A 1ª versão deste efeito criava um <link rel="icon"> NOVO, adicional
+  // aos que app/icon.svg + app/favicon.ico do Next já renderizam no
+  // servidor (achado de uma 2ª rodada de verificação: com 3 <link
+  // rel="icon"> concorrentes na <head> — o .ico, o .svg e este novo —,
+  // qual vence é uma heurística de cada navegador, não algo garantido
+  // por ordem no DOM; o Chrome, por exemplo, tende a preferir o ícone SVG
+  // já existente independentemente de quando o outro foi inserido, então
+  // a troca podia silenciosamente não aparecer nenhuma aba real mesmo com
+  // o teste automatizado (que só checa o elemento, não a aba) passando.
+  //
+  // Correção: em vez de competir com um <link> a mais, troca o href dos
+  // <link rel="icon">/<link rel="apple-touch-icon"> que JÁ EXISTEM — os
+  // mesmos que o navegador já escolhe corretamente por padrão. Cada nó
+  // guarda seu href original num data-attribute na primeira vez (uma
+  // única leitura, nunca sobrescrita depois), para conseguir restaurar o
+  // ícone padrão assim que a URL personalizada for removida/ficar
+  // inválida — sem isso, depois de trocar uma vez não haveria como saber
+  // qual era o valor original pra voltar.
   useEffect(() => {
     if (typeof document === "undefined") return;
     const safeFavicon = safeResourceUrl(branding.faviconUrl);
-    const marker = "data-aurora-branding-favicon";
-    let link = document.querySelector<HTMLLinkElement>(`link[rel="icon"][${marker}]`);
+    const iconLinks = document.querySelectorAll<HTMLLinkElement>(
+      'link[rel="icon"], link[rel="apple-touch-icon"]',
+    );
 
-    if (!safeFavicon) {
-      link?.remove();
-      return;
-    }
-    if (!link) {
-      link = document.createElement("link");
-      link.rel = "icon";
-      link.setAttribute(marker, "true");
-      document.head.appendChild(link);
-    }
-    link.href = safeFavicon;
+    iconLinks.forEach((link) => {
+      if (!link.dataset.auroraOriginalHref) {
+        link.dataset.auroraOriginalHref = link.href;
+      }
+      link.href = safeFavicon || link.dataset.auroraOriginalHref;
+    });
   }, [branding.faviconUrl]);
 
   const increaseFontSize = () => {

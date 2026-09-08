@@ -14,7 +14,6 @@ import {
   Zap,
   Clock,
   Layers,
-  BarChart3,
   Download
 } from "lucide-react";
 
@@ -22,48 +21,73 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { StatusIndicator } from "@/components/ui/StatusIndicator";
 import type { IntegrationStatus } from "@/types/api";
-import { apiClient } from "@/lib/api/client";
 
 interface SystemHealthResponse {
-  status: string;
+  status: "ok" | "degraded" | "unhealthy";
   timestamp: string;
-  version?: string;
-  services?: Record<string, { status: string; latency_ms?: number }>;
+  services: Record<string, { status: string }>;
+  /** Round-trip medido no próprio navegador (performance.now()), não um
+   * valor do backend — a "Latência Média" do KPI abaixo era um número
+   * fixo no código-fonte (1.8 ms sempre, não importa o que acontecesse);
+   * isto é o mais próximo de uma medição real que dá pra ter sem uma
+   * instrumentação de latência por serviço no backend (não existe hoje). */
+  latencyMs?: number;
 }
 
-const fetcher = (url: string) => apiClient.get<SystemHealthResponse>(url).then((res) => res.data);
+// /api/health é uma rota PRÓPRIA do frontend (app/api/health/route.ts),
+// não uma chamada de apiClient/proxy BFF — ela busca o /ready real do
+// backend Go (que não vive sob /api/v1 e nunca exigiu autenticação, o
+// mesmo endpoint que o HEALTHCHECK do Docker chama) e reformata pro
+// formato que este painel espera. Chamar apiClient.get("health") aqui
+// dava sempre 404: o proxy genérico só sabe montar /api/v1/... (achado de
+// auditoria — console cheio de "GET /api/backend/health 404").
+const fetcher = async (url: string): Promise<SystemHealthResponse> => {
+  const start = performance.now();
+  const res = await fetch(url);
+  const latencyMs = Math.round(performance.now() - start);
+  const json: { data: SystemHealthResponse } = await res.json();
+  return { ...json.data, latencyMs };
+};
 
 export function PlatformMonitoringDashboard() {
-  const [testingService, setTestingService] = useState<string | null>(null);
   const [lastCheckTime, setLastCheckTime] = useState<string>(new Date().toLocaleTimeString("pt-BR"));
 
   const { data: health, error, mutate, isValidating } = useSWR<SystemHealthResponse>(
-    "health",
+    "/api/health",
     fetcher,
     {
       refreshInterval: 10000, // auto-refresh a cada 10s
       revalidateOnFocus: true,
+      // "Verificado às" (mostrado em cada card de serviço) precisa
+      // acompanhar TODA revalidação bem-sucedida, não só o clique manual
+      // em "Atualizar" — senão o carimbo de hora fica parado enquanto o
+      // auto-refresh de 10s continua atualizando os dados por trás.
+      onSuccess: () => setLastCheckTime(new Date().toLocaleTimeString("pt-BR")),
     }
   );
 
   const handleRefresh = () => {
     mutate();
-    setLastCheckTime(new Date().toLocaleTimeString("pt-BR"));
-  };
-
-  const handleTestIntegration = async (serviceKey: string) => {
-    setTestingService(serviceKey);
-    try {
-      await apiClient.post(`v1/integrations/${serviceKey}/test`);
-      mutate();
-    } catch {
-      // Ignora erro visual aqui pois a UI atualiza via SWR
-    } finally {
-      setTestingService(null);
-    }
   };
 
   const isHealthy = !error && health?.status !== "unhealthy";
+
+  // Status DE VERDADE, derivado do /ready do backend (via /api/health) —
+  // antes deste conserto, os quatro cartões abaixo mostravam "online" fixo
+  // no código-fonte, sempre, mesmo que o serviço estivesse fora do ar
+  // (achado de auditoria). backendCheckStatus() cobre só o que o backend
+  // de fato verifica em /ready (postgres, rabbitmq); o próprio backend-api
+  // é considerado "online" implicitamente sempre que ESTA chamada teve
+  // resposta (se ele estivesse fora do ar, error estaria setado); MinIO
+  // não tem checagem própria em /ready hoje — reportado como "unknown" em
+  // vez de inventar um "online", até existir uma checagem real pra ele.
+  function backendCheckStatus(name: string): IntegrationStatus {
+    if (error) return "offline";
+    if (!health) return "unknown";
+    const check = health.services?.[name];
+    if (!check) return "unknown";
+    return check.status === "ok" ? "online" : "offline";
+  }
 
   const infrastructureServices: Array<{
     id: string;
@@ -72,7 +96,6 @@ export function PlatformMonitoringDashboard() {
     port: string;
     icon: typeof Server;
     status: IntegrationStatus;
-    latency: string;
     type: string;
   }> = [
     {
@@ -81,8 +104,7 @@ export function PlatformMonitoringDashboard() {
       description: "Servidor backend Go em arquitetura limpa com JWT local e rotas /api/v1",
       port: "8002",
       icon: Server,
-      status: "online",
-      latency: "1.2 ms",
+      status: error ? "offline" : health ? "online" : "unknown",
       type: "Core Microservice",
     },
     {
@@ -91,8 +113,7 @@ export function PlatformMonitoringDashboard() {
       description: "Banco de dados relacional principal com suporte a transações ACID e Outbox",
       port: "5433",
       icon: Database,
-      status: "online",
-      latency: "0.8 ms",
+      status: backendCheckStatus("postgres"),
       type: "Relational DB",
     },
     {
@@ -101,21 +122,21 @@ export function PlatformMonitoringDashboard() {
       description: "Fila de mensagens orientada a eventos para desacoplamento de workers",
       port: "5673 / 15673",
       icon: Radio,
-      status: "online",
-      latency: "2.1 ms",
+      status: backendCheckStatus("rabbitmq"),
       type: "Message Broker",
     },
     {
       id: "minio-storage",
       name: "MinIO Object Storage (S3)",
-      description: "Armazenamento de arquivos e anexos compatível com Amazon S3 API",
+      description: "Armazenamento de arquivos e anexos compatível com Amazon S3 API — sem checagem de saúde própria em /ready ainda.",
       port: "9002 / 9003",
       icon: HardDrive,
-      status: "online",
-      latency: "3.4 ms",
+      status: "unknown",
       type: "S3 Storage",
     },
   ];
+
+  const onlineCount = infrastructureServices.filter((s) => s.status === "online").length;
 
   return (
     <div className="flex flex-col gap-8 pb-10">
@@ -156,7 +177,7 @@ export function PlatformMonitoringDashboard() {
           <Button
             size="sm"
             variant="primary"
-            onClick={() => window.open("/api/backend/api/v1/audit/export", "_blank")}
+            onClick={() => window.open("/api/backend/v1/audit/export", "_blank")}
             className="gap-2"
           >
             <Download size={14} />
@@ -171,10 +192,18 @@ export function PlatformMonitoringDashboard() {
           <CardContent className="pt-4 flex items-center justify-between">
             <div className="flex flex-col gap-1">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted">Status Geral</span>
-              <span className="text-xl font-bold text-foreground">100% Online</span>
-              <span className="text-[11px] text-success">5 de 5 serviços ativos</span>
+              <span className="text-xl font-bold text-foreground">
+                {Math.round((onlineCount / infrastructureServices.length) * 100)}% Online
+              </span>
+              <span className={`text-[11px] ${isHealthy ? "text-success" : "text-warning"}`}>
+                {onlineCount} de {infrastructureServices.length} serviços verificados como ativos
+              </span>
             </div>
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
+            <div
+              className={`flex h-10 w-10 items-center justify-center rounded-lg ${
+                isHealthy ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
+              }`}
+            >
               <Activity size={20} />
             </div>
           </CardContent>
@@ -196,9 +225,11 @@ export function PlatformMonitoringDashboard() {
         <Card className="bg-surface/50">
           <CardContent className="pt-4 flex items-center justify-between">
             <div className="flex flex-col gap-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted">Latência Média</span>
-              <span className="text-xl font-bold text-foreground">1.8 ms</span>
-              <span className="text-[11px] text-success">Excelente resposta</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted">Latência do Healthcheck</span>
+              <span className="text-xl font-bold text-foreground">
+                {health?.latencyMs !== undefined ? `${health.latencyMs} ms` : "—"}
+              </span>
+              <span className="text-[11px] text-muted">Round-trip de GET /api/health (medido agora)</span>
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
               <Clock size={20} />
@@ -232,7 +263,6 @@ export function PlatformMonitoringDashboard() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {infrastructureServices.map((service) => {
             const Icon = service.icon;
-            const isTesting = testingService === service.id;
 
             return (
               <Card key={service.id} className="relative overflow-hidden transition-all hover:border-primary/50">
@@ -253,30 +283,11 @@ export function PlatformMonitoringDashboard() {
                     <span className="text-muted">Porta Host:</span>
                     <span className="font-semibold text-foreground">{service.port}</span>
                   </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted">Latência:</span>
-                    <span className="font-mono font-medium text-success">
-                      {service.latency}
-                    </span>
-                  </div>
                   <div className="flex items-center justify-between pt-1">
                     <span className="rounded bg-surface-border/60 px-2 py-0.5 text-[10px] font-medium text-muted">
                       {service.type}
                     </span>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs"
-                      onClick={() => handleTestIntegration(service.id)}
-                      disabled={isTesting}
-                    >
-                      {isTesting ? (
-                        <RefreshCw size={12} className="animate-spin mr-1" />
-                      ) : (
-                        <BarChart3 size={12} className="mr-1" />
-                      )}
-                      Testar
-                    </Button>
+                    <span className="text-[11px] text-muted">Verificado às {lastCheckTime}</span>
                   </div>
                 </CardContent>
               </Card>

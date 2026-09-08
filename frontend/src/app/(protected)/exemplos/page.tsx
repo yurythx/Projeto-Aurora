@@ -23,8 +23,8 @@ export default function ExemplosPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const { data, error, isLoading, mutate } = useSWR<{ data: ExampleItem[] }>(
-    "v1/example-items",
-    () => apiClient.get<ExampleItem[]>("v1/example-items").then((res) => res)
+    "v1/examples",
+    () => apiClient.get<ExampleItem[]>("v1/examples").then((res) => res)
   );
 
   const items = data?.data ?? [];
@@ -36,7 +36,7 @@ export default function ExemplosPage() {
     setIsCreating(true);
     setErrorMsg(null);
     try {
-      await apiClient.post("v1/example-items", {
+      await apiClient.post("v1/examples", {
         title: title.trim(),
         description: description.trim(),
       });
