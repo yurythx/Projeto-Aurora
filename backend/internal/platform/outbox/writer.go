@@ -24,7 +24,7 @@ import (
 // acabou de ser gravado nessa mesma transação (ex.: criar um Job e seu
 // evento "job.created" juntos, ou os dois ou nenhum dos dois).
 type Writer struct {
-	source string // events.Event.Source para todo evento que este writer constrói, ex.: "nix.example"
+	source string // events.Event.Source para todo evento que este writer constrói, ex.: "aurora.example"
 }
 
 // NewWriter constrói um Writer que carimba todo evento com source.
@@ -37,7 +37,7 @@ func NewWriter(source string) *Writer {
 // o próximo tick do polling (latência ~zero, §16). O NOTIFY roda DENTRO da
 // mesma transação do INSERT, então só dispara quando o evento de fato
 // commita — nunca acorda o Publisher para uma linha que sofreu rollback.
-const Channel = "nova_outbox_channel"
+const Channel = "aurora_outbox_channel"
 
 // Write monta o envelope de evento padrão (§17), o valida contra o JSON
 // Schema do contrato de evento (§ Schema Validator para Eventos do

@@ -21,7 +21,7 @@ import (
 // roteamento de DLQ) contra um broker ao vivo. São pulados se
 // TEST_RABBITMQ_URL não estiver definida, para que `go test ./...`
 // continue passando sem infraestrutura, mas não são mocks — defina
-// TEST_RABBITMQ_URL (ex.: amqp://nix:nix_password@localhost:5672/nix)
+// TEST_RABBITMQ_URL (ex.: amqp://aurora:aurora_password@localhost:5672/aurora)
 // para de fato rodá-los.
 func testConnection(t *testing.T) *Connection {
 	t.Helper()
@@ -99,7 +99,7 @@ func TestPublisher_PublishIsConfirmedAndConsumable(t *testing.T) {
 	publisher := NewPublisher(conn)
 
 	corrID := uuid.New()
-	event, err := events.New(spec.RoutingKeys[0], "nix.test", corrID, map[string]string{"hello": "world"})
+	event, err := events.New(spec.RoutingKeys[0], "aurora.test", corrID, map[string]string{"hello": "world"})
 	if err != nil {
 		t.Fatalf("events.New: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestConsumer_AcksOnSuccess(t *testing.T) {
 	publisher := NewPublisher(conn)
 	consumer := NewConsumer(conn, spec.Name, 5, 3, testLogger())
 
-	event, _ := events.New(spec.RoutingKeys[0], "nix.test", uuid.New(), map[string]string{"k": "v"})
+	event, _ := events.New(spec.RoutingKeys[0], "aurora.test", uuid.New(), map[string]string{"k": "v"})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := publisher.Publish(ctx, event); err != nil {
@@ -187,7 +187,7 @@ func TestConsumer_RetriesThenSucceeds(t *testing.T) {
 	consumer.baseBackoff = 200 * time.Millisecond // keep the test fast
 	consumer.maxBackoff = 200 * time.Millisecond
 
-	event, _ := events.New(spec.RoutingKeys[0], "nix.test", uuid.New(), map[string]string{})
+	event, _ := events.New(spec.RoutingKeys[0], "aurora.test", uuid.New(), map[string]string{})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := publisher.Publish(ctx, event); err != nil {
@@ -230,7 +230,7 @@ func TestConsumer_ExhaustsRetriesAndRoutesToDLQ(t *testing.T) {
 	consumer.baseBackoff = 100 * time.Millisecond
 	consumer.maxBackoff = 100 * time.Millisecond
 
-	event, _ := events.New(spec.RoutingKeys[0], "nix.test", uuid.New(), map[string]string{})
+	event, _ := events.New(spec.RoutingKeys[0], "aurora.test", uuid.New(), map[string]string{})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := publisher.Publish(ctx, event); err != nil {

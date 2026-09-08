@@ -13,7 +13,7 @@ import (
 	"github.com/yurythx/projeto-aurora/internal/domain/pagination"
 )
 
-// User é uma conta do NIX Platform. A maioria é espelhada do Keycloak a
+// User é uma conta do Projeto Aurora. A maioria é espelhada do Keycloak a
 // cada requisição autenticada (o Keycloak é a fonte da verdade da
 // identidade; a linha local guarda só o que a própria plataforma precisa
 // — §32, ex.: para referenciar o usuário em audit_logs ou exibir uma

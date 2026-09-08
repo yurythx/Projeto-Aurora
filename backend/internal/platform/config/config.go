@@ -254,26 +254,6 @@ func (l *loader) boolVal(key string, def bool) bool {
 	return b
 }
 
-// splitAndTrim divide uma lista separada por vírgula (ex.:
-// SCANNING_ZAP_ALLOWED_HOSTS) em entradas individuais, descartando
-// espaço em volta e entradas vazias (uma vírgula sobrando no fim/início
-// não vira uma entrada fantasma). Uma string vazia retorna uma lista
-// vazia, não uma lista com um elemento vazio.
-func splitAndTrim(csv string) []string {
-	if csv == "" {
-		return nil
-	}
-	parts := strings.Split(csv, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
 // Load lê a configuração a partir do ambiente do processo. Retorna um erro
 // nomeando toda variável obrigatória ausente/inválida, caso a validação
 // falhe.
@@ -283,7 +263,7 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		App: AppConfig{
 			Env:       l.str("APP_ENV", true, ""),
-			Name:      l.str("APP_NAME", false, "projeto-nova"),
+			Name:      l.str("APP_NAME", false, "projeto-aurora"),
 			LogLevel:  l.str("APP_LOG_LEVEL", false, "info"),
 			LogFormat: l.str("LOG_FORMAT", false, "json"),
 		},

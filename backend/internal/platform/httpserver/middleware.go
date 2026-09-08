@@ -39,8 +39,7 @@ const RequestIDHeader = "X-Request-ID"
 // comentário de FromContext e do README prometerem os três campos
 // "sempre que disponíveis"). Nunca diverge de request_id aqui na origem
 // — os handlers que precisam de um correlation_id pra passar adiante
-// pra uma operação de negócio (ex.: correlationIDFromRequest em
-// scanning/transport/handlers.go) já reaproveitam exatamente este mesmo
+// pra uma operação de negócio já reaproveitam exatamente este mesmo
 // valor; as duas chaves de contexto continuam distintas (não uma só)
 // porque um fluxo de negócio pode um dia abranger mais de uma requisição
 // HTTP, cada uma com seu próprio request_id mas o mesmo correlation_id.

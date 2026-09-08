@@ -5,11 +5,6 @@ networks:
 volumes:
   postgres_data: null
   rabbitmq_data: null
-  sonarqube_db_data: null
-  sonarqube_data: null
-  sonarqube_extensions: null
-  sonarqube_logs: null
-  scanning_workspace: null
   minio_data: null
 services:
   postgres:
@@ -137,7 +132,6 @@ services:
       MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9002}
     volumes:
     - ./secrets:/run/secrets:ro
-    - scanning_workspace:/workspace
     networks:
     - aurora_internal
     depends_on:

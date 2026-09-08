@@ -41,10 +41,10 @@ const (
 // (MarkDeadLetter) num job cujo último status gravado ainda é
 // "processing" (o handler original, legítimo). Antes desta mudança, essa
 // chamada também era rejeitada — o job ficava PRESO pra sempre em
-// "processing", sem nenhum estado terminal nunca registrado.
-// HandleScanDeadLetter (scanning/application/service.go) já documentava
-// essa possibilidade ("job nunca passou por MarkFailed antes de ser dado
-// como esgotado") mas o mapa de transições não cobria o caso — dead-letter
+// "processing", sem nenhum estado terminal nunca registrado. Um handler
+// de dead-letter de módulo de negócio precisa poder registrar "job nunca
+// passou por MarkFailed antes de ser dado como esgotado", mas o mapa de
+// transições não cobria o caso — dead-letter
 // é sempre uma desistência ADMINISTRATIVA definitiva, por isso precisa ser
 // alcançável de qualquer estado que ainda não seja terminal.
 var validTransitions = map[Status][]Status{

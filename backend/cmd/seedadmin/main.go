@@ -19,8 +19,8 @@
 //
 //	make seed-admin
 //	# ou, direto:
-//	DB_HOST=localhost DB_PORT=5432 DB_NAME=projeto_nova DB_USER=projeto_nova DB_PASSWORD=... \
-//	  go run ./cmd/seedadmin --username admin --roles nova-admin,nova-user
+//	DB_HOST=localhost DB_PORT=5432 DB_NAME=aurora DB_USER=aurora DB_PASSWORD=... \
+//	  go run ./cmd/seedadmin --username admin --roles aurora-admin,aurora-user
 package main
 
 import (

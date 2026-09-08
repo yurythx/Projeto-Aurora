@@ -16,7 +16,7 @@ import (
 	"github.com/yurythx/projeto-aurora/internal/platform/logging"
 )
 
-// Envelope é o formato de resposta padrão de todo endpoint do NIX Platform.
+// Envelope é o formato de resposta padrão de todo endpoint do Projeto Aurora.
 type Envelope struct {
 	Data  any        `json:"data"`
 	Error *ErrorBody `json:"error"`

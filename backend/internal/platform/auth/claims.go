@@ -9,12 +9,12 @@ package auth
 import "strings"
 
 type accessTokenClaims struct {
-	Subject              string                   `json:"sub"`
-	PreferredUsername    string                   `json:"preferred_username"`
-	Email                string                   `json:"email"`
-	GovBRConfiabilidade  string                   `json:"govbr_confiabilidade"`
-	RealmAccess          roleContainer            `json:"realm_access"`
-	ResourceAccess       map[string]roleContainer `json:"resource_access"`
+	Subject             string                   `json:"sub"`
+	PreferredUsername   string                   `json:"preferred_username"`
+	Email               string                   `json:"email"`
+	GovBRConfiabilidade string                   `json:"govbr_confiabilidade"`
+	RealmAccess         roleContainer            `json:"realm_access"`
+	ResourceAccess      map[string]roleContainer `json:"resource_access"`
 }
 
 type roleContainer struct {

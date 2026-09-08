@@ -19,7 +19,7 @@ import (
 // verifica", então issuer e audience coincidem deliberadamente. Também
 // serve para diferenciar nos logs/depuração um token local de um token do
 // Keycloak.
-const LocalIssuer = "projeto-nova-local"
+const LocalIssuer = "projeto-aurora-local"
 
 // minRSAKeyBits é o tamanho mínimo de chave aceito por NewLocalSigner —
 // abaixo disso a assinatura RSA não é mais considerada segura pelos

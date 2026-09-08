@@ -70,7 +70,7 @@ func countOutboxRows(t *testing.T, pool *pgxpool.Pool, aggregateID string) int {
 func TestWriter_WritesWithinTransaction(t *testing.T) {
 	pool := testPool(t)
 	truncateOutbox(t, pool)
-	writer := NewWriter("nix.test")
+	writer := NewWriter("aurora.test")
 
 	aggregateID := uuid.NewString()
 	corrID := uuid.New()
@@ -118,7 +118,7 @@ func TestWriter_WritesWithinTransaction(t *testing.T) {
 func TestWriter_RollbackDiscardsEvent(t *testing.T) {
 	pool := testPool(t)
 	truncateOutbox(t, pool)
-	writer := NewWriter("nix.test")
+	writer := NewWriter("aurora.test")
 	aggregateID := uuid.NewString()
 
 	tx, err := pool.Begin(context.Background())
@@ -151,7 +151,7 @@ func (f *failingPublisher) Publish(ctx context.Context, event events.Event) erro
 func TestPublisher_ExhaustsAttemptsAndMarksFailed(t *testing.T) {
 	pool := testPool(t)
 	truncateOutbox(t, pool)
-	writer := NewWriter("nix.test")
+	writer := NewWriter("aurora.test")
 	aggregateID := uuid.NewString()
 
 	tx, err := pool.Begin(context.Background())
@@ -245,7 +245,7 @@ func TestPublisher_PublishesPendingRowToRealBroker(t *testing.T) {
 		_, _ = ch.QueueDelete(spec.DLQName, false, false, false)
 	})
 
-	writer := NewWriter("nix.test")
+	writer := NewWriter("aurora.test")
 	aggregateID := uuid.NewString()
 	tx, err := pool.Begin(context.Background())
 	if err != nil {
@@ -318,7 +318,7 @@ func (c *countingPublisher) Publish(ctx context.Context, event events.Event) err
 func TestPublisher_ConcurrentBatches_NoDoublePublish(t *testing.T) {
 	pool := testPool(t)
 	truncateOutbox(t, pool)
-	writer := NewWriter("nix.test")
+	writer := NewWriter("aurora.test")
 
 	const rowCount = 20
 	aggregateID := uuid.NewString()

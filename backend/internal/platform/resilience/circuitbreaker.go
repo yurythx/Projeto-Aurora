@@ -1,13 +1,12 @@
 // Package resilience implementa o padrão Circuit Breaker (§ Circuit
 // Breaker & Resiliência HTTP) sobre github.com/sony/gobreaker/v2: quando
 // um provedor externo começa a falhar repetidamente, o circuito abre e
-// toda chamada subsequente falha
-// IMEDIATAMENTE com um erro de fallback amigável, em vez de continuar
-// tentando (e esperando o timeout HTTP configurado) contra um provedor
-// que já se mostrou indisponível — protege tanto o provedor externo
-// (menos carga contra um serviço já sobrecarregado) quanto o próprio NIX
-// Platform (workers não ficam presos em timeouts longos e repetidos,
-// consumindo goroutines/conexões).
+// toda chamada subsequente falha IMEDIATAMENTE com um erro de fallback
+// amigável, em vez de continuar tentando (e esperando o timeout HTTP
+// configurado) contra um provedor que já se mostrou indisponível —
+// protege tanto o provedor externo (menos carga contra um serviço já
+// sobrecarregado) quanto o próprio Projeto Aurora (workers não ficam
+// presos em timeouts longos e repetidos, consumindo goroutines/conexões).
 package resilience
 
 import (
@@ -35,7 +34,7 @@ const (
 // Options configura um Breaker.
 type Options struct {
 	// Name identifica o breaker nos logs, métricas e mensagens de erro —
-	// tipicamente o nome do provedor externo protegido, ex.: "sonarqube".
+	// tipicamente o nome do provedor externo protegido, ex.: "example-provider".
 	Name string
 
 	// MaxRequests é quantas requisições de teste são permitidas passar

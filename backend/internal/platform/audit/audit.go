@@ -31,28 +31,6 @@ const (
 	ActionJobCreated               = "job.created"
 	ActionJobCompleted             = "job.completed"
 	ActionJobFailed                = "job.failed"
-	// ActionScanRequested/ActionScanCompleted/ActionScanFailed são
-	// registradas pelo módulo scanning: pedido de scan (CreateScanJob),
-	// scan concluído com ou sem achados (RunScan/ProcessScanJob), e scan
-	// que esgotou os retries (HandleScanDeadLetter).
-	ActionScanRequested = "scan.requested"
-	ActionScanCompleted = "scan.completed"
-	ActionScanFailed    = "scan.failed"
-	// ActionProjectCreated (Fase 10) — criar um projeto por upload guarda
-	// até 50MB de código-fonte de terceiros; criar por git registra uma
-	// URL que passa a ser re-escaneada sem confirmação nenhuma toda vez
-	// que "Rodar de novo" é clicado. As duas merecem trilha de auditoria,
-	// mesmo padrão que ActionScanRequested já tem pra CreateScanJob.
-	ActionProjectCreated = "project.created"
-	// ActionFindingTriaged/ActionFindingUntriaged (Fase 14 — Maturidade
-	// de AppSec) registram quando um humano marca um achado como falso
-	// positivo/não vou corrigir/risco aceito, ou reabre um já triado —
-	// a decisão em si (Metadata carrega project_id/fingerprint/status/
-	// reason) é exatamente o tipo de coisa que uma auditoria de
-	// segurança posterior precisa conseguir reconstruir: quem suprimiu
-	// o quê, e por quê.
-	ActionFindingTriaged   = "finding.triaged"
-	ActionFindingUntriaged = "finding.untriaged"
 	// ActionLGPDConsentGiven registra a aceitação formal dos Termos de Uso
 	// e Política de Privacidade de Dados (Lei 13.709/2018 - LGPD).
 	ActionLGPDConsentGiven = "lgpd_consent_given"

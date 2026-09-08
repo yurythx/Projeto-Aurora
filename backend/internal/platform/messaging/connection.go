@@ -1,6 +1,6 @@
 // Package messaging implementa o adaptador RabbitMQ para as abstrações
 // events.EventPublisher/EventConsumer da plataforma: um exchange topic
-// (nix.events), filas duráveis por módulo com roteamento de dead-letter,
+// (aurora.events), filas duráveis por módulo com roteamento de dead-letter,
 // publisher confirms, ack/nack manual e retry baseado em backoff. Nada em
 // internal/domain nem em internal/modules importa este pacote diretamente
 // — eles dependem apenas das interfaces de events (§25), então trocar

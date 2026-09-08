@@ -1,4 +1,4 @@
-// Command api roda a API HTTP do NIX Platform: endpoints REST, notificações
+// Command api roda a API HTTP do Projeto Aurora: endpoints REST, notificações
 // via WebSocket, health/readiness/metrics. O processamento assíncrono de
 // jobs fica em cmd/worker, não aqui — os dois processos são deployados e
 // escalados separadamente (§7/§20).

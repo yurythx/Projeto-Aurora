@@ -15,25 +15,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/worker 
 # ---- runtime ----
 FROM debian:bookworm-slim AS runtime
 
-# git continua precisando estar na imagem do worker — TrivyScanner.Execute/
-# GitleaksScanner.Execute/SemgrepScanner.Execute/SonarScanner.Execute (o
-# caminho HTTP, produção) clonam o alvo aqui e só depois mandam o PATH
-# pro sidecar correspondente (ver cmd/trivy-sidecar, cmd/gitleaks-sidecar,
-# cmd/semgrep-sidecar, cmd/sonar-sidecar); os binários/runtimes
-# `trivy`/`gitleaks`/`semgrep`/`sonar-scanner`+JRE em si SAÍRAM desta
-# imagem — decisão do usuário de isolar cada scanner no próprio
-# container, como o GitGuard faz (ver
-# docs/roadmap-secops-orchestrator.md, seção "Containerização"). O
-# checksum do binário trivy, a instalação via pip do semgrep e a extração
-# do sonar-scanner-cli continuam verificados — só que agora nos
-# Dockerfiles dos sidecars, não aqui. Esta imagem não carrega mais nenhum
-# runtime de scanner — só git + o binário Go do próprio worker.
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git poppler-utils wget && \
-    rm -rf /var/lib/apt/lists/*
-
-# UID/GID FIXOS (10001), não o que "adduser" alocaria implicitamente:
-RUN groupadd -g 10001 nix && useradd -u 10001 -g nix -r -m nix && \
-    mkdir -p /workspace && chown nix:nix /workspace
+# Só o binário Go do próprio worker — nenhum runtime externo (git,
+# scanners, extração de PDF) é invocado por este processo (confirmado:
+# zero exec.Command/exec.LookPath em todo o backend).
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates wget && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd -r nix && useradd -r -g nix nix
 
 USER nix
 WORKDIR /app

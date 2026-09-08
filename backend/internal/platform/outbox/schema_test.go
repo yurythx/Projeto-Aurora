@@ -12,7 +12,7 @@ import (
 
 func validEnvelopeJSON(t *testing.T) []byte {
 	t.Helper()
-	event, err := events.New("example.job.completed", "nix.test", uuid.New(), map[string]string{"k": "v"})
+	event, err := events.New("example.job.completed", "aurora.test", uuid.New(), map[string]string{"k": "v"})
 	if err != nil {
 		t.Fatalf("events.New: %v", err)
 	}

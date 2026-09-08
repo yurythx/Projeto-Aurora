@@ -20,7 +20,7 @@ import (
 //go:embed envelope.schema.json
 var schemaFS embed.FS
 
-const schemaResourceID = "https://projeto-nova.internal/schemas/event-envelope.json"
+const schemaResourceID = "https://projeto-aurora.internal/schemas/event-envelope.json"
 
 var (
 	compileOnce    sync.Once

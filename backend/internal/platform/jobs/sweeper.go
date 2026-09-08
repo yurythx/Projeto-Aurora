@@ -38,15 +38,16 @@ type StaleJobHandler func(ctx context.Context, jobID, correlationID uuid.UUID, r
 // SEMPRE: a mensagem do RabbitMQ que disparou o processamento já foi
 // confirmada (ack) muito antes de o worker morrer, então nenhuma
 // redelivery chega nunca, e a UI mostra "Rodando" indefinidamente — o
-// achado real que levou a este arquivo existir (usuário viu um scan
-// SonarQube preso em "0% Rodando" desde a noite anterior, sem nunca
+// achado real que levou a este arquivo existir (usuário viu um job de
+// longa duração preso em "Rodando" desde a noite anterior, sem nunca
 // terminar).
 //
 // staleAfter precisa ficar ACIMA do maior timeout interno legítimo de
-// qualquer scanner (hoje: SCANNING_ZAP_SCAN_TIMEOUT, 30min por padrão) —
-// um job legitimamente ainda em andamento não deveria nunca ser varrido
-// por engano. Se isso acontecer mesmo assim (staleAfter configurado
-// baixo demais, ou um scan genuinamente mais lento que o esperado), o
+// qualquer handler síncrono registrado (ver o comentário de
+// consumer_timeout em deploy/rabbitmq.conf) — um job legitimamente ainda
+// em andamento não deveria nunca ser varrido por engano. Se isso
+// acontecer mesmo assim (staleAfter configurado baixo demais, ou um job
+// genuinamente mais lento que o esperado), o
 // handler original — se algum dia voltar a se manifestar — tenta gravar
 // num job que já virou "dead_letter"; CanTransition rejeita essa escrita
 // (DeadLetter não tem transição de saída nenhuma) e o SELECT ... FOR
