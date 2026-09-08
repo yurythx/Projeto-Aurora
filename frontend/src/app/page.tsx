@@ -22,20 +22,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { PublicShell } from "@/components/layout/PublicShell";
 
 const description =
-  "Projeto Aurora — Plataforma Enterprise Base Genérica, pronta para acoplamento de múltiplos módulos de domínio com Clean Architecture e DevSecOps.";
+  "Projeto Aurora — Plataforma Enterprise Base baseada em Arquitetura Microkernel (Plug-in System) com Clean Architecture, DevSecOps e conformidade com o Governo Federal.";
 
 export const metadata: Metadata = {
-  title: "Projeto Aurora — Plataforma Enterprise Base",
+  title: "Projeto Aurora — Plataforma Base Microkernel",
   description,
   openGraph: { title: "Projeto Aurora", description, type: "website" },
 };
 
 const pillars = [
-  { n: 1, label: "Autenticação OIDC Gov.br / Keycloak" },
-  { n: 2, label: "e-MAG Acessibilidade & VLibras" },
-  { n: 3, label: "Identidade Visual DSGov / White-Label" },
-  { n: 4, label: "LGPD & Mascaramento PII em Logs" },
-  { n: 5, label: "Headers Defensivos OWASP & CSP" },
+  { n: 1, label: "Arquitetura Microkernel & Plug-ins" },
+  { n: 2, label: "Autenticação OIDC Gov.br / Keycloak" },
+  { n: 3, label: "e-MAG Acessibilidade & VLibras" },
+  { n: 4, label: "Identidade Visual DSGov / White-Label" },
+  { n: 5, label: "LGPD & Mascaramento PII em Logs" },
   { n: 6, label: "Auditoria Imutável & Interoperabilidade" },
 ];
 
@@ -75,27 +75,27 @@ const govModules = [
 const services = [
   {
     icon: LinkIcon,
-    title: "Arquitetura Modular Clean Code",
+    title: "Arquitetura Microkernel (Plug-in System)",
     description:
-      "Estrutura isolada em Go 1.25. Adicione novos módulos de negócio com total desacoplamento e governança.",
+      "Core Kernel centralizado em Go 1.25. Acople e gerencie novos módulos de negócio como plug-ins independentes com desacoplamento total.",
   },
   {
     icon: Bell,
     title: "Notificações em Tempo Real",
     description:
-      "Hub WebSocket integrado para retransmissão instantânea de eventos de plataforma aos clientes.",
+      "Hub WebSocket integrado ao Kernel para retransmissão instantânea de eventos dos plug-ins aos clientes.",
   },
   {
     icon: ScrollText,
     title: "Trilha de Auditoria LGPD",
     description:
-      "Toda ação de escrita é registrada em logs de auditoria imutáveis no Postgres com proveniência e contexto.",
+      "Toda ação de escrita nos plug-ins é registrada em logs de auditoria imutáveis no Postgres com proveniência e contexto.",
   },
   {
     icon: ShieldCheck,
     title: "Resiliência & Outbox Transacional",
     description:
-      "Escrita atômica no banco de dados e publicação em background no RabbitMQ com entrega Exactly-Once.",
+      "Escrita atômica no banco de dados e publicação em background no RabbitMQ com entrega Exactly-Once para todos os módulos.",
   },
 ];
 

@@ -66,9 +66,9 @@ const owaspMapping = [
 const principles = [
   {
     icon: Layers,
-    title: "Monólito Modular Clean Code",
+    title: "Arquitetura Microkernel (Plug-in System)",
     description:
-      "Um único deployable em Go 1.25, dividido em módulos isolados — simplicidade operacional com capacidade de escalar novas regras de negócio.",
+      "Core System (Kernel) robusto em Go 1.25 que fornece infraestrutura de segurança e auth, pronto para acoplamento de novos plug-ins de negócio com desacoplamento total.",
   },
   {
     icon: RefreshCw,

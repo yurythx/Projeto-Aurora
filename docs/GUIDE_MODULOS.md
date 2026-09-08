@@ -1,36 +1,41 @@
-# Guia de Desenvolvimento de Novos Módulos — Projeto Aurora
+# Guia de Desenvolvimento de Novos Módulos (Plug-ins) — Projeto Aurora
 
-Este documento é o guia oficial para engenheiros que vão criar novos módulos de negócio sobre a plataforma **Projeto Aurora**. Siga estas convenções para manter a modularidade, desacoplamento e consistência arquitetural.
+Este documento é o guia oficial para engenheiros que vão criar novos **módulos de negócio (plug-ins)** sobre o **Core System (Kernel)** da plataforma **Projeto Aurora**. Siga estas convenções para manter o isolamento de domínio, o desacoplamento e a consistência da **Arquitetura Microkernel**.
 
 ---
 
-## 🏗️ Visão Geral da Arquitetura
+## 🏗️ Visão Geral da Arquitetura Microkernel
 
-O Projeto Aurora utiliza uma arquitetura em **Camadas Limpas (Clean Architecture)** orientada a eventos via **Transactional Outbox**.
+O Projeto Aurora utiliza o modelo **Microkernel (Plug-in Architecture)** combinado a **Camadas Limpas (Clean Architecture)** e comunicação assíncrona orientada a eventos via **Transactional Outbox**:
 
 ```
-   Navegador (React / Next.js)
+   Navegador (React / Next.js DSGov Shell)
         │  ▲
         │  │ (WebSocket Events)
         ▼  │
    BFF Proxy (/api/backend/*)
         │
         ▼
-   Backend Core (Go REST API)
-        │
-  ┌─────┴─────────────────────┐
-  │ Handler -> Service -> Repo│
-  └─────┬─────────────────────┘
-        │ (Transação ACID)
-  ┌─────┴─────────────────────┐
-  │ PostgreSQL (Outbox Table) │
-  └─────┬─────────────────────┘
-        │ (Outbox Worker)
-        ▼
-     RabbitMQ
-        │
-        ▼
-   WebSocket Hub -> Cliente
+ ┌──────────────────────────────────────────────────────────┐
+ │               CORE SYSTEM (KERNEL) — GO                  │
+ │  (Auth OIDC, LGPD, Audit, Rate Limit, Outbox, WS Hub)    │
+ └──────────────────────────┬───────────────────────────────┘
+                            │ (Injeção de Dependências)
+                            ▼
+ ┌──────────────────────────────────────────────────────────┐
+ │          PLUG-IN DE NEGÓCIO (ex.: patrimonio)            │
+ │  Transport (Chi) -> Application -> Domain -> Postgres    │
+ └──────────────────────────┬───────────────────────────────┘
+                            │ (Transação ACID)
+ ┌──────────────────────────┴───────────────────────────────┐
+ │ PostgreSQL (Tabela do Módulo + Tabela Outbox)            │
+ └──────────────────────────┬───────────────────────────────┘
+                            │ (Outbox Worker)
+                            ▼
+                         RabbitMQ
+                            │
+                            ▼
+                       WebSocket Hub -> Cliente
 ```
 
 ---

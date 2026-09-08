@@ -1,8 +1,8 @@
 # Projeto Aurora — Plataforma Enterprise Base Governamental
 
-O **Projeto Aurora** é uma plataforma corporativa modular em Go (Backend) e Next.js App Router (Frontend), desenvolvida para servir como **base enterprise genérica em estrita conformidade com as normas do Governo Federal Brasileiro** (SGD/MGI, e-MAG 2.0, DSGov, LGPD, Gov.br e OWASP) para o rápido desenvolvimento e desacoplamento de novas aplicações corporativas e módulos municipais.
+O **Projeto Aurora** é uma plataforma corporativa modular construída segundo o padrão de **Arquitetura Microkernel (Plug-in Architecture)** em Go (Backend) e Next.js App Router (Frontend), desenvolvida para servir como **base enterprise genérica em estrita conformidade com as normas do Governo Federal Brasileiro** (SGD/MGI, e-MAG 2.0, DSGov, LGPD, Gov.br e OWASP) para o rápido desenvolvimento e desacoplamento de novos módulos de negócio municipais e estaduais.
 
-Ele fornece toda a infraestrutura pronta de segurança HTTP, mensageria, outbox transacional, autenticação OIDC Gov.br / Local, mascaramento PII, auditoria imutável, suporte a motor de busca e um Design System governamental oficial (DSGov / e-MAG).
+Ele fornece um **Core System (Kernel)** robusto com infraestrutura pronta de segurança HTTP, mensageria, outbox transacional, autenticação OIDC Gov.br / Local, mascaramento PII, auditoria imutável, busca full-text em PostgreSQL e um Design System governamental oficial (DSGov / e-MAG).
 
 ---
 
@@ -18,16 +18,17 @@ O Projeto Aurora atende integralmente aos 5 módulos de conformidade exigidos pe
 
 ---
 
-## 🏗️ Arquitetura e Recursos Prontos
+## 🏗️ Arquitetura Microkernel e Recursos Prontos
 
-- **Monólito Modular & Clean Architecture:** Estrutura pronta para acoplamento de módulos em `internal/modules/`.
-- **Módulo Modelo Template (`example`):** Exemplo completo de módulo com camadas Clean Architecture (`domain`, `application`, `infrastructure`, `transport`).
+- **Arquitetura Microkernel (Core System + Plug-ins):** O Kernel central (`internal/platform`) gerencia a infraestrutura, resiliência e segurança, enquanto novos módulos de negócio (`internal/modules/`) funcionam como plug-ins isolados e desacoplados.
+- **Clean Architecture nos Módulos:** Módulos de negócio com separação estrita de camadas (`domain`, `application`, `infrastructure`, `transport`).
+- **Módulo Modelo Template (`example`):** Blueprint prático e de referência para novos plug-ins.
 - **Autenticação Dupla:** Suporte a Keycloak SSO / Gov.br (OIDC) e autenticação local com chaves RSA / bcrypt e rate limiting.
 - **Outbox Transacional & RabbitMQ:** Escrita atômica no PostgreSQL e publicação assíncrona no RabbitMQ com filas Dead-Letter Queue (DLQ).
 - **Auditoria Imutável:** Registros de auditoria append-only protegidos no nível do PostgreSQL.
-- **WebSocket Server:** Broker WebSocket para retransmissão de notificações em tempo real.
+- **WebSocket Server:** Broker WebSocket para retransmissão de notificações em tempo real aos plug-ins.
 - **Object Storage (MinIO S3):** Armazenamento de arquivos via URLs pré-assinadas.
-- **Motor de Busca (Typesense 27+):** Motor de busca ultrarrápido configurado para consumo seguro via chave restrita.
+- **Busca Full-Text Nativa:** Indexação e busca otimizada no PostgreSQL via `tsvector` e `pg_trgm`.
 
 ---
 
@@ -35,30 +36,29 @@ O Projeto Aurora atende integralmente aos 5 módulos de conformidade exigidos pe
 
 ```text
 .
-├── backend/                   # ⚙️ Backend (Go 1.25+)
+├── backend/                   # ⚙️ Backend em Go (1.25+) — Arquitetura Microkernel
 │   ├── cmd/
 │   │   ├── api/               # API REST e Servidor WebSocket
 │   │   ├── worker/            # Processador background RabbitMQ / Outbox
 │   │   └── seedadmin/         # CLI para semente de usuário administrador local
 │   ├── internal/
-│   │   ├── app/               # Injeção central de dependências e roteamento
+│   │   ├── app/               # Wiring central, injeção de dependências e roteamento
 │   │   ├── domain/            # Tipos e erros primitivos de domínio
-│   │   ├── platform/          # Infraestrutura compartilhada (Auth, DB, Messaging, Outbox, Audit, WS)
-│   │   └── modules/           # Módulos de Negócio
-│   │       └── example/       # Módulo Modelo / Template Genérico
+   │   ├── platform/          # 🛡️ Core System / Kernel (Auth, DB, Messaging, Outbox, Audit, WS)
+│   │   └── modules/           # 🔌 Plug-ins / Módulos de Negócio (Users, Example, Integrations)
 │   ├── migrations/            # Scripts de schema PostgreSQL (Goose)
 │   └── pkg/                   # Utilitários genéricos (httputil)
 ├── frontend/                  # 🎨 Frontend (Next.js / TypeScript / React)
 │   ├── src/
 │   │   ├── app/               # Routes App Router Next.js
-│   │   │   ├── (protected)/   # Rotas protegidas (Dashboard, Integrações, Configurações)
+│   │   │   ├── (protected)/   # Rotas protegidas dos plug-ins (Dashboard, Integrações, Configurações)
 │   │   │   ├── login/         # Login
 │   │   │   └── sobre/         # Documentação da Plataforma
 │   │   ├── components/        # Design System (ui, layout, branding, notifications)
 │   │   ├── hooks/             # Custom React Hooks
 │   │   ├── lib/               # Clientes API / WS / Auth
 │   │   └── types/             # TypeScript DTOs
-├── docker-compose.yml         # Serviços Docker (PostgreSQL, RabbitMQ, MinIO, Typesense, API, Worker, Frontend)
+├── docker-compose.yml         # Serviços Docker (PostgreSQL, RabbitMQ, MinIO, API, Worker, Frontend)
 ├── docker-compose.dev.yml     # Exposição de portas em desenvolvimento
 └── Makefile                   # Atalhos de build, testes, lint e migrations
 ```

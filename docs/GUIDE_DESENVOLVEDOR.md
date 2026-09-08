@@ -6,13 +6,18 @@ Bem-vindo ao guia de desenvolvimento e arquitetura do **Projeto Aurora**. Este d
 
 ## 🏛️ 1. Visão Geral e Arquitetura
 
-O **Projeto Aurora** é uma plataforma corporativa modular construída segundo o conceito de **Monólito Modular & Clean Architecture**:
+O **Projeto Aurora** é uma plataforma corporativa modular construída segundo o padrão de **Arquitetura Microkernel (Plug-in Architecture)** combinado a um **Monólito Modular & Clean Architecture**:
 
-- **Backend (Go 1.25)**: Estruturado em camadas estritas de separação de responsabilidade:
-  - `domain`: Entidades de negócio, interfaces de repositório e eventos.
-  - `application`: Casos de uso e orquestração de serviços.
-  - `infrastructure`: Persistência SQL no PostgreSQL e conectores de mensageria.
-  - `transport`: Handlers REST e adaptadores de entrada HTTP chi.
+- **Core System / Kernel (`internal/platform/`)**: Infraestrutura central reutilizável que fornece os serviços fundamentais da plataforma:
+  - Autenticação OIDC Gov.br / Local RSA.
+  - Segurança HTTP (Headers OWASP, CSP Nonce, Rate Limiter).
+  - Privacidade LGPD (Mascaramento PII em logs e consentimento).
+  - Resiliência e Concorrência (Transactional Outbox, RabbitMQ com DLQ, Idempotência, Circuit Breaker).
+  - Notificações em Tempo Real (WebSocket Hub com Auth via Tickets).
+  - Auditoria Imutável (PostgreSQL Append-Only).
+- **Plug-ins / Módulos de Negócio (`internal/modules/`)**: Componentes de domínio de negócio totalmente isolados e desacoplados:
+  - Cada plug-in possui sua própria divisão Clean Architecture (`domain`, `application`, `infrastructure`, `transport`).
+  - São acoplados ao Kernel via injeção de dependências e registrados dinamicamente no roteador com controle por Feature Flags (`feature_flags`).
 - **Frontend (Next.js 16 App Router & React 19)**:
   - Componentes acessíveis em conformidade com o **e-MAG 2.0 / WCAG 2.1 AA**.
   - Estilização Tailwind CSS v4 com suporte White-Label dinâmico (`BrandingProvider`).
