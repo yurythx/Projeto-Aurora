@@ -202,6 +202,17 @@ export const authOptions: NextAuthOptions = {
         token.idToken = undefined;
       }
 
+      // Decodificação NÃO-VERIFICADA do payload — não confere assinatura,
+      // issuer nem audiência. Isso é seguro aqui porque token.accessToken
+      // já veio de uma fonte confiável DENTRO deste mesmo callback (a troca
+      // OAuth com o Keycloak, ou a resposta do endpoint de login local do
+      // backend Go — nunca do navegador), nunca de um valor fornecido pelo
+      // chamador. As roles extraídas abaixo servem só para a UI decidir o
+      // que mostrar (menus, botões) — a fronteira de autorização real é
+      // sempre o backend Go (auth.RequirePermission), que valida
+      // assinatura/iss/aud a cada requisição via JWKS (ver
+      // internal/platform/auth/oidc.go). Nunca reaproveite este trecho para
+      // decodificar um token de origem menos confiável.
       if (token.accessToken && typeof token.accessToken === "string") {
         try {
           const parts = (token.accessToken as string).split(".");

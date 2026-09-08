@@ -204,6 +204,46 @@ func TestLoad_DevelopmentAllowsDefaultSecrets(t *testing.T) {
 	}
 }
 
+// TestLoad_ProductionRejectsExampleDBPassword cobre o achado de auditoria:
+// DB_PASSWORD=dev-change-this-db-password é o valor literal commitado em
+// .env.example (público), não um default de código — mas precisa ser
+// recusado em produção do mesmo jeito que os defaults do MinIO.
+func TestLoad_ProductionRejectsExampleDBPassword(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("MINIO_ACCESS_KEY", "nova-prod-access")
+	t.Setenv("MINIO_SECRET_KEY", "nova-prod-secret-strong-value")
+	t.Setenv("DB_PASSWORD", exampleDBPassword)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() deveria recusar produção com DB_PASSWORD igual ao valor de .env.example")
+	}
+	if !contains(err.Error(), "DB_PASSWORD") {
+		t.Errorf("erro deveria citar DB_PASSWORD: %v", err)
+	}
+}
+
+// TestLoad_ProductionRejectsExampleRabbitMQPassword cobre o mesmo achado
+// para RABBITMQ_URL — a senha de .env.example fica embutida na URL de
+// conexão (amqp://user:pass@host), então a checagem é por substring, não
+// igualdade exata.
+func TestLoad_ProductionRejectsExampleRabbitMQPassword(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("MINIO_ACCESS_KEY", "nova-prod-access")
+	t.Setenv("MINIO_SECRET_KEY", "nova-prod-secret-strong-value")
+	t.Setenv("RABBITMQ_URL", "amqp://aurora:"+exampleRabbitMQPassword+"@rabbitmq:5672/aurora")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() deveria recusar produção com a senha de RabbitMQ de .env.example")
+	}
+	if !contains(err.Error(), "RABBITMQ_URL") {
+		t.Errorf("erro deveria citar RABBITMQ_URL: %v", err)
+	}
+}
+
 func contains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {

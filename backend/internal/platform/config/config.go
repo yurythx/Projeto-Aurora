@@ -108,10 +108,10 @@ type JobsConfig struct {
 	// mensagem do RabbitMQ que disparou o processamento já foi
 	// confirmada (ack) muito antes de o worker morrer, nenhuma
 	// redelivery chega nunca — sem um sweeper, esse job fica preso em
-	// "processing" pra sempre (ex.: um job de sync do Diário Oficial
-	// preso indefinidamente após crash do worker).
+	// "processing" pra sempre (ex.: um job de sincronização com um
+	// provedor externo preso indefinidamente após crash do worker).
 	// O default de 45min é conservador e cobre jobs de longa duração
-	// como sincronizações completas de edições do Diário Oficial.
+	// como uma sincronização completa com um provedor externo.
 	StaleAfter time.Duration
 }
 
@@ -361,6 +361,16 @@ func Load() (*Config, error) {
 	// qualquer um ainda estiver no default inseguro — defesa contra deploy
 	// que esqueceu de sobrescrever a env (ex.: subir o docker-compose.yml
 	// como está, cujo default `:-` não força nada).
+	//
+	// A mesma checagem cobre também os valores literais de .env.example
+	// (achado de auditoria de segurança): DB_PASSWORD=aurora_pass e
+	// RABBITMQ_DEFAULT_PASS=rabbit_pass não são "defaults" no sentido de
+	// código (são required=true, sem fallback em loader.secret) — mas o
+	// arquivo em si é público (committed no git), então um operador que
+	// fizer `cp .env.example .env` num ambiente real e esquecer de trocar
+	// esses dois valores estaria, na prática, publicando a senha do banco e
+	// do broker. exampleSecretValues centraliza essa lista para não
+	// duplicá-la a cada novo segredo textual adicionado a .env.example.
 	if cfg.App.Env == "production" {
 		var weak []string
 		if cfg.MinIO.AccessKey == insecureMinioAccessKey {
@@ -369,9 +379,15 @@ func Load() (*Config, error) {
 		if cfg.MinIO.SecretKey == insecureMinioSecretKey {
 			weak = append(weak, "MINIO_SECRET_KEY")
 		}
+		if cfg.Database.Password == exampleDBPassword {
+			weak = append(weak, "DB_PASSWORD")
+		}
+		if strings.Contains(cfg.RabbitMQ.URL, exampleRabbitMQPassword) {
+			weak = append(weak, "RABBITMQ_URL (RABBITMQ_DEFAULT_PASS)")
+		}
 		if len(weak) > 0 {
 			return nil, fmt.Errorf(
-				"config: recusando iniciar em produção com segredo(s) no valor default inseguro: %s — defina uma env var forte para cada um",
+				"config: recusando iniciar em produção com segredo(s) no valor default inseguro ou de .env.example: %s — defina uma env var forte para cada um",
 				strings.Join(weak, ", "))
 		}
 	}
@@ -384,6 +400,14 @@ func Load() (*Config, error) {
 const (
 	insecureMinioAccessKey = "admin"
 	insecureMinioSecretKey = "password123"
+
+	// exampleDBPassword/exampleRabbitMQPassword são os valores literais
+	// commitados em .env.example — nunca defaults de código (DB_PASSWORD e
+	// RABBITMQ_URL são required=true, sem fallback), mas o arquivo em si é
+	// público, então valem a mesma checagem de produção que os defaults do
+	// MinIO acima. Ver o comentário em Load().
+	exampleDBPassword       = "dev-change-this-db-password"
+	exampleRabbitMQPassword = "dev-change-this-rabbitmq-password"
 )
 
 // minioConfig monta MinIOConfig, derivando o endpoint público (para URLs
