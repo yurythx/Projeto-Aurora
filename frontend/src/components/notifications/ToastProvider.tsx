@@ -19,7 +19,10 @@ interface ToastContextValue {
 const ToastContext = createContext<ToastContextValue | null>(null);
 
 // Toda notificação some sozinha depois de 6s, além de poder ser fechada
-// manualmente pelo botão "X" do Toast (ver dismiss abaixo).
+// manualmente pelo botão "X" do Toast (ver dismiss abaixo). A-16: o timer
+// pausa enquanto o mouse/foco estiver sobre o toast (ver pause/resume) —
+// WCAG 2.2.1 Timing Adjustable exige que conteúdo temporizado possa ser
+// pausado/estendido, não só dispensado manualmente.
 const AUTO_DISMISS_MS = 6000;
 
 // Provedor da pilha de toasts, montado uma vez no DashboardShell. Guarda
@@ -34,27 +37,82 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   // P-05: guarda os timers de auto-dismiss para poder cancelá-los — sem
   // isto um `setTimeout` órfão chamava setState após o unmount do provider.
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // A-16: quanto tempo falta (em ms) para cada toast se dispensar sozinho,
+  // e quando o segmento de contagem atual começou — junto dão o "tempo
+  // restante" certo depois de uma pausa, em vez de reiniciar do zero ou
+  // usar sempre AUTO_DISMISS_MS de novo.
+  const remainingRef = useRef<Map<string, number>>(new Map());
+  const startedAtRef = useRef<Map<string, number>>(new Map());
 
-  const dismiss = useCallback((id: string) => {
+  const clearTimer = useCallback((id: string) => {
     const timer = timersRef.current.get(id);
     if (timer) {
       clearTimeout(timer);
       timersRef.current.delete(id);
     }
-    setToasts((current) => current.filter((t) => t.id !== id));
   }, []);
+
+  const dismiss = useCallback(
+    (id: string) => {
+      clearTimer(id);
+      remainingRef.current.delete(id);
+      startedAtRef.current.delete(id);
+      setToasts((current) => current.filter((t) => t.id !== id));
+    },
+    [clearTimer],
+  );
+
+  const scheduleDismiss = useCallback(
+    (id: string, ms: number) => {
+      startedAtRef.current.set(id, Date.now());
+      timersRef.current.set(
+        id,
+        setTimeout(() => dismiss(id), ms),
+      );
+    },
+    [dismiss],
+  );
+
+  // A-16: pausa o auto-dismiss (hover ou foco de teclado no toast) —
+  // guarda quanto tempo realmente restava, para o resume retomar dali em
+  // vez de do início.
+  const pause = useCallback(
+    (id: string) => {
+      const startedAt = startedAtRef.current.get(id);
+      const remaining = remainingRef.current.get(id) ?? AUTO_DISMISS_MS;
+      if (startedAt !== undefined) {
+        const elapsed = Date.now() - startedAt;
+        remainingRef.current.set(id, Math.max(0, remaining - elapsed));
+      }
+      clearTimer(id);
+    },
+    [clearTimer],
+  );
+
+  // A-16: retoma a contagem pelo tempo que faltava. Se já não sobrava
+  // tempo nenhum (pausou bem no fim), dispensa na hora — não trava o
+  // toast na tela pra sempre.
+  const resume = useCallback(
+    (id: string) => {
+      const remaining = remainingRef.current.get(id) ?? AUTO_DISMISS_MS;
+      if (remaining <= 0) {
+        dismiss(id);
+        return;
+      }
+      scheduleDismiss(id, remaining);
+    },
+    [dismiss, scheduleDismiss],
+  );
 
   const showToast = useCallback<ToastContextValue["showToast"]>(
     ({ title, description, tone = "info" }) => {
       idRef.current += 1;
       const id = `toast-${idRef.current}`;
       setToasts((current) => [...current, { id, title, description, tone }]);
-      timersRef.current.set(
-        id,
-        setTimeout(() => dismiss(id), AUTO_DISMISS_MS),
-      );
+      remainingRef.current.set(id, AUTO_DISMISS_MS);
+      scheduleDismiss(id, AUTO_DISMISS_MS);
     },
-    [dismiss],
+    [scheduleDismiss],
   );
 
   // Limpa todos os timers pendentes no unmount.
@@ -76,7 +134,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       >
         {toasts.map((toast) => (
           <div key={toast.id} className="pointer-events-auto">
-            <Toast toast={toast} onDismiss={dismiss} />
+            <Toast toast={toast} onDismiss={dismiss} onPause={pause} onResume={resume} />
           </div>
         ))}
       </div>

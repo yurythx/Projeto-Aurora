@@ -99,6 +99,13 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
                   href={link.href}
                   onClick={onCloseMobile}
                   title={collapsed ? link.label : undefined}
+                  // A-15: com a Sidebar recolhida no desktop, o <span> do
+                  // rótulo vira `md:hidden` (removido da árvore de
+                  // acessibilidade) e o ícone é aria-hidden — sem
+                  // aria-label o link fica sem NENHUM nome acessível
+                  // (title não é uma fonte confiável de nome acessível ao
+                  // navegar por teclado/leitor de tela).
+                  aria-label={collapsed ? link.label : undefined}
                   aria-current={active ? "page" : undefined}
                   className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors
                     ${active ? "bg-primary/10 text-primary" : "text-foreground hover:bg-black/5 dark:hover:bg-white/5"}

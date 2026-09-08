@@ -15,7 +15,21 @@ const toneBorder: Record<ToastTone, string> = {
   danger: "border-l-status-offline",
 };
 
-export function Toast({ toast, onDismiss }: { toast: ToastData; onDismiss: (id: string) => void }) {
+export function Toast({
+  toast,
+  onDismiss,
+  onPause,
+  onResume,
+}: {
+  toast: ToastData;
+  onDismiss: (id: string) => void;
+  /** A-16: pausa o auto-dismiss enquanto o mouse ou o foco de teclado
+   * estiverem sobre o toast (WCAG 2.2.1 Timing Adjustable) — sem isso, um
+   * usuário que precise de mais tempo pra ler ou alcançar o botão "✕"
+   * pode perder a notificação antes de conseguir agir. */
+  onPause: (id: string) => void;
+  onResume: (id: string) => void;
+}) {
   return (
     // w-[calc(100vw-2rem)] max-w-80 — § revisão de mobile 2026-08: um
     // toast de 320px fixos (w-80) ancorado a 1rem da borda direita
@@ -24,6 +38,10 @@ export function Toast({ toast, onDismiss }: { toast: ToastData; onDismiss: (id: 
     // Limitado à viewport menos a margem em telas pequenas, sem perder o
     // tamanho de 320px de antes em telas maiores.
     <div
+      onMouseEnter={() => onPause(toast.id)}
+      onMouseLeave={() => onResume(toast.id)}
+      onFocus={() => onPause(toast.id)}
+      onBlur={() => onResume(toast.id)}
       className={`w-[calc(100vw-2rem)] max-w-80 rounded-lg border border-surface-border border-l-4 bg-surface p-3 shadow-md ${toneBorder[toast.tone]}`}
     >
       <div className="flex items-start justify-between gap-2">
