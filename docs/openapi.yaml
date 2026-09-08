@@ -1,12 +1,16 @@
 openapi: 3.0.3
 info:
-  title: NIX Platform API
+  title: Projeto Aurora API
   description: |
-    API REST do NIX Platform — um monólito modular que centraliza
-    integrações, automação e notificações. Todo endpoint autenticado espera
-    um access token OIDC emitido pelo Keycloak como Bearer JWT; o backend o
-    valida localmente contra um JWKS em cache (nunca com uma chamada por
-    requisição ao Keycloak — ver §29 do documento de arquitetura).
+    API REST do Projeto Aurora — Core System (Kernel) em Go sobre
+    Arquitetura Microkernel: infraestrutura de autenticação, auditoria,
+    outbox transacional e mensageria compartilhada por todo módulo de
+    negócio (plug-in) registrado em `internal/modules/`. Todo endpoint
+    autenticado espera um access token OIDC emitido pelo Keycloak (ou pelo
+    login local, um caminho adicional — ver tag `auth`) como Bearer JWT; o
+    backend o valida localmente contra um JWKS em cache (nunca com uma
+    chamada por requisição ao Keycloak — ver §29 do documento de
+    arquitetura).
 
     Toda resposta usa o mesmo envelope:
     `{"data": <payload|null>, "error": {"code","message"}|null, "meta": {...}|omitido}`.
@@ -56,28 +60,25 @@ tags:
     description: O chamador autenticado e o diretório de usuários.
   - name: integrations
     description: Status de cada integração externa configurada.
-  - name: scanning
-    description: >
-      SecOps Orchestrator (ver docs/roadmap-secops-orchestrator.md): dispara
-      scanners de segurança registrados (hoje: trivy) contra um alvo e
-      consulta os achados. Job assíncrono.
   - name: websocket
     description: Emissão de ticket para notificações em tempo real.
   - name: admin
-    description: "Operações administrativas restritas ao papel nix-admin, ex.: feature flags."
-  - name: contratos
+    description: "Operações administrativas restritas ao papel aurora-admin, ex.: feature flags."
+  - name: lgpd
     description: >
-      Cadastro e ciclo de vida dos contratos administrativos municipais.
-      Leitura exige `contratos:read`; escrita `contratos:manage`.
-  - name: demands
+      Consentimento formal aos Termos de Uso/Privacidade (Lei 13.709/2018).
+      Cada usuário só consulta e aceita o PRÓPRIO consentimento — não há
+      leitura de terceiros aqui.
+  - name: audit
     description: >
-      Kanban de 6 etapas da liquidação de pagamento mensal (IN SCL
-      01/2019): Elaborar OF → Tramitar Planejamento → Emitir OS → Execução
-      e Recepção → Relatório Pgto/Certidões → Contabilidade. Ver o card,
-      o checklist da próxima etapa e o histórico exige `demands:read`;
-      mover o card e anexar documentos de compliance são ações fiscais e
-      exigem `demands:manage` (papel `nova-fiscal` recebe as duas). As
-      escritas passam por rate limiting por usuário.
+      Exportação da trilha de auditoria imutável (audit_logs) em CSV, para
+      fins de transparência/LAI. Restrito a `audit:read`.
+  - name: example
+    description: >
+      Módulo Modelo (`internal/modules/example`) — blueprint de referência
+      Clean Architecture para novos módulos de negócio, exposto em
+      `/exemplos` no frontend quando a feature flag
+      `module_exemplos_enabled` está ativa.
 
 security:
   - bearerAuth: []
@@ -349,554 +350,6 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /api/v1/scanning/scans:
-    post:
-      tags: [scanning]
-      summary: Dispara um scan assíncrono contra um alvo
-      operationId: createScan
-      description: >
-        Não executa o(s) scanner(s) em si. Cria um job, o persiste junto com
-        um evento de outbox em uma única transação, e retorna imediatamente
-        — o worker o processa (clona o alvo via git e roda cada scanner
-        pedido), e o frontend é notificado via WebSocket quando ele
-        concluir ou falhar. `job_id` retornado é o mesmo `scan_id` usado em
-        `GET /api/v1/scanning/scans/{scanID}/findings`. Sujeito a rate
-        limiting por chamador. Aceita `Idempotency-Key`.
-
-        `scanners` aceita mais de um nome — todos rodam em PARALELO contra
-        o mesmo alvo, sob o mesmo job/`scan_id` (Fase 7 — Orquestração
-        concorrente). Um scanner que falha não afeta os demais: o job é
-        marcado concluído se PELO MENOS UM tiver sucesso (achados só dos
-        que tiveram sucesso; os que falharam ficam registrados no
-        resultado do job e na auditoria) — só falha por completo, sujeito
-        a retry, se TODOS falharem.
-      security:
-        - bearerAuth: [scanning:manage]
-      parameters:
-        - $ref: "#/components/parameters/IdempotencyKey"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [scanners, target]
-              properties:
-                scanners:
-                  type: array
-                  minItems: 1
-                  description: Um ou mais nomes de CodeScanner registrado — todos rodam em paralelo.
-                  items:
-                    type: string
-                    enum: ["trivy", "semgrep", "sonarqube", "zap"]
-                  example: ["trivy", "semgrep"]
-                target:
-                  type: string
-                  description: >
-                    Para "trivy" (dependências, Dockerfiles), "semgrep"
-                    (SAST) e "sonarqube" (qualidade de código/bugs) — os
-                    três clonam o alvo via git antes de escanear: uma URL
-                    git https://, com um branch/tag opcional após "#"
-                    (ex.: "https://github.com/org/repo.git#main"). Só
-                    https:// é aceito; o host é resolvido e rejeitado se
-                    apontar para um IP privado/loopback/link-local (defesa
-                    de SSRF, ver docs/roadmap-secops-orchestrator.md). O
-                    scanner "sonarqube" exige SCANNING_SONARQUBE_URL
-                    configurada no worker (503 DEPENDENCY_UNAVAILABLE caso
-                    contrário) e leva mais tempo — além do scan em si, o
-                    worker espera a Compute Engine do servidor terminar de
-                    processar o relatório enviado.
-
-                    Para "zap" (DAST) — completamente diferente: o alvo é
-                    uma URL http(s) de um serviço RODANDO DE VERDADE (não
-                    um repositório git), que o ZAP ativamente ataca
-                    (spider + scan ativo — injeção, XSS, etc.). Exige que
-                    o host do alvo esteja na allowlist configurada em
-                    SCANNING_ZAP_ALLOWED_HOSTS — vazia por padrão, recusa
-                    TODO alvo até um host de staging/homologação ser
-                    explicitamente autorizado (400 VALIDATION_ERROR caso
-                    contrário). Nunca aponte para produção.
-                  example: "https://github.com/org/repo.git#main"
-      responses:
-        "202":
-          $ref: "#/components/responses/TestJobAccepted"
-        "400":
-          description: Corpo inválido (target vazio, JSON malformado).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          description: Um ou mais nomes em `scanners` não estão registrados — nenhum job é criado nesse caso, nem para os nomes válidos.
-          content:
-            application/json:
-              example:
-                data: null
-                error: { code: "NOT_FOUND", message: "scanner(s) not registered: does-not-exist" }
-        "409":
-          $ref: "#/components/responses/IdempotencyConflict"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-
-  /api/v1/scanning/scanners/health:
-    get:
-      tags: [scanning]
-      summary: Checa a saúde de cada scanner registrado (reestruturação de /seguranca)
-      operationId: getScannersHealth
-      description: >
-        Checa, em paralelo, se a dependência externa de cada scanner (sidecar containerizado, ou —
-        pro ZAP — o daemon em si) está viva, sem rodar um scan de verdade — pensado pra uma tela que
-        o usuário olha ANTES de disparar um scan novo. Timeout curto (5s) por scanner: um sidecar
-        travado nunca faz esta consulta demorar mais que isso. Um scanner registrado que não
-        implementa a checagem (não deveria acontecer — os 6 de hoje implementam todos) simplesmente
-        não aparece na resposta.
-      security:
-        - bearerAuth: [scanning:read]
-      responses:
-        "200":
-          description: Um item por scanner que sabe se auto-checar.
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Envelope"
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: "#/components/schemas/ScannerHealth"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-
-  /api/v1/scanning/scans/{scanID}/findings:
-    get:
-      tags: [scanning]
-      summary: Lista os achados de uma execução de scan
-      operationId: listScanFindings
-      security:
-        - bearerAuth: [scanning:read]
-      parameters:
-        - name: scanID
-          in: path
-          required: true
-          description: O mesmo `job_id` recebido de `POST /api/v1/scanning/scans`.
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: Todo achado do scan (lista vazia se ainda não concluiu, ou se não encontrou nada).
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Envelope"
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: "#/components/schemas/Finding"
-        "400":
-          description: scanID não é um UUID válido.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-
-  /api/v1/scanning/findings:
-    get:
-      tags: [scanning]
-      summary: Lista os achados mais graves/recentes entre TODAS as execuções de scan
-      operationId: listRecentFindings
-      description: >
-        Diferente de `GET /api/v1/scanning/scans/{scanID}/findings` (escopado a um scan_id já
-        conhecido), este endpoint não exige saber um scan_id de antemão — o feed usado pela UI
-        (Fase 9 do roadmap de segurança) pra listar achados recentes por severidade.
-      security:
-        - bearerAuth: [scanning:read]
-      parameters:
-        - $ref: "#/components/parameters/Page"
-        - $ref: "#/components/parameters/PageSize"
-        - name: limit
-          in: query
-          required: false
-          description: >
-            Alias de page_size, aceito por compatibilidade com chamador anterior à Fase 14
-            (Maturidade de AppSec) — só usado quando page_size não vem explícito. Prefira page_size
-            em código novo.
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: >
-            Uma PÁGINA de achados, mais graves/recentes primeiro (lista vazia se nenhum scan rodou
-            ainda). Antes da Fase 14, este endpoint tinha um `limit` sem `OFFSET` (teto fixo de 200)
-            — qualquer achado além disso nunca aparecia; agora é paginação de verdade, mesmo
-            contrato que GET /api/v1/users já usa.
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Envelope"
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: "#/components/schemas/Finding"
-                      meta:
-                        $ref: "#/components/schemas/PaginationMeta"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-
-  /api/v1/scanning/scans/{scanID}/findings.csv:
-    get:
-      tags: [scanning]
-      summary: Exporta os achados de uma execução de scan em CSV (Fase 14 — Maturidade de AppSec)
-      operationId: exportScanFindingsCSV
-      description: >
-        Equivalente em CSV de GET /api/v1/scanning/scans/{scanID}/findings — uma linha por achado,
-        sem deduplicação (é UM scan). A primeira exportação desta plataforma; até a Fase 14, tirar
-        um achado da NIX significava copiar da tela na mão ou consumir a API JSON.
-      security:
-        - bearerAuth: [scanning:read]
-      parameters:
-        - name: scanID
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: Arquivo CSV, com Content-Disposition attachment (download, não exibição inline).
-          content:
-            text/csv:
-              schema:
-                type: string
-        "400":
-          description: scanID não é um UUID válido.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-
-  /api/v1/scanning/scans/{scanID}/findings.sarif:
-    get:
-      tags: [scanning]
-      summary: Exporta os achados de uma execução de scan em SARIF 2.1.0 (shift-left)
-      operationId: exportScanFindingsSarif
-      description: >
-        O formato que GitHub Code Scanning/Azure DevOps consomem nativamente — um upload vira
-        anotação direto no diff do PR e na aba Security, sem esta plataforma construir UI de
-        comentário em PR própria. Um run por scanner que participou do scan (RequestedScanners que
-        tiveram sucesso), inclusive um scanner que rodou e não achou nada (results: []) — um
-        consumidor de SARIF usa a AUSÊNCIA de um run pra inferir "essa ferramenta nunca rodou", o que
-        seria enganoso pra um scanner limpo. Uma rule por Finding.ID distinto dentro de cada run
-        (achado repetido em arquivos diferentes vira 1 rule + N results). Severidade CRITICAL/HIGH
-        vira level "error" (o único nível que barra um gate de CI por padrão no GitHub Code Scanning),
-        MEDIUM vira "warning", LOW vira "note"; cada rule carrega também
-        properties["security-severity"] (convenção do GitHub, score 0.0–10.0 em texto) pra colorir a
-        severidade na aba Security. O documento raiz é o SARIF cru (nunca o envelope {data, error,
-        meta} padrão desta API) — validado com ajv-cli contra o schema oficial 2.1.0 antes deste
-        endpoint ser publicado.
-      security:
-        - bearerAuth: [scanning:read]
-      parameters:
-        - name: scanID
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: >
-            Documento SARIF 2.1.0, com Content-Disposition attachment (download, não exibição
-            inline).
-          content:
-            application/sarif+json:
-              schema:
-                type: object
-        "400":
-          description: scanID não é um UUID válido.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-
-  /api/v1/scanning/posture:
-    get:
-      tags: [scanning]
-      summary: Resumo agregado de achados abertos entre todo projeto (Fase 14 — Maturidade de AppSec)
-      operationId: getSecurityPosture
-      description: >
-        Achados ABERTOS = ainda presentes no scan mais recente de cada projeto E não triados — nunca
-        um COUNT(*) direto em scan_findings, que contaria o mesmo achado uma vez por re-scan. Escopado
-        a projetos persistentes (Fase 10); um scan avulso sem projeto não entra nesta contagem, pelo
-        mesmo motivo que não entra em GET /api/v1/scanning/projects/{projectID}/findings-history.
-        Alimenta o card "Postura de segurança" do dashboard.
-      security:
-        - bearerAuth: [scanning:read]
-      responses:
-        "200":
-          description: O resumo agregado.
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Envelope"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/SecurityPosture"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-
-  /api/v1/scanning/posture/history:
-    get:
-      tags: [scanning]
-      summary: Série temporal de SecurityPosture (Fase 14, continuação — tendência histórica)
-      operationId: getSecurityPostureHistory
-      description: >
-        Um ponto por dia, gravado periodicamente pelo worker (nunca por esta requisição — GET aqui só
-        lê o que já foi gravado). Alimenta o gráfico de tendência do dashboard — "estamos melhorando
-        ou piorando?", a pergunta que GET /api/v1/scanning/posture sozinho (só o AGORA) não respondia.
-      security:
-        - bearerAuth: [scanning:read]
-      parameters:
-        - name: days
-          in: query
-          required: false
-          description: Quantos dias de histórico. <= 0 ou ausente usa o default (30); acima de 366 é reduzido a 366.
-          schema:
-            type: integer
-            default: 30
-      responses:
-        "200":
-          description: Snapshots, data mais antiga primeiro (lista vazia se o worker ainda não gravou nenhum).
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Envelope"
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: "#/components/schemas/PostureSnapshot"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-
-  /api/v1/scanning/projects/{projectID}/findings-history:
-    get:
-      tags: [scanning]
-      summary: Histórico de achados deduplicado de um projeto (Fase 12)
-      operationId: listProjectFindingsHistory
-      description: >
-        Um achado por fingerprint, não por linha de scan_findings — "apareceu pela primeira vez no
-        scan de 12/08, ainda presente no scan de 20/08" em vez de listar a mesma vulnerabilidade uma
-        vez por re-scan. Nunca documentado antes desta revisão (Fase 14), apesar de existir desde a
-        Fase 12 — lacuna da documentação, não do endpoint em si.
-      security:
-        - bearerAuth: [scanning:read]
-      parameters:
-        - name: projectID
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: Histórico deduplicado, achado aberto e não triado primeiro (lista vazia se o projeto nunca rodou um scan).
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Envelope"
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: "#/components/schemas/ProjectFindingHistory"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-
-  /api/v1/scanning/projects/{projectID}/findings-history.csv:
-    get:
-      tags: [scanning]
-      summary: Exporta o histórico deduplicado de um projeto em CSV (Fase 14 — Maturidade de AppSec)
-      operationId: exportProjectFindingsHistoryCSV
-      description: >
-        Equivalente em CSV de GET /api/v1/scanning/projects/{projectID}/findings-history, com a
-        triagem incluída — a exportação que faz sentido levar pra uma reunião de status ou um ticket
-        de compliance, ao contrário do CSV por scan (uma execução isolada, sem dedup).
-      security:
-        - bearerAuth: [scanning:read]
-      parameters:
-        - name: projectID
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: Arquivo CSV, com Content-Disposition attachment.
-          content:
-            text/csv:
-              schema:
-                type: string
-        "400":
-          description: projectID não é um UUID válido.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-
-  /api/v1/scanning/projects/{projectID}/findings/{fingerprint}/triage:
-    put:
-      tags: [scanning]
-      summary: Tria um achado deduplicado (Fase 14 — Maturidade de AppSec)
-      operationId: triageFinding
-      description: >
-        Marca o fingerprint como false_positive/wont_fix/risk_accepted dentro do projeto — chamar de
-        novo no MESMO fingerprint substitui a decisão anterior, não acumula histórico. reason é
-        obrigatório: uma supressão sem justificativa registrada é o tipo de decisão que uma auditoria
-        de segurança depois cobra explicação. Gravado em audit_logs (finding.triaged).
-      security:
-        - bearerAuth: [scanning:manage]
-      parameters:
-        - name: projectID
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: fingerprint
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [status, reason]
-              properties:
-                status:
-                  type: string
-                  enum: [false_positive, wont_fix, risk_accepted]
-                reason:
-                  type: string
-                  description: Obrigatório — motivo da triagem, no máximo 2000 caracteres.
-                expires_at:
-                  type: string
-                  format: date-time
-                  description: >
-                    Opcional (Fase 14, continuação — expiração de triagem). Precisa estar no futuro.
-                    Quando o prazo passa, o achado volta a contar como aberto em
-                    SecurityPosture/ListProjectFindingsHistory (mas a decisão em si nunca é apagada
-                    automaticamente — ver GET .../findings-history's triage_expired).
-      responses:
-        "200":
-          description: Triagem gravada.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-        "400":
-          description: projectID/fingerprint inválido, status desconhecido, reason vazio/longo demais, ou expires_at no passado.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          description: Projeto não encontrado.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-    delete:
-      tags: [scanning]
-      summary: Reabre um achado já triado (Fase 14 — Maturidade de AppSec)
-      operationId: untriageFinding
-      description: >
-        Apaga a decisão de triagem — idempotente, chamar num fingerprint nunca triado (ou já
-        reaberto) não é erro. Gravado em audit_logs (finding.untriaged).
-      security:
-        - bearerAuth: [scanning:manage]
-      parameters:
-        - name: projectID
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: fingerprint
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Achado reaberto (ou já estava aberto).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-        "400":
-          description: projectID/fingerprint inválido.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-
   /api/v1/ws/ticket:
     post:
       tags: [websocket]
@@ -962,7 +415,7 @@ paths:
       summary: Lista toda feature flag registrada
       operationId: listFeatureFlags
       description: >
-        Restrito ao papel nix-admin. Inclui as flags semeadas por migration
+        Restrito ao papel aurora-admin. Inclui as flags semeadas por migration
         (`module_exemplos_enabled`) e qualquer outra já criada via
         PATCH.
       security:
@@ -992,7 +445,7 @@ paths:
       summary: Habilita ou desabilita uma feature flag
       operationId: setFeatureFlag
       description: >
-        Restrito ao papel nix-admin. Efeito imediato em toda réplica da
+        Restrito ao papel aurora-admin. Efeito imediato em toda réplica da
         API/worker — não há cache em memória, cada checagem de flag
         consulta o Postgres diretamente (§ Feature Flags & Configuração
         Dinâmica). Se `key` ainda não existir, é criada nesta chamada
@@ -1037,333 +490,169 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
-  # ─────────────────────────── CONTRATOS ───────────────────────────
-  /api/v1/contratos:
+  /api/v1/lgpd/status:
     get:
-      tags: [contratos]
-      summary: Lista paginada de contratos
-      operationId: listContratos
-      security: [{ bearerAuth: [contratos:read] }]
-      parameters:
-        - { name: status, in: query, schema: { type: string, enum: [rascunho, em_analise, aprovado, vigente, encerrado, cancelado] } }
-        - { name: busca, in: query, schema: { type: string }, description: "Busca textual em objeto/contratado." }
-        - $ref: "#/components/parameters/Page"
-        - $ref: "#/components/parameters/PageSize"
+      tags: [lgpd]
+      summary: Status do consentimento LGPD do chamador
+      operationId: getLGPDStatus
+      description: Verifica se o usuário autenticado já aceitou a versão mais recente dos Termos de Privacidade (`CurrentTermVersion`).
       responses:
         "200":
-          description: "Envelope com `{ data: Contrato[], total, page, pages }`."
-          content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
+          description: Status retornado com sucesso.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          accepted: { type: boolean }
+                          term_version: { type: string, example: "v1.0.0-2026" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/lgpd/accept:
     post:
-      tags: [contratos]
-      summary: Cria um contrato (status inicial rascunho)
-      operationId: createContrato
-      security: [{ bearerAuth: [contratos:manage] }]
-      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      tags: [lgpd]
+      summary: Registra o aceite dos Termos LGPD
+      operationId: acceptLGPDTerms
+      description: >
+        Grava o consentimento com IP e User-Agent na trilha de auditoria
+        imutável (audit_logs). Idempotente por (user_id, term_version) —
+        aceitar de novo a mesma versão só atualiza o carimbo de tempo.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [numero, objeto, contratante, contratado]
               properties:
-                numero: { type: string, example: "012/2026" }
-                objeto: { type: string }
-                contratante: { type: string }
-                contratado: { type: string }
-                cnpj: { type: string }
-                valor: { type: number }
-                data_assinatura: { type: string, format: date }
-                data_vigencia_inicio: { type: string, format: date }
-                data_vigencia_fim: { type: string, format: date }
+                term_version: { type: string, example: "v1.0.0-2026" }
+              required: [term_version]
+      responses:
+        "200":
+          description: Aceite registrado com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/audit/export:
+    get:
+      tags: [audit]
+      summary: Exporta as últimas 1000 linhas da trilha de auditoria em CSV
+      operationId: exportAuditLog
+      description: >
+        Gera `relatorio_auditoria_lai_<timestamp>.csv` com id, usuário,
+        ação, tipo/id de recurso, IP e data/hora — mais recente primeiro.
+        Restrito a `audit:read`: o achado de auditoria que motivou essa
+        checagem é que o handler antes só exigia autenticação, permitindo
+        que qualquer usuário autenticado baixasse a trilha inteira da
+        plataforma.
+      security:
+        - bearerAuth: [audit:read]
+      responses:
+        "200":
+          description: Arquivo CSV.
+          content:
+            text/csv:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  # ─── Módulo Modelo (blueprint de referência para novos módulos) ───
+  /api/v1/examples:
+    get:
+      tags: [example]
+      summary: Lista os itens de exemplo (paginado)
+      operationId: listExampleItems
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        "200":
+          description: Página de itens.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/ExampleItem" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [example]
+      summary: Cria um item de exemplo
+      operationId: createExampleItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                description: { type: string }
+              required: [title]
       responses:
         "201":
-          description: Contrato criado.
-          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/Contrato" } } }] } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "422": { description: "Validação de negócio (campo obrigatório vazio)." }
+          description: Item criado.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/ExampleItem" }
+        "400":
+          description: title ausente ou corpo inválido.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
-  /api/v1/contratos/kanban:
+  /api/v1/examples/{id}:
     get:
-      tags: [contratos]
-      summary: Visão Kanban dos contratos por status
-      operationId: contratosKanban
-      security: [{ bearerAuth: [contratos:read] }]
-      parameters: [{ name: limit, in: query, schema: { type: integer, default: 20 }, description: "Máx. de contratos por coluna." }]
-      responses:
-        "200": { description: "Colunas por status com os contratos.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /api/v1/contratos/dashboard:
-    get:
-      tags: [contratos]
-      summary: Estatísticas macro (vigentes, valor total, próximos do vencimento)
-      operationId: contratosDashboard
-      security: [{ bearerAuth: [contratos:read] }]
-      responses:
-        "200":
-          description: "`{ total_vigentes, valor_total_vigentes, proximos_vencimento }`."
-          content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /api/v1/contratos/{id}:
-    get:
-      tags: [contratos]
-      summary: Detalhe de um contrato (com aditivos)
-      operationId: getContrato
-      security: [{ bearerAuth: [contratos:read] }]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses:
-        "200":
-          description: Contrato completo.
-          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/Contrato" } } }] } } }
-        "400": { description: "id não é um UUID válido." }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { description: "Contrato não encontrado." }
-
-  /api/v1/contratos/{id}/status:
-    patch:
-      tags: [contratos]
-      summary: Move o contrato de status (máquina de estados)
-      operationId: updateContratoStatus
-      security: [{ bearerAuth: [contratos:manage] }]
+      tags: [example]
+      summary: Detalhe de um item de exemplo
+      operationId: getExampleItem
       parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-        - { $ref: "#/components/parameters/IdempotencyKey" }
-      requestBody:
-        required: true
-        content: { application/json: { schema: { type: object, required: [status], properties: { status: { type: string, enum: [rascunho, em_analise, aprovado, vigente, encerrado, cancelado] } } } } }
-      responses:
-        "200": { description: "Status atualizado.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { description: "Contrato não encontrado." }
-        "422": { description: "Transição de status não permitida." }
-
-  # ─────────────────────────── DEMANDS ────────────────────────────
-  /api/v1/demands:
-    post:
-      tags: [demands]
-      summary: Cria uma demanda mensal (Etapa 1) para um contrato
-      operationId: createDemand
-      security: [{ bearerAuth: [demands:manage] }]
-      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
-      requestBody:
-        required: true
-        content: { application/json: { schema: { type: object, required: [contrato_id, ano_mes], properties: { contrato_id: { type: string, format: uuid }, ano_mes: { type: string, example: "2026-08" }, observacoes: { type: string } } } } }
-      responses:
-        "201": { description: "Demanda criada.", content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/DemandResponse" } } }] } } } }
-        "400": { description: "contrato_id/ano_mes ausentes." }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "429": { description: "Rate limit por usuário excedido." }
-
-  /api/v1/demands/kanban:
-    get:
-      tags: [demands]
-      summary: Quadro completo das 6 etapas
-      operationId: demandsKanban
-      security: [{ bearerAuth: [demands:read] }]
-      description: >
-        Cada card traz `next_requirements` (checklist da próxima etapa,
-        para o cadeado preventivo) e `sla` (dias na etapa vs. prazo).
-      responses:
-        "200": { description: "`{ columns: KanbanColumn[] }`.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /api/v1/demands/dashboard:
-    get:
-      tags: [demands]
-      summary: Painel — funil por etapa, SLA estourado, pendências, certidões a vencer
-      operationId: demandsDashboard
-      security: [{ bearerAuth: [demands:read] }]
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
       responses:
         "200":
-          description: Modelo de leitura do painel de Demandas Mensais.
-          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/DemandsDashboard" } } }] } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /api/v1/demands/occurrences:
-    get:
-      tags: [demands]
-      summary: Pendências abertas (contract_occurrences não resolvidas)
-      operationId: demandsOccurrences
-      security: [{ bearerAuth: [demands:read] }]
-      responses:
-        "200":
-          description: "Lista de Occurrence."
-          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/Occurrence" } } } }] } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /api/v1/demands/{id}:
-    get:
-      tags: [demands]
-      summary: Detalhe de uma demanda
-      operationId: getDemand
-      security: [{ bearerAuth: [demands:read] }]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses:
-        "200": { content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/DemandResponse" } } }] } } }, description: Demanda. }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { description: "Demanda não encontrada." }
-
-  /api/v1/demands/{id}/requirements:
-    get:
-      tags: [demands]
-      summary: Checklist da próxima etapa (o que falta / o que está vencido)
-      operationId: demandNextRequirements
-      security: [{ bearerAuth: [demands:read] }]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses:
-        "200": { description: StageCheck., content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { $ref: "#/components/schemas/StageCheck" } } }] } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { description: "Demanda não encontrada." }
-
-  /api/v1/demands/{id}/history:
-    get:
-      tags: [demands]
-      summary: Trilha de auditoria da demanda (criação, mudanças de etapa)
-      operationId: demandHistory
-      security: [{ bearerAuth: [demands:read] }]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses:
-        "200":
-          description: "Lista de AuditLogRow, mais recente primeiro."
-          content: { application/json: { schema: { allOf: [{ $ref: "#/components/schemas/Envelope" }, { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/AuditLogRow" } } } }] } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-
-  /api/v1/demands/{id}/package.zip:
-    get:
-      tags: [demands]
-      summary: Baixa um .zip com os anexos + os documentos oficiais gerados
-      operationId: demandPackage
-      security: [{ bearerAuth: [demands:read] }]
-      description: >
-        Junta os anexos do MinIO na ordem das etapas, um `00 - INDICE.txt`
-        e — conforme a etapa alcançada — os PDFs Ofício / OS / Anexo I
-        gerados na hora (`90/91/92 - GERADO - *.pdf`). Um anexo ausente no
-        storage não derruba o pacote (vai para `99 - ARQUIVOS-COM-ERRO.txt`).
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses:
-        "200": { description: "application/zip (Content-Disposition: attachment).", content: { application/zip: { schema: { type: string, format: binary } } } }
-        "400": { description: "A demanda não tem nenhum documento anexado." }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { description: "Demanda não encontrada." }
-
-  /api/v1/demands/{id}/oficio.pdf:
-    get:
-      tags: [demands]
-      summary: PDF do Ofício ao Planejamento (Etapa ≥ 1)
-      operationId: demandOficioPdf
-      security: [{ bearerAuth: [demands:read] }]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses:
-        "200": { description: "application/pdf (inline).", content: { application/pdf: { schema: { type: string, format: binary } } } }
-        "400": { description: "Etapa da demanda abaixo da mínima do documento." }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { description: "Demanda não encontrada." }
-        "429": { description: "Rate limit por usuário excedido." }
-
-  /api/v1/demands/{id}/ordem-servico.pdf:
-    get:
-      tags: [demands]
-      summary: PDF da Ordem de Serviço (Etapa ≥ 3)
-      operationId: demandOrdemServicoPdf
-      security: [{ bearerAuth: [demands:read] }]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses:
-        "200": { description: "application/pdf (inline).", content: { application/pdf: { schema: { type: string, format: binary } } } }
-        "400": { description: "Etapa abaixo da 3." }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { description: "Demanda não encontrada." }
-        "429": { description: "Rate limit por usuário excedido." }
-
-  /api/v1/demands/{id}/relatorio.pdf:
-    get:
-      tags: [demands]
-      summary: PDF do Relatório Mensal de Fiscalização — Anexo I (Etapa ≥ 5)
-      operationId: demandRelatorioPdf
-      security: [{ bearerAuth: [demands:read] }]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses:
-        "200": { description: "application/pdf (inline).", content: { application/pdf: { schema: { type: string, format: binary } } } }
-        "400": { description: "Etapa abaixo da 5." }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { description: "Demanda não encontrada." }
-        "429": { description: "Rate limit por usuário excedido." }
-
-  /api/v1/demands/{id}/etapa:
-    patch:
-      tags: [demands]
-      summary: Move o card de etapa (máquina de estados / guardrail de compliance)
-      operationId: moveKanbanCard
-      security: [{ bearerAuth: [demands:manage] }]
-      description: >
-        Bloqueia o avanço se faltar documento obrigatório da etapa OU se
-        alguma certidão exigida estiver vencida (IN SCL 01/2019).
-        Regressão de etapa é sempre permitida. Etapas 2 e 6 são de espera
-        externa (sem documento novo).
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-        - { $ref: "#/components/parameters/IdempotencyKey" }
-      requestBody:
-        required: true
-        content: { application/json: { schema: { type: object, required: [target_etapa], properties: { target_etapa: { type: integer, minimum: 1, maximum: 6 } } } } }
-      responses:
-        "200": { description: "Transição efetivada.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "422": { description: "Transição bloqueada — o corpo do erro lista o que falta / o que está vencido." }
-        "429": { description: "Rate limit por usuário excedido." }
-
-  /api/v1/demands/{id}/documents/upload-url:
-    get:
-      tags: [demands]
-      summary: URL pré-assinada do MinIO para upload direto de um documento
-      operationId: demandUploadUrl
-      security: [{ bearerAuth: [demands:manage] }]
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-        - { name: doc_type, in: query, required: true, schema: { type: string } }
-        - { name: file_name, in: query, required: true, schema: { type: string } }
-      responses:
-        "200": { description: "`{ upload_url, file_path }` — PUT direto no MinIO, 15 min de validade.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "429": { description: "Rate limit por usuário excedido." }
-
-  /api/v1/demands/{id}/documents:
-    post:
-      tags: [demands]
-      summary: Confirma o upload de um documento (grava a prova no banco)
-      operationId: demandConfirmUpload
-      security: [{ bearerAuth: [demands:manage] }]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      requestBody:
-        required: true
-        content: { application/json: { schema: { type: object, required: [doc_type, file_path, file_name], properties: { doc_type: { type: string }, file_path: { type: string }, file_name: { type: string }, validade_ate: { type: string, format: date, description: "Prazo da certidão (bloqueia a demanda quando vencida)." } } } } }
-      responses:
-        "200": { description: "Documento anexado.", content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
-        "400": { description: "validade_ate fora do formato AAAA-MM-DD." }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "429": { description: "Rate limit por usuário excedido." }
+          description: O item.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/ExampleItem" }
+        "400":
+          description: id não é um UUID válido.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
 components:
   securitySchemes:
@@ -1468,7 +757,7 @@ components:
         A integração externa está temporariamente indisponível.
         `CIRCUIT_OPEN` (o circuit breaker interno abriu depois de falhas
         consecutivas — tende a se resolver sozinho) e `FEATURE_DISABLED`
-        (um nix-admin desligou a integração via feature flag — só volta
+        (um aurora-admin desligou a integração via feature flag — só volta
         quando religada) usam o mesmo status 503, diferenciados pelo
         `error.code`.
       content:
@@ -1480,7 +769,7 @@ components:
               summary: Circuit breaker aberto
               value:
                 data: null
-                error: { code: "CIRCUIT_OPEN", message: "sonarqube: temporarily unavailable (circuit breaker open)" }
+                error: { code: "CIRCUIT_OPEN", message: "example-provider: temporarily unavailable (circuit breaker open)" }
             feature_disabled:
               summary: Feature flag desabilitada por um administrador
               value:
@@ -1596,7 +885,7 @@ components:
           format: uuid
         key:
           type: string
-          example: "sonarqube"
+          example: "example-provider"
         name:
           type: string
         type:
@@ -1618,174 +907,6 @@ components:
           type: string
           nullable: true
 
-    Finding:
-      type: object
-      description: Um achado persistido de uma execução de scan (ver `/api/v1/scanning/scans/{scanID}/findings`).
-      properties:
-        id:
-          type: string
-          format: uuid
-          description: ID da própria linha (não confundir com finding_id).
-        scan_id:
-          type: string
-          format: uuid
-        scanner:
-          type: string
-          example: "trivy"
-        target:
-          type: string
-        finding_id:
-          type: string
-          description: O identificador do achado em si — um CVE, ou uma regra do scanner.
-          example: "CVE-2026-12345"
-        owasp_category:
-          type: string
-          example: "A06:2021-Vulnerable and Outdated Components"
-        severity:
-          type: string
-          enum: [CRITICAL, HIGH, MEDIUM, LOW]
-        description:
-          type: string
-        file:
-          type: string
-        line:
-          type: integer
-        created_at:
-          type: string
-          format: date-time
-
-    ProjectFindingHistory:
-      type: object
-      description: >
-        Um achado deduplicado por fingerprint ENTRE os re-scans de um projeto (Fase 12), decorado
-        com sua triagem se alguma (Fase 14 — Maturidade de AppSec). Ver
-        `/api/v1/scanning/projects/{projectID}/findings-history`.
-      properties:
-        fingerprint:
-          type: string
-        scanner:
-          type: string
-          example: "trivy"
-        owasp_category:
-          type: string
-        severity:
-          type: string
-          enum: [CRITICAL, HIGH, MEDIUM, LOW]
-        description:
-          type: string
-        file:
-          type: string
-        line:
-          type: integer
-        first_seen_at:
-          type: string
-          format: date-time
-        last_seen_at:
-          type: string
-          format: date-time
-        scan_count:
-          type: integer
-          description: Quantos scans DISTINTOS deste projeto incluíram este fingerprint.
-        still_present:
-          type: boolean
-          description: Se este fingerprint aparece no scan MAIS RECENTE do projeto.
-        triage_status:
-          type: string
-          enum: ["", false_positive, wont_fix, risk_accepted]
-          description: "\"\" (vazio) é o estado implícito \"aberto, nunca triado\" — nunca omitido do JSON."
-        triage_reason:
-          type: string
-          description: Ausente quando triage_status é vazio.
-        triage_expires_at:
-          type: string
-          format: date-time
-          description: Fase 14, continuação — expiração de triagem. Ausente sem prazo, ou sem triagem.
-        triage_expired:
-          type: boolean
-          description: >
-            true quando triage_expires_at já passou — o achado continua carregando
-            triage_status/triage_reason (a decisão fica registrada), mas conta como ABERTO em
-            SecurityPosture, não como triado.
-
-    PostureSnapshot:
-      type: object
-      description: >
-        Um ponto da série temporal de SecurityPosture (Fase 14, continuação — tendência histórica),
-        gravado uma vez por dia pelo worker. Ver GET /api/v1/scanning/posture/history.
-      properties:
-        date:
-          type: string
-          format: date
-          description: "YYYY-MM-DD — só a data, não um timestamp."
-        open_critical:
-          type: integer
-        open_high:
-          type: integer
-        open_medium:
-          type: integer
-        open_low:
-          type: integer
-        triaged_count:
-          type: integer
-        projects_scanned:
-          type: integer
-
-    ProjectPosture:
-      type: object
-      description: Contribuição de UM projeto pro SecurityPosture agregado — ver `top_vulnerable`.
-      properties:
-        project_id:
-          type: string
-          format: uuid
-        project_name:
-          type: string
-        open_critical:
-          type: integer
-        open_high:
-          type: integer
-
-    SecurityPosture:
-      type: object
-      description: >
-        Resumo agregado de achados ABERTOS (ainda presentes + não triados) entre todo projeto
-        persistente (Fase 14 — Maturidade de AppSec). Ver `/api/v1/scanning/posture`.
-      properties:
-        open_critical:
-          type: integer
-        open_high:
-          type: integer
-        open_medium:
-          type: integer
-        open_low:
-          type: integer
-        triaged_count:
-          type: integer
-          description: Achados ainda presentes mas já triados — não contam em open_*.
-        projects_scanned:
-          type: integer
-        top_vulnerable:
-          type: array
-          description: Até 5 projetos, os com mais crítico/alto aberto primeiro.
-          items:
-            $ref: "#/components/schemas/ProjectPosture"
-
-    ScannerHealth:
-      type: object
-      description: >
-        Resultado da checagem de saúde de UM scanner (reestruturação de /seguranca — "saúde das
-        ferramentas antes de iniciá-las"). Ver GET /api/v1/scanning/scanners/health.
-      properties:
-        scanner:
-          type: string
-          example: "trivy"
-        healthy:
-          type: boolean
-        message:
-          type: string
-          description: Ausente quando healthy=true; o motivo (não configurado, inalcançável, status inesperado) caso contrário.
-        checked_at:
-          type: string
-          format: date-time
 
     FeatureFlag:
       type: object
@@ -1820,7 +941,7 @@ components:
           type: integer
         source:
           type: string
-          example: "nix.example"
+          example: "aurora.example"
         occurred_at:
           type: string
           format: date-time
@@ -1831,168 +952,18 @@ components:
           type: object
       required: [id, type, version, source, occurred_at, correlation_id, payload]
 
-    # ─── Contratos & Demandas (Kanban IN SCL 01/2019) ───
-    Aditivo:
+    ExampleItem:
       type: object
+      description: >
+        Entidade genérica do Módulo Modelo (`internal/modules/example`) —
+        blueprint de referência Clean Architecture (domain/application/
+        infrastructure/transport) para novos módulos de negócio.
       properties:
         id: { type: string, format: uuid }
-        numero: { type: string, nullable: true }
-        objeto: { type: string, nullable: true }
-        valor_adicional: { type: number, nullable: true }
-        data_assinatura: { type: string, format: date, nullable: true }
-        created_at: { type: string, format: date-time }
-
-    Contrato:
-      type: object
-      properties:
-        id: { type: string, format: uuid }
-        numero: { type: string }
-        objeto: { type: string }
-        contratante: { type: string }
-        contratado: { type: string }
-        cnpj: { type: string, nullable: true }
-        valor: { type: number, nullable: true }
-        data_assinatura: { type: string, format: date, nullable: true }
-        data_vigencia_inicio: { type: string, format: date, nullable: true }
-        data_vigencia_fim: { type: string, format: date, nullable: true }
-        status: { type: string, enum: [rascunho, em_analise, aprovado, vigente, encerrado, cancelado] }
-        status_label: { type: string }
-        aditivos:
-          type: array
-          items: { $ref: "#/components/schemas/Aditivo" }
+        title: { type: string }
+        description: { type: string }
+        status: { type: string, example: "ACTIVE" }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
-      required: [id, numero, objeto, contratante, contratado, status]
-
-    DocStatus:
-      type: object
-      description: Situação de UM documento exigido para avançar de etapa.
-      properties:
-        doc_type: { type: string }
-        label: { type: string }
-        present: { type: boolean }
-        is_certidao: { type: boolean }
-        expired: { type: boolean }
-        valid_until: { type: string, format: date-time, nullable: true }
-
-    StageCheck:
-      type: object
-      description: Resultado de avaliar a transição para a etapa seguinte.
-      properties:
-        from_etapa: { type: integer }
-        to_etapa: { type: integer }
-        can_advance: { type: boolean }
-        blocking:
-          type: array
-          items: { type: string }
-        docs:
-          type: array
-          items: { $ref: "#/components/schemas/DocStatus" }
-        wait_only: { type: boolean, description: "Etapa de espera externa (2 e 6): sem documento novo." }
-
-    SLAInfo:
-      type: object
-      properties:
-        days_in_stage: { type: integer }
-        sla_days: { type: integer }
-        due_at: { type: string, format: date-time, nullable: true }
-        breached: { type: boolean }
-
-    DemandDocument:
-      type: object
-      properties:
-        id: { type: string, format: uuid }
-        doc_type: { type: string }
-        file_path: { type: string }
-        file_name: { type: string }
-        uploaded_at: { type: string, format: date-time }
-        validade_ate: { type: string, format: date, nullable: true }
-
-    DemandResponse:
-      type: object
-      properties:
-        id: { type: string, format: uuid }
-        contrato_id: { type: string, format: uuid }
-        ano_mes: { type: string, example: "2026-08" }
-        etapa: { type: integer, minimum: 1, maximum: 6 }
-        status_etapa: { type: string }
-        observacoes: { type: string }
-        etapa_started_at: { type: string, format: date-time }
-        documents:
-          type: array
-          items: { $ref: "#/components/schemas/DemandDocument" }
-        contrato_numero: { type: string }
-        contrato_objeto: { type: string }
-        contratado: { type: string }
-        contrato_valor: { type: number, nullable: true }
-        next_requirements:
-          allOf: [{ $ref: "#/components/schemas/StageCheck" }]
-          description: "Só no /kanban — checklist da próxima etapa para o cadeado."
-        sla:
-          allOf: [{ $ref: "#/components/schemas/SLAInfo" }]
-          description: "Situação de prazo na etapa atual."
-
-    Occurrence:
-      type: object
-      properties:
-        id: { type: string, format: uuid }
-        contrato_id: { type: string, format: uuid }
-        demanda_id: { type: string, format: uuid, nullable: true }
-        tipo: { type: string, example: "SLA_ETAPA_ESTOURADO" }
-        descricao: { type: string }
-        sla_vence_em: { type: string, format: date, nullable: true }
-        resolvida: { type: boolean }
-        created_at: { type: string, format: date-time }
-
-    DemandsDashboard:
-      type: object
-      properties:
-        funnel:
-          type: array
-          items:
-            type: object
-            properties:
-              etapa: { type: integer }
-              label: { type: string }
-              total: { type: integer }
-        total_em_andamento: { type: integer, description: "Etapas 1..5." }
-        total_arquivadas: { type: integer, description: "Etapa 6." }
-        sla_breached: { type: integer }
-        sla_breached_items:
-          type: array
-          items:
-            type: object
-            properties:
-              demanda_id: { type: string }
-              contrato_numero: { type: string }
-              etapa: { type: integer }
-              days_in_stage: { type: integer }
-              sla_days: { type: integer }
-        open_occurrences: { type: integer }
-        certidoes_expired: { type: integer }
-        certidoes_expiring_30d: { type: integer }
-        certidoes_items:
-          type: array
-          items:
-            type: object
-            properties:
-              demanda_id: { type: string }
-              contrato_numero: { type: string }
-              doc_type: { type: string }
-              label: { type: string }
-              validade_ate: { type: string, format: date }
-              expired: { type: boolean }
-
-    AuditLogRow:
-      type: object
-      description: Linha da trilha imutável audit_logs (só leitura).
-      properties:
-        id: { type: string, format: uuid }
-        user_id: { type: string, format: uuid, nullable: true }
-        action: { type: string, example: "demand.etapa_changed" }
-        resource_type: { type: string }
-        resource_id: { type: string }
-        metadata: { type: object }
-        correlation_id: { type: string, format: uuid, nullable: true }
-        created_at: { type: string, format: date-time }
+      required: [id, title, status, created_at, updated_at]
 
