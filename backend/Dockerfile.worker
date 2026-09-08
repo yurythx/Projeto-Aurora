@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
 
 # ---- builder ----
-FROM golang:1.27-alpine AS builder
+FROM golang:1.25-bookworm AS builder
 WORKDIR /src
 
-RUN apk add --no-cache ca-certificates
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 
 COPY go.mod go.sum ./
 RUN go mod download
@@ -13,7 +13,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker
 
 # ---- runtime ----
-FROM alpine:3.20 AS runtime
+FROM debian:bookworm-slim AS runtime
 
 # git continua precisando estar na imagem do worker — TrivyScanner.Execute/
 # GitleaksScanner.Execute/SemgrepScanner.Execute/SonarScanner.Execute (o
@@ -28,22 +28,11 @@ FROM alpine:3.20 AS runtime
 # do sonar-scanner-cli continuam verificados — só que agora nos
 # Dockerfiles dos sidecars, não aqui. Esta imagem não carrega mais nenhum
 # runtime de scanner — só git + o binário Go do próprio worker.
-RUN apk add --no-cache ca-certificates git poppler-utils
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git poppler-utils wget && \
+    rm -rf /var/lib/apt/lists/*
 
-# UID/GID FIXOS (10001), não o que "adduser -S" alocaria implicitamente
-# (o próximo UID de sistema livre — não garantido igual entre duas
-# imagens construídas separadamente): TrivyScanner.Execute clona pro
-# volume compartilhado scanning_workspace (docker-compose.yml, montado
-# em /workspace aqui E na imagem de cada sidecar de scanning) — os
-# processos escrevendo/lendo o MESMO caminho precisam do MESMO UID dono,
-# senão um sidecar que só lê até funcionaria com permissão "outros"
-# liberada, mas o worker (que ESCREVE o clone) precisa mesmo ser dono.
-# mkdir+chown aqui, ANTES do volume ser montado: Docker copia a
-# ownership/conteúdo que já existe nesse caminho dentro da imagem pro
-# volume nomeado vazio na primeira vez que ele é criado — sem isso, um
-# volume nomeado novo nasce root:root, e o processo do worker (que roda
-# como "nix", não root) não conseguiria escrever nele.
-RUN addgroup -g 10001 -S nix && adduser -u 10001 -S nix -G nix && \
+# UID/GID FIXOS (10001), não o que "adduser" alocaria implicitamente:
+RUN groupadd -g 10001 nix && useradd -u 10001 -g nix -r -m nix && \
     mkdir -p /workspace && chown nix:nix /workspace
 
 USER nix
