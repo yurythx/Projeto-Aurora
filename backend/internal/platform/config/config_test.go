@@ -166,6 +166,7 @@ func TestLoad_ProductionAcceptsStrongSecrets(t *testing.T) {
 	t.Setenv("APP_ENV", "production")
 	t.Setenv("MINIO_ACCESS_KEY", "nova-prod-access")
 	t.Setenv("MINIO_SECRET_KEY", "nova-prod-secret-strong-value")
+	t.Setenv("CONFIG_ENCRYPTION_KEY", "cHJvZC1zdHJvbmcta2V5LTMyLWJ5dGVzLWxvbmchIQ==")
 
 	if _, err := Load(); err != nil {
 		t.Fatalf("Load() com segredos fortes em produção não deveria falhar: %v", err)
@@ -216,6 +217,28 @@ func TestLoad_ProductionRejectsExampleRabbitMQPassword(t *testing.T) {
 	}
 	if !contains(err.Error(), "RABBITMQ_URL") {
 		t.Errorf("erro deveria citar RABBITMQ_URL: %v", err)
+	}
+}
+
+// TestLoad_ProductionRejectsInsecureConfigEncryptionKey cobre a nova chave
+// de cifragem (ver internal/platform/secretcrypto e keycloakconfig): sem
+// CONFIG_ENCRYPTION_KEY definida, o processo cairia no default público
+// insecureConfigEncryptionKey — inaceitável em produção, já que qualquer
+// pessoa com o código-fonte conseguiria decifrar um Client Secret do
+// Keycloak salvo pelo menu Configurações > Keycloak.
+func TestLoad_ProductionRejectsInsecureConfigEncryptionKey(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("MINIO_ACCESS_KEY", "nova-prod-access")
+	t.Setenv("MINIO_SECRET_KEY", "nova-prod-secret-strong-value")
+	// Não define CONFIG_ENCRYPTION_KEY -> fica no default inseguro.
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() deveria recusar produção com CONFIG_ENCRYPTION_KEY no default inseguro")
+	}
+	if !contains(err.Error(), "CONFIG_ENCRYPTION_KEY") {
+		t.Errorf("erro deveria citar CONFIG_ENCRYPTION_KEY: %v", err)
 	}
 }
 

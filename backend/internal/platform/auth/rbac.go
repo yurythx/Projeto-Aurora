@@ -34,6 +34,13 @@ const (
 	// mundo imediatamente, então é deliberadamente restrito ao papel mais
 	// privilegiado, sem meio-termo por role.
 	PermFeatureFlagsManage Permission = "feature_flags:manage"
+	// PermKeycloakManage, pelo mesmo motivo de PermFeatureFlagsManage
+	// acima, também não é concedida a nenhum role em rolePermissions — só
+	// o aurora-admin (via HasPermission). Ver a configuração dinâmica do
+	// Keycloak em internal/platform/keycloakconfig — errar aqui derruba
+	// a autenticação de TODA a plataforma, então esta permissão é
+	// deliberadamente mais restrita do que PermIntegrationsManage.
+	PermKeycloakManage Permission = "keycloak:manage"
 )
 
 // rolePermissions concede ao aurora-admin toda permissão implicitamente

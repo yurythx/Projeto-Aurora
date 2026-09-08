@@ -22,12 +22,14 @@ import (
 	"github.com/yurythx/projeto-aurora/internal/platform/database"
 	"github.com/yurythx/projeto-aurora/internal/platform/httpserver"
 	"github.com/yurythx/projeto-aurora/internal/platform/idempotency"
+	"github.com/yurythx/projeto-aurora/internal/platform/keycloakconfig"
 	"github.com/yurythx/projeto-aurora/internal/platform/lgpd"
 	"github.com/yurythx/projeto-aurora/internal/platform/logging"
 	"github.com/yurythx/projeto-aurora/internal/platform/messaging"
 	"github.com/yurythx/projeto-aurora/internal/platform/metrics"
 	"github.com/yurythx/projeto-aurora/internal/platform/outbox"
 	"github.com/yurythx/projeto-aurora/internal/platform/ratelimit"
+	"github.com/yurythx/projeto-aurora/internal/platform/secretcrypto"
 	"github.com/yurythx/projeto-aurora/internal/platform/storage"
 	"github.com/yurythx/projeto-aurora/internal/platform/telemetry"
 	"github.com/yurythx/projeto-aurora/internal/platform/ws"
@@ -69,6 +71,7 @@ type Dependencies struct {
 	RateLimiters *RateLimiters
 	Idempotency  idempotency.Store
 	Flags        configflags.Store
+	KeycloakCfg  keycloakconfig.Store
 	LGPDSvc      *lgpd.Service
 	AuditExp     *audit.Exporter
 
@@ -116,6 +119,43 @@ func NewDependencies(ctx context.Context, component string) (*Dependencies, erro
 	if err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("app: initialize OIDC verifier: %w", err)
+	}
+
+	configCipher, err := secretcrypto.NewFromBase64Key(cfg.Security.ConfigEncryptionKey)
+	if err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("app: initialize config encryption cipher: %w", err)
+	}
+	keycloakCfgStore := keycloakconfig.NewPostgresStore(pool, configCipher)
+
+	// Se um admin já salvou uma configuração do Keycloak pelo menu
+	// Configurações > Keycloak (ver internal/platform/keycloakconfig) ANTES
+	// deste boot, ela precisa valer imediatamente — sem isto, um restart do
+	// processo (deploy, crash, `docker compose restart`) voltaria
+	// silenciosamente a usar só as variáveis de ambiente (cfg.Keycloak),
+	// desfazendo a configuração salva até alguém reabrir a tela e salvar de
+	// novo. Erro aqui não impede o boot (o processo já subiu válido com
+	// cfg.Keycloak via NewVerifier acima) — só fica registrado em log,
+	// porque um Postgres consultável no boot mas com uma configuração
+	// salva que não faz mais discovery (ex.: issuer desativado depois de
+	// salvo) não deveria travar toda a API.
+	if savedKeycloak, err := keycloakCfgStore.Get(ctx); err != nil {
+		logger.Error("app: falha ao ler configuração do Keycloak persistida no Postgres — seguindo só com variáveis de ambiente",
+			slog.String("erro", err.Error()))
+	} else if savedKeycloak.Configured {
+		reloadCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		reloadErr := verifier.Reload(reloadCtx, config.KeycloakConfig{
+			IssuerURL:    savedKeycloak.IssuerURL,
+			Realm:        savedKeycloak.Realm,
+			ClientID:     savedKeycloak.ClientID,
+			ClientSecret: savedKeycloak.ClientSecret,
+			Audience:     savedKeycloak.Audience,
+		})
+		cancel()
+		if reloadErr != nil {
+			logger.Error("app: configuração do Keycloak persistida no Postgres não passou no discovery no boot — seguindo com variáveis de ambiente",
+				slog.String("erro", reloadErr.Error()))
+		}
 	}
 
 	mqConn, err := messaging.Connect(ctx, cfg.RabbitMQ.URL, logger)
@@ -192,6 +232,7 @@ func NewDependencies(ctx context.Context, component string) (*Dependencies, erro
 		},
 		Idempotency: idempotency.NewPostgresStore(pool),
 		Flags:       configflags.NewPostgresStore(pool),
+		KeycloakCfg: keycloakCfgStore,
 		LGPDSvc:     lgpd.NewService(pool, logger),
 		AuditExp:    audit.NewExporter(pool, logger),
 

@@ -75,6 +75,21 @@ type KeycloakConfig struct {
 	Audience     string
 }
 
+// SecurityConfig guarda segredos de infraestrutura de segurança da
+// própria plataforma — não credenciais de negócio.
+type SecurityConfig struct {
+	// ConfigEncryptionKey cifra/decifra (AES-256-GCM, ver
+	// internal/platform/secretcrypto) segredos que passam a ser
+	// persistidos no Postgres em vez de só existir como variável de
+	// ambiente — hoje, o Client Secret do Keycloak configurado em tempo
+	// de execução via /api/v1/admin/keycloak (ver
+	// internal/platform/keycloakconfig). Esperada em base64 padrão,
+	// decodificando para exatamente 32 bytes (ex.: `openssl rand -base64
+	// 32`). Suporta o padrão "<KEY>_FILE" via loader.secret, como
+	// qualquer outro segredo desta plataforma.
+	ConfigEncryptionKey string
+}
+
 // LocalAuthConfig guarda as configurações do login local por
 // usuário/senha (§ Sistema de Login Local) — um caminho de autenticação
 // PARALELO ao Keycloak (útil para dev/teste e como conta de emergência),
@@ -149,6 +164,7 @@ type Config struct {
 	Database  DatabaseConfig
 	RabbitMQ  RabbitMQConfig
 	Keycloak  KeycloakConfig
+	Security  SecurityConfig
 	LocalAuth LocalAuthConfig
 	Jobs      JobsConfig
 	Worker    WorkerConfig
@@ -296,6 +312,9 @@ func Load() (*Config, error) {
 			ClientSecret: l.secret("KEYCLOAK_CLIENT_SECRET", false, ""),
 			Audience:     l.str("KEYCLOAK_AUDIENCE", false, ""),
 		},
+		Security: SecurityConfig{
+			ConfigEncryptionKey: l.secret("CONFIG_ENCRYPTION_KEY", false, insecureConfigEncryptionKey),
+		},
 		LocalAuth: LocalAuthConfig{
 			Enabled:       l.boolVal("LOCAL_AUTH_ENABLED", false),
 			PrivateKeyPEM: l.secret("LOCAL_AUTH_PRIVATE_KEY", false, ""),
@@ -365,6 +384,9 @@ func Load() (*Config, error) {
 		if strings.Contains(cfg.RabbitMQ.URL, exampleRabbitMQPassword) {
 			weak = append(weak, "RABBITMQ_URL (RABBITMQ_DEFAULT_PASS)")
 		}
+		if cfg.Security.ConfigEncryptionKey == insecureConfigEncryptionKey {
+			weak = append(weak, "CONFIG_ENCRYPTION_KEY")
+		}
 		if len(weak) > 0 {
 			return nil, fmt.Errorf(
 				"config: recusando iniciar em produção com segredo(s) no valor default inseguro ou de .env.example: %s — defina uma env var forte para cada um",
@@ -388,6 +410,13 @@ const (
 	// MinIO acima. Ver o comentário em Load().
 	exampleDBPassword       = "dev-change-this-db-password"
 	exampleRabbitMQPassword = "dev-change-this-rabbitmq-password"
+
+	// insecureConfigEncryptionKey é uma chave AES-256 FIXA e PÚBLICA (só
+	// para o processo conseguir subir em dev/test sem exigir mais uma
+	// variável de ambiente) — 32 bytes de "0" em base64. Nunca pode ir
+	// para produção: ver a checagem em Load(). Gere uma chave real com
+	// `openssl rand -base64 32`.
+	insecureConfigEncryptionKey = "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA="
 )
 
 // minioConfig monta MinIOConfig, derivando o endpoint público (para URLs

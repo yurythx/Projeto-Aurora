@@ -1,56 +1,90 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "API Base Governamental — Projeto Aurora",
-    "description": "Especificação de API RESTful em conformidade com o Padrão de Interoperabilidade do Governo Federal (e-PING) e diretrizes SGD/MGI.",
-    "version": "1.0.0",
-    "contact": {
-      "name": "Prefeitura Municipal de Rondonópolis — Tecnologia da Informação",
-      "url": "https://www.rondonopolis.mt.gov.br"
+    "title": "Projeto Aurora API",
+    "description": "API REST do Projeto Aurora — Core System (Kernel) em Go sobre\nArquitetura Microkernel: infraestrutura de autenticação, auditoria,\noutbox transacional e mensageria compartilhada por todo módulo de\nnegócio (plug-in) registrado em `internal/modules/`. Todo endpoint\nautenticado espera um access token OIDC emitido pelo Keycloak (ou pelo\nlogin local, um caminho adicional — ver tag `auth`) como Bearer JWT; o\nbackend o valida localmente contra um JWKS em cache (nunca com uma\nchamada por requisição ao Keycloak — ver §29 do documento de\narquitetura).\n\nToda resposta usa o mesmo envelope:\n`{\"data\": <payload|null>, \"error\": {\"code\",\"message\"}|null, \"meta\": {...}|omitido}`.\nErros nunca incluem stack trace ou outro detalhe interno.\n\n**Idempotência**: qualquer endpoint de escrita (POST/PUT/PATCH) aceita\nopcionalmente o header `Idempotency-Key` (ver\n`#/components/parameters/IdempotencyKey`). Reenviar a mesma requisição\n(mesmo método, caminho e corpo) com a mesma chave nunca executa o\nhandler duas vezes — a segunda chamada em diante recebe de volta a\nresposta já produzida pela primeira (`Idempotent-Replay: true` no\nheader da resposta), em vez de criar um segundo job/efeito colateral.\nReusar a mesma chave com um corpo diferente é rejeitado com 409\n(`IDEMPOTENCY_KEY_REUSED`); uma segunda chamada enquanto a primeira\nainda está em andamento recebe 409 (`IDEMPOTENCY_KEY_IN_PROGRESS`). Ver\nADR [002](adr/002-enterprise-resilience-and-governance.md).\n\n**Resiliência e disponibilidade condicional**: chamadas que dependem\nde um provedor externo podem retornar 503\npor dois motivos distintos, diferenciados pelo `error.code`:\n`CIRCUIT_OPEN` (o circuit breaker interno detectou falhas consecutivas\ne está poupando o provedor — tentativas vão voltar a funcionar\nsozinhas depois de um curto intervalo) ou `FEATURE_DISABLED` (um\nadministrador desligou a integração via feature flag — ver\n`/api/v1/admin/feature-flags`, não se resolve sozinho).\n",
+    "version": "1.1.0",
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
     }
   },
   "servers": [
     {
-      "url": "http://localhost:8002",
-      "description": "Ambiente de Desenvolvimento Local"
+      "url": "http://localhost:8000",
+      "description": "Desenvolvimento local (docker compose)"
+    },
+    {
+      "url": "/",
+      "description": "Mesma origem (produção, atrás de um reverse proxy)"
+    }
+  ],
+  "tags": [
+    {
+      "name": "system",
+      "description": "Health, readiness e métricas — sem autenticação."
+    },
+    {
+      "name": "auth",
+      "description": "Login local por usuário/senha — um caminho ADICIONAL ao Keycloak, nunca um substituto (ver ADR 003-local-auth-rsa-hardening.md). Sem autenticação prévia, por definição.\n"
+    },
+    {
+      "name": "users",
+      "description": "O chamador autenticado e o diretório de usuários."
+    },
+    {
+      "name": "integrations",
+      "description": "Status de cada integração externa configurada."
+    },
+    {
+      "name": "websocket",
+      "description": "Emissão de ticket para notificações em tempo real."
+    },
+    {
+      "name": "admin",
+      "description": "Operações administrativas restritas ao papel aurora-admin, ex.: feature flags."
+    },
+    {
+      "name": "lgpd",
+      "description": "Consentimento formal aos Termos de Uso/Privacidade (Lei 13.709/2018). Cada usuário só consulta e aceita o PRÓPRIO consentimento — não há leitura de terceiros aqui.\n"
+    },
+    {
+      "name": "audit",
+      "description": "Exportação da trilha de auditoria imutável (audit_logs) em CSV, para fins de transparência/LAI. Restrito a `audit:read`.\n"
+    },
+    {
+      "name": "example",
+      "description": "Módulo Modelo (`internal/modules/example`) — blueprint de referência Clean Architecture para novos módulos de negócio, exposto em `/exemplos` no frontend quando a feature flag `module_exemplos_enabled` está ativa.\n"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
     }
   ],
   "paths": {
     "/health": {
       "get": {
-        "summary": "Healthcheck básico",
-        "description": "Retorna o status de liveness da API.",
-        "responses": {
-          "200": { "description": "API ativa e operante" }
-        }
-      }
-    },
-    "/ready": {
-      "get": {
-        "summary": "Readiness Probe",
-        "description": "Verifica o status de prontidão do PostgreSQL e RabbitMQ.",
-        "responses": {
-          "200": { "description": "Todas as dependências prontas" },
-          "503": { "description": "Dependência offline ou indisponível" }
-        }
-      }
-    },
-    "/api/v1/lgpd/status": {
-      "get": {
-        "summary": "Status do Consentimento LGPD",
-        "description": "Verifica se o usuário autenticado já aceitou a versão mais recente dos Termos de Privacidade.",
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "system"
+        ],
+        "summary": "Liveness probe",
+        "operationId": "getHealth",
+        "description": "Indica que o processo está de pé. Nunca verifica dependências externas.",
+        "security": [],
         "responses": {
           "200": {
-            "description": "Status retornado com sucesso",
+            "description": "O processo está vivo.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "accepted": { "type": "boolean" },
-                    "term_version": { "type": "string" }
-                  }
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                "example": {
+                  "data": {
+                    "status": "ok"
+                  },
+                  "error": null
                 }
               }
             }
@@ -58,11 +92,926 @@
         }
       }
     },
+    "/ready": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Readiness probe",
+        "operationId": "getReady",
+        "description": "Verifica a conectividade com PostgreSQL e RabbitMQ.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Todas as dependências estão alcançáveis.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": {
+                    "postgres": "ok",
+                    "rabbitmq": "ok"
+                  },
+                  "error": null
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Pelo menos uma dependência está indisponível.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": {
+                    "postgres": "ok",
+                    "rabbitmq": "unavailable"
+                  },
+                  "error": null
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Métricas Prometheus",
+        "operationId": "getMetrics",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Formato de exposição em texto do Prometheus.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Login local por usuário/senha",
+        "operationId": "localLogin",
+        "security": [],
+        "description": "Rota pública — o chamador ainda não está autenticado. Responde 404 se LOCAL_AUTH_ENABLED estiver desligado no backend. O token emitido é assinado RS256 com uma chave RSA própria deste subsistema (nunca compartilhada com o Keycloak — ver ADR 003-local-auth-rsa-hardening.md) e pode ser usado como Bearer nos mesmos endpoints autenticados que aceitam um token do Keycloak.\n\nToda falha (usuário inexistente, conta só-Keycloak, conta inativa, conta temporariamente bloqueada por excesso de tentativas, ou senha errada) retorna exatamente a mesma resposta 401 genérica — nunca dá para descobrir, por tentativa e erro, qual delas ocorreu. Uma conta é bloqueada por 15 minutos depois de 5 tentativas seguidas de senha errada.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "username",
+                  "password"
+                ],
+                "properties": {
+                  "username": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string",
+                    "format": "password"
+                  }
+                }
+              },
+              "example": {
+                "username": "admin",
+                "password": "Admin123!"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Credenciais válidas — token emitido.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                },
+                "description": "O corpo carrega um bearer token; nunca deve ser cacheado."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "access_token": {
+                              "type": "string"
+                            },
+                            "token_type": {
+                              "type": "string",
+                              "example": "Bearer"
+                            },
+                            "expires_at": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "user": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "format": "uuid"
+                                },
+                                "username": {
+                                  "type": "string"
+                                },
+                                "email": {
+                                  "type": "string",
+                                  "format": "email"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Login local está desligado (LOCAL_AUTH_ENABLED=false).",
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": null,
+                  "error": {
+                    "code": "NOT_FOUND",
+                    "message": "local login is not enabled"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Obtém o usuário autenticado atual",
+        "operationId": "getCurrentUser",
+        "description": "Faz upsert da linha de usuário do chamador a partir do token verificado a cada chamada (criando-a no primeiro acesso) e a retorna.\n",
+        "responses": {
+          "200": {
+            "description": "O usuário atual.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/User"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/users": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Lista usuários",
+        "operationId": "listUsers",
+        "security": [
+          {
+            "bearerAuth": [
+              "users:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Uma página de usuários.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/User"
+                          }
+                        },
+                        "meta": {
+                          "$ref": "#/components/schemas/PaginationMeta"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/api/v1/users/{id}": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Obtém um usuário pelo id",
+        "operationId": "getUser",
+        "security": [
+          {
+            "bearerAuth": [
+              "users:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "O usuário.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/User"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/integrations": {
+      "get": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Lista todas as integrações configuradas",
+        "operationId": "listIntegrations",
+        "responses": {
+          "200": {
+            "description": "Todas as integrações.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Integration"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/{id}/status": {
+      "get": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Obtém o status atual de uma integração",
+        "operationId": "getIntegrationStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A integração.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/Integration"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/ws/ticket": {
+      "post": {
+        "tags": [
+          "websocket"
+        ],
+        "summary": "Emite um ticket de WebSocket de curta duração",
+        "operationId": "createWebSocketTicket",
+        "description": "Retorna um ticket de uso único, válido por 30 segundos, que autoriza exatamente um upgrade `GET /ws?ticket=...` (§38) — navegadores não conseguem anexar um header Authorization ao handshake de WebSocket, então este ticket é a credencial da conexão em seu lugar. Sujeito a rate limiting por chamador.\n",
+        "responses": {
+          "201": {
+            "description": "Um ticket recém-emitido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "ticket": {
+                              "type": "string"
+                            },
+                            "expires_at": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/ws": {
+      "get": {
+        "tags": [
+          "websocket"
+        ],
+        "summary": "Upgrade de WebSocket (não é um endpoint HTTP comum)",
+        "operationId": "websocketUpgrade",
+        "description": "Não modelado como uma operação REST — incluído aqui apenas para descoberta. Exige `?ticket=<valor>` obtido em `POST /api/v1/ws/ticket`. Ao conectar, o cliente recebe todo envelope de evento da plataforma (`{id,type,version,source,occurred_at,correlation_id,payload}`) como um frame de texto JSON — ver `EventEnvelope` abaixo.\n",
+        "security": [],
+        "parameters": [
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "Switching Protocols — WebSocket estabelecido."
+          },
+          "401": {
+            "description": "Ticket ausente, inválido, expirado ou já utilizado."
+          }
+        }
+      }
+    },
+    "/api/v1/admin/feature-flags": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Lista toda feature flag registrada",
+        "operationId": "listFeatureFlags",
+        "description": "Restrito ao papel aurora-admin. Inclui as flags semeadas por migration (`module_exemplos_enabled`) e qualquer outra já criada via PATCH.\n",
+        "security": [
+          {
+            "bearerAuth": [
+              "feature_flags:manage"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Toda feature flag registrada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/FeatureFlag"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/feature-flags/{key}": {
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Habilita ou desabilita uma feature flag",
+        "operationId": "setFeatureFlag",
+        "description": "Restrito ao papel aurora-admin. Efeito imediato em toda réplica da API/worker — não há cache em memória, cada checagem de flag consulta o Postgres diretamente (§ Feature Flags & Configuração Dinâmica). Se `key` ainda não existir, é criada nesta chamada (upsert).\n",
+        "security": [
+          {
+            "bearerAuth": [
+              "feature_flags:manage"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "module_exemplos_enabled"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "example": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A flag após a alteração.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/FeatureFlag"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Corpo inválido ou chave da flag ausente."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/keycloak": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Estado atual da configuração do Keycloak",
+        "operationId": "getKeycloakSettings",
+        "description": "Restrito ao papel aurora-admin (§ Configuração Dinâmica do Keycloak). Nunca devolve um client secret em texto plano — só se um está definido (`client_secret_set`/`frontend_client_secret_set`).\n",
+        "security": [
+          {
+            "bearerAuth": [
+              "keycloak:manage"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Configuração atual (do Postgres, se já salva; senão o que vem de variável de ambiente).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/KeycloakSettingsStatus"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Salva a configuração do Keycloak",
+        "operationId": "saveKeycloakSettings",
+        "description": "Restrito ao papel aurora-admin. SEMPRE testa o discovery OIDC contra `issuer_url` antes de persistir — se o discovery falhar, nada é salvo e a resposta é 422. Depois de salvar com sucesso, o backend recarrega o verificador de tokens (`auth.Verifier.Reload`) na hora, sem reiniciar o processo — a nova configuração já vale para o próximo token verificado. Um `client_secret`/`frontend_client_secret` vazio ou ausente no corpo significa \"manter o segredo já salvo\", nunca \"apagar\".\n",
+        "security": [
+          {
+            "bearerAuth": [
+              "keycloak:manage"
+            ]
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "issuer_url",
+                  "realm",
+                  "client_id",
+                  "audience"
+                ],
+                "properties": {
+                  "issuer_url": {
+                    "type": "string"
+                  },
+                  "realm": {
+                    "type": "string"
+                  },
+                  "client_id": {
+                    "type": "string"
+                  },
+                  "client_secret": {
+                    "type": "string",
+                    "description": "Vazio/ausente = manter o segredo já salvo."
+                  },
+                  "audience": {
+                    "type": "string"
+                  },
+                  "frontend_client_id": {
+                    "type": "string"
+                  },
+                  "frontend_client_secret": {
+                    "type": "string",
+                    "description": "Vazio/ausente = manter o segredo já salvo."
+                  }
+                }
+              },
+              "example": {
+                "issuer_url": "https://sso.orgao.gov.br/realms/aurora",
+                "realm": "aurora",
+                "client_id": "aurora-backend",
+                "client_secret": "s3gr3d0-do-backend",
+                "audience": "aurora-backend",
+                "frontend_client_id": "aurora-frontend",
+                "frontend_client_secret": "s3gr3d0-do-frontend"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Configuração salva e verificador recarregado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "settings": {
+                              "$ref": "#/components/schemas/KeycloakSettingsStatus"
+                            },
+                            "test": {
+                              "$ref": "#/components/schemas/KeycloakTestResult"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "description": "O discovery OIDC contra issuer_url falhou — nada foi salvo."
+          }
+        }
+      }
+    },
+    "/api/v1/admin/keycloak/test": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Testa uma configuração do Keycloak sem salvar",
+        "operationId": "testKeycloakSettings",
+        "description": "Restrito ao papel aurora-admin. Nunca persiste nada — só tenta o discovery OIDC contra `issuer_url` e, se `client_id`/`client_secret` forem informados, uma troca `client_credentials` contra o token_endpoint descoberto (best-effort: falhar aqui não significa credenciais erradas, só que o client pode não ter \"Service Accounts\" habilitado no Keycloak — ver `KeycloakTestResult`). Um `client_secret` vazio/ausente reutiliza o segredo já salvo, se houver, para não obrigar o admin a redigitá-lo só para testar.\n",
+        "security": [
+          {
+            "bearerAuth": [
+              "keycloak:manage"
+            ]
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "issuer_url"
+                ],
+                "properties": {
+                  "issuer_url": {
+                    "type": "string"
+                  },
+                  "client_id": {
+                    "type": "string"
+                  },
+                  "client_secret": {
+                    "type": "string"
+                  },
+                  "audience": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado do teste (mesmo em caso de falha — ver `status`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/KeycloakTestResult"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/api/v1/lgpd/status": {
+      "get": {
+        "tags": [
+          "lgpd"
+        ],
+        "summary": "Status do consentimento LGPD do chamador",
+        "operationId": "getLGPDStatus",
+        "description": "Verifica se o usuário autenticado já aceitou a versão mais recente dos Termos de Privacidade (`CurrentTermVersion`).",
+        "responses": {
+          "200": {
+            "description": "Status retornado com sucesso.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "accepted": {
+                              "type": "boolean"
+                            },
+                            "term_version": {
+                              "type": "string",
+                              "example": "v1.0.0-2026"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/api/v1/lgpd/accept": {
       "post": {
-        "summary": "Registrar Aceite dos Termos LGPD",
-        "description": "Registra o consentimento com IP e User-Agent na trilha de auditoria imutável.",
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "lgpd"
+        ],
+        "summary": "Registra o aceite dos Termos LGPD",
+        "operationId": "acceptLGPDTerms",
+        "description": "Grava o consentimento com IP e User-Agent na trilha de auditoria imutável (audit_logs). Idempotente por (user_id, term_version) — aceitar de novo a mesma versão só atualiza o carimbo de tempo.\n",
         "requestBody": {
           "required": true,
           "content": {
@@ -70,45 +1019,801 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "term_version": { "type": "string", "example": "v1.0.0-2026" }
-                }
+                  "term_version": {
+                    "type": "string",
+                    "example": "v1.0.0-2026"
+                  }
+                },
+                "required": [
+                  "term_version"
+                ]
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "Aceite registrado com sucesso" }
+          "200": {
+            "description": "Aceite registrado com sucesso.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
         }
       }
     },
-    "/api/v1/users/me": {
+    "/api/v1/audit/export": {
       "get": {
-        "summary": "Perfil do Usuário Autenticado",
-        "description": "Retorna os dados da identidade atual e roles concedidos.",
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "audit"
+        ],
+        "summary": "Exporta as últimas 1000 linhas da trilha de auditoria em CSV",
+        "operationId": "exportAuditLog",
+        "description": "Gera `relatorio_auditoria_lai_<timestamp>.csv` com id, usuário, ação, tipo/id de recurso, IP e data/hora — mais recente primeiro. Restrito a `audit:read`: o achado de auditoria que motivou essa checagem é que o handler antes só exigia autenticação, permitindo que qualquer usuário autenticado baixasse a trilha inteira da plataforma.\n",
+        "security": [
+          {
+            "bearerAuth": [
+              "audit:read"
+            ]
+          }
+        ],
         "responses": {
-          "200": { "description": "Perfil retornado" }
+          "200": {
+            "description": "Arquivo CSV.",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
         }
       }
     },
-    "/api/v1/integrations": {
+    "/api/v1/examples": {
       "get": {
-        "summary": "Listar Integrações da Plataforma",
-        "description": "Retorna a lista de integrações cadastradas e seus estados de saúde.",
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "example"
+        ],
+        "summary": "Lista os itens de exemplo (paginado)",
+        "operationId": "listExampleItems",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "Lista de integrações" }
+          "200": {
+            "description": "Página de itens.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/ExampleItem"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "example"
+        ],
+        "summary": "Cria um item de exemplo",
+        "operationId": "createExampleItem",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "title"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Item criado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ExampleItem"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "title ausente ou corpo inválido."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/examples/{id}": {
+      "get": {
+        "tags": [
+          "example"
+        ],
+        "summary": "Detalhe de um item de exemplo",
+        "operationId": "getExampleItem",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "O item.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/ExampleItem"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "id não é um UUID válido."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     }
   },
   "components": {
     "securitySchemes": {
-      "BearerAuth": {
+      "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "Token JWT obtido via OIDC Gov.br/Keycloak ou Login Local"
+        "description": "Um access token OIDC emitido pelo Keycloak. Validado localmente (assinatura, emissor, audiência, expiração, algoritmo) contra um JWKS em cache.\n"
+      }
+    },
+    "parameters": {
+      "Page": {
+        "name": "page",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        }
+      },
+      "PageSize": {
+        "name": "page_size",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 20
+        }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "description": "Chave única por operação lógica (recomenda-se um UUID gerado no cliente), escopada ao usuário autenticado. Reenviar a mesma requisição com a mesma chave reproduz a resposta original em vez de reexecutar a operação — ver a nota de Idempotência na descrição geral da API.\n",
+        "schema": {
+          "type": "string"
+        },
+        "example": "3f2b9e0a-6d34-4e77-9c3e-2b6f8e6b6a3d"
+      }
+    },
+    "responses": {
+      "TestJobAccepted": {
+        "description": "O teste foi enfileirado. Se a requisição carregou um `Idempotency-Key` já usado com sucesso antes (mesmo corpo), esta é uma resposta reproduzida (replay) da chamada original — o header `Idempotent-Replay: true` distingue esse caso, e nenhum job novo foi criado.\n",
+        "headers": {
+          "Idempotent-Replay": {
+            "description": "Presente e \"true\" somente quando esta resposta é um replay de uma chamada anterior com a mesma Idempotency-Key.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Envelope"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "job_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "queued"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "example": {
+              "data": {
+                "job_id": "3c1f1e2a-...",
+                "status": "queued"
+              },
+              "error": null
+            }
+          }
+        }
+      },
+      "IdempotencyConflict": {
+        "description": "Conflito relacionado à Idempotency-Key: `IDEMPOTENCY_KEY_IN_PROGRESS` se uma requisição com a mesma chave ainda está sendo processada, ou `IDEMPOTENCY_KEY_REUSED` se a chave já foi usada com um corpo de requisição diferente.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Envelope"
+            },
+            "examples": {
+              "in_progress": {
+                "summary": "Requisição original ainda em andamento",
+                "value": {
+                  "data": null,
+                  "error": {
+                    "code": "IDEMPOTENCY_KEY_IN_PROGRESS",
+                    "message": "a request with this Idempotency-Key is already being processed"
+                  }
+                }
+              },
+              "reused": {
+                "summary": "Mesma chave usada com um corpo diferente",
+                "value": {
+                  "data": null,
+                  "error": {
+                    "code": "IDEMPOTENCY_KEY_REUSED",
+                    "message": "Idempotency-Key was already used with a different request"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "IntegrationUnavailable": {
+        "description": "A integração externa está temporariamente indisponível. `CIRCUIT_OPEN` (o circuit breaker interno abriu depois de falhas consecutivas — tende a se resolver sozinho) e `FEATURE_DISABLED` (um aurora-admin desligou a integração via feature flag — só volta quando religada) usam o mesmo status 503, diferenciados pelo `error.code`.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Envelope"
+            },
+            "examples": {
+              "circuit_open": {
+                "summary": "Circuit breaker aberto",
+                "value": {
+                  "data": null,
+                  "error": {
+                    "code": "CIRCUIT_OPEN",
+                    "message": "example-provider: temporarily unavailable (circuit breaker open)"
+                  }
+                }
+              },
+              "feature_disabled": {
+                "summary": "Feature flag desabilitada por um administrador",
+                "value": {
+                  "data": null,
+                  "error": {
+                    "code": "FEATURE_DISABLED",
+                    "message": "the \"module_exemplos_enabled\" feature is currently disabled"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Access token ausente, inválido ou expirado.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Envelope"
+            },
+            "example": {
+              "data": null,
+              "error": {
+                "code": "UNAUTHORIZED",
+                "message": "invalid or expired access token"
+              }
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Autenticado, mas sem o role/permissão necessário.",
+        "content": {
+          "application/json": {
+            "example": {
+              "data": null,
+              "error": {
+                "code": "FORBIDDEN",
+                "message": "insufficient permission"
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "O recurso não existe.",
+        "content": {
+          "application/json": {
+            "example": {
+              "data": null,
+              "error": {
+                "code": "NOT_FOUND",
+                "message": "resource not found"
+              }
+            }
+          }
+        }
+      },
+      "TooManyRequests": {
+        "description": "Limite de requisições excedido.",
+        "content": {
+          "application/json": {
+            "example": {
+              "data": null,
+              "error": {
+                "code": "RATE_LIMITED",
+                "message": "too many requests, please try again later"
+              }
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Envelope": {
+        "type": "object",
+        "description": "O formato base de toda resposta. Operações bem-sucedidas restringem `data` a um tipo concreto via `allOf` no próprio schema da resposta; esta forma base documenta o contrato genérico {data, error, meta}.\n",
+        "properties": {
+          "data": {
+            "type": "object",
+            "nullable": true
+          },
+          "error": {
+            "type": "object",
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              }
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "nullable": true
+          }
+        },
+        "required": [
+          "data",
+          "error"
+        ]
+      },
+      "ErrorBody": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "VALIDATION_ERROR"
+          },
+          "message": {
+            "type": "string",
+            "example": "email: failed on \"required\""
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "PaginationMeta": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer"
+          },
+          "page_size": {
+            "type": "integer"
+          },
+          "total_items": {
+            "type": "integer"
+          },
+          "total_pages": {
+            "type": "integer"
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "username": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "Integration": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "key": {
+            "type": "string",
+            "example": "example-provider"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "online",
+              "offline",
+              "degraded",
+              "disabled"
+            ]
+          },
+          "last_check_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "last_success_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "last_error": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "FeatureFlag": {
+        "type": "object",
+        "description": "Uma feature flag alterável em tempo de execução (§ Feature Flags & Configuração Dinâmica).",
+        "properties": {
+          "key": {
+            "type": "string",
+            "example": "module_exemplos_enabled"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_by": {
+            "type": "string",
+            "description": "Subject (Keycloak) do administrador que fez a última alteração; ausente se a flag nunca foi alterada manualmente."
+          }
+        },
+        "required": [
+          "key",
+          "enabled",
+          "description",
+          "updated_at"
+        ]
+      },
+      "KeycloakSettingsStatus": {
+        "type": "object",
+        "description": "Estado atual da configuração do Keycloak (§ Configuração Dinâmica do Keycloak). `source` indica de onde vieram os valores exibidos: `database` (já foi salvo pelo menu Configurações > Keycloak — o que está em uso agora), `environment` (nunca foi salvo por esta tela; os valores vêm das variáveis de ambiente do processo) ou `unset` (nem banco nem ambiente têm um issuer configurado). Nunca inclui um client secret em texto plano — só se um está definido (`client_secret_set`).\n",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "database",
+              "environment",
+              "unset"
+            ]
+          },
+          "issuer_url": {
+            "type": "string",
+            "description": "URL do realm no Keycloak (ex. https://sso.orgao.gov.br/realms/aurora) — de onde o backend baixa o documento de discovery OIDC e as chaves públicas (JWKS) usadas para validar todo token recebido."
+          },
+          "realm": {
+            "type": "string",
+            "description": "Nome do realm Keycloak — informativo (o backend descobre tudo que precisa a partir de issuer_url), mas exibido para conferência."
+          },
+          "client_id": {
+            "type": "string",
+            "description": "Client ID do client \"confidential\" do BACKEND no Keycloak — usado para checar o campo azp/resource_access de um token, nunca para autenticar o próprio backend contra o Keycloak."
+          },
+          "client_secret_set": {
+            "type": "boolean",
+            "description": "Se um Client Secret do backend está salvo (nunca devolvido em texto plano)."
+          },
+          "audience": {
+            "type": "string",
+            "description": "Audiência (claim \"aud\") que todo access token precisa ter para ser aceito — normalmente igual ao client_id do backend."
+          },
+          "frontend_client_id": {
+            "type": "string",
+            "description": "Client ID do client \"public\"/\"confidential\" usado pelo FRONTEND (NextAuth) para o login via navegador (Authorization Code + PKCE) — um client Keycloak diferente do client_id do backend."
+          },
+          "frontend_client_secret_set": {
+            "type": "boolean",
+            "description": "Se um Client Secret do frontend está salvo (nunca devolvido em texto plano)."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_by": {
+            "type": "string",
+            "description": "Subject (Keycloak) do administrador que salvou por último — presente só quando source=database."
+          }
+        },
+        "required": [
+          "source",
+          "issuer_url",
+          "realm",
+          "client_id",
+          "client_secret_set",
+          "audience",
+          "frontend_client_id",
+          "frontend_client_secret_set"
+        ]
+      },
+      "KeycloakTestResult": {
+        "type": "object",
+        "description": "Resultado de um teste de conexão contra um issuer Keycloak — nunca persiste nada (§ Teste de Integração do Keycloak).",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "warning",
+              "failed"
+            ],
+            "description": "'failed' bloqueia o salvamento (issuer inalcançável); 'warning' não bloqueia (ex.: credenciais não puderam ser confirmadas, o que é esperado para um client sem Service Accounts habilitado)."
+          },
+          "discovery_ok": {
+            "type": "boolean",
+            "description": "Se o documento de discovery OIDC (`{issuer_url}/.well-known/openid-configuration`) respondeu com sucesso."
+          },
+          "discovery_message": {
+            "type": "string"
+          },
+          "credentials_checked": {
+            "type": "boolean",
+            "description": "Se client_id/client_secret foram informados e uma tentativa de token client_credentials foi feita."
+          },
+          "credentials_ok": {
+            "type": "boolean"
+          },
+          "credentials_message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "discovery_ok",
+          "discovery_message",
+          "credentials_checked",
+          "credentials_ok",
+          "credentials_message"
+        ]
+      },
+      "EventEnvelope": {
+        "type": "object",
+        "description": "O formato de toda mensagem entregue via WebSocket (§17/§43).",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "type": "string",
+            "example": "example.job.completed"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "source": {
+            "type": "string",
+            "example": "aurora.example"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "correlation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "payload": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "version",
+          "source",
+          "occurred_at",
+          "correlation_id",
+          "payload"
+        ]
+      },
+      "ExampleItem": {
+        "type": "object",
+        "description": "Entidade genérica do Módulo Modelo (`internal/modules/example`) — blueprint de referência Clean Architecture (domain/application/ infrastructure/transport) para novos módulos de negócio.\n",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "example": "ACTIVE"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "created_at",
+          "updated_at"
+        ]
       }
     }
   }

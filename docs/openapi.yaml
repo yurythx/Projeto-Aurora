@@ -490,6 +490,153 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/v1/admin/keycloak:
+    get:
+      tags: [admin]
+      summary: Estado atual da configuração do Keycloak
+      operationId: getKeycloakSettings
+      description: >
+        Restrito ao papel aurora-admin (§ Configuração Dinâmica do
+        Keycloak). Nunca devolve um client secret em texto plano — só se um
+        está definido (`client_secret_set`/`frontend_client_secret_set`).
+      security:
+        - bearerAuth: [keycloak:manage]
+      responses:
+        "200":
+          description: Configuração atual (do Postgres, se já salva; senão o que vem de variável de ambiente).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/KeycloakSettingsStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      tags: [admin]
+      summary: Salva a configuração do Keycloak
+      operationId: saveKeycloakSettings
+      description: >
+        Restrito ao papel aurora-admin. SEMPRE testa o discovery OIDC contra
+        `issuer_url` antes de persistir — se o discovery falhar, nada é
+        salvo e a resposta é 422. Depois de salvar com sucesso, o backend
+        recarrega o verificador de tokens (`auth.Verifier.Reload`) na hora,
+        sem reiniciar o processo — a nova configuração já vale para o
+        próximo token verificado. Um `client_secret`/`frontend_client_secret`
+        vazio ou ausente no corpo significa "manter o segredo já salvo",
+        nunca "apagar".
+      security:
+        - bearerAuth: [keycloak:manage]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [issuer_url, realm, client_id, audience]
+              properties:
+                issuer_url:
+                  type: string
+                realm:
+                  type: string
+                client_id:
+                  type: string
+                client_secret:
+                  type: string
+                  description: Vazio/ausente = manter o segredo já salvo.
+                audience:
+                  type: string
+                frontend_client_id:
+                  type: string
+                frontend_client_secret:
+                  type: string
+                  description: Vazio/ausente = manter o segredo já salvo.
+            example:
+              issuer_url: "https://sso.orgao.gov.br/realms/aurora"
+              realm: "aurora"
+              client_id: "aurora-backend"
+              client_secret: "s3gr3d0-do-backend"
+              audience: "aurora-backend"
+              frontend_client_id: "aurora-frontend"
+              frontend_client_secret: "s3gr3d0-do-frontend"
+      responses:
+        "200":
+          description: Configuração salva e verificador recarregado.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          settings:
+                            $ref: "#/components/schemas/KeycloakSettingsStatus"
+                          test:
+                            $ref: "#/components/schemas/KeycloakTestResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          description: O discovery OIDC contra issuer_url falhou — nada foi salvo.
+
+  /api/v1/admin/keycloak/test:
+    post:
+      tags: [admin]
+      summary: Testa uma configuração do Keycloak sem salvar
+      operationId: testKeycloakSettings
+      description: >
+        Restrito ao papel aurora-admin. Nunca persiste nada — só tenta o
+        discovery OIDC contra `issuer_url` e, se `client_id`/`client_secret`
+        forem informados, uma troca `client_credentials` contra o
+        token_endpoint descoberto (best-effort: falhar aqui não significa
+        credenciais erradas, só que o client pode não ter "Service
+        Accounts" habilitado no Keycloak — ver `KeycloakTestResult`). Um
+        `client_secret` vazio/ausente reutiliza o segredo já salvo, se
+        houver, para não obrigar o admin a redigitá-lo só para testar.
+      security:
+        - bearerAuth: [keycloak:manage]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [issuer_url]
+              properties:
+                issuer_url:
+                  type: string
+                client_id:
+                  type: string
+                client_secret:
+                  type: string
+                audience:
+                  type: string
+      responses:
+        "200":
+          description: Resultado do teste (mesmo em caso de falha — ver `status`).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/KeycloakTestResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/v1/lgpd/status:
     get:
       tags: [lgpd]
@@ -926,6 +1073,72 @@ components:
           type: string
           description: Subject (Keycloak) do administrador que fez a última alteração; ausente se a flag nunca foi alterada manualmente.
       required: [key, enabled, description, updated_at]
+
+    KeycloakSettingsStatus:
+      type: object
+      description: >
+        Estado atual da configuração do Keycloak (§ Configuração Dinâmica do
+        Keycloak). `source` indica de onde vieram os valores exibidos:
+        `database` (já foi salvo pelo menu Configurações > Keycloak — o que
+        está em uso agora), `environment` (nunca foi salvo por esta tela;
+        os valores vêm das variáveis de ambiente do processo) ou `unset`
+        (nem banco nem ambiente têm um issuer configurado). Nunca inclui um
+        client secret em texto plano — só se um está definido
+        (`client_secret_set`).
+      properties:
+        source:
+          type: string
+          enum: [database, environment, unset]
+        issuer_url:
+          type: string
+          description: URL do realm no Keycloak (ex. https://sso.orgao.gov.br/realms/aurora) — de onde o backend baixa o documento de discovery OIDC e as chaves públicas (JWKS) usadas para validar todo token recebido.
+        realm:
+          type: string
+          description: Nome do realm Keycloak — informativo (o backend descobre tudo que precisa a partir de issuer_url), mas exibido para conferência.
+        client_id:
+          type: string
+          description: Client ID do client "confidential" do BACKEND no Keycloak — usado para checar o campo azp/resource_access de um token, nunca para autenticar o próprio backend contra o Keycloak.
+        client_secret_set:
+          type: boolean
+          description: Se um Client Secret do backend está salvo (nunca devolvido em texto plano).
+        audience:
+          type: string
+          description: Audiência (claim "aud") que todo access token precisa ter para ser aceito — normalmente igual ao client_id do backend.
+        frontend_client_id:
+          type: string
+          description: Client ID do client "public"/"confidential" usado pelo FRONTEND (NextAuth) para o login via navegador (Authorization Code + PKCE) — um client Keycloak diferente do client_id do backend.
+        frontend_client_secret_set:
+          type: boolean
+          description: Se um Client Secret do frontend está salvo (nunca devolvido em texto plano).
+        updated_at:
+          type: string
+          format: date-time
+        updated_by:
+          type: string
+          description: Subject (Keycloak) do administrador que salvou por último — presente só quando source=database.
+      required: [source, issuer_url, realm, client_id, client_secret_set, audience, frontend_client_id, frontend_client_secret_set]
+
+    KeycloakTestResult:
+      type: object
+      description: Resultado de um teste de conexão contra um issuer Keycloak — nunca persiste nada (§ Teste de Integração do Keycloak).
+      properties:
+        status:
+          type: string
+          enum: [ok, warning, failed]
+          description: "'failed' bloqueia o salvamento (issuer inalcançável); 'warning' não bloqueia (ex.: credenciais não puderam ser confirmadas, o que é esperado para um client sem Service Accounts habilitado)."
+        discovery_ok:
+          type: boolean
+          description: Se o documento de discovery OIDC (`{issuer_url}/.well-known/openid-configuration`) respondeu com sucesso.
+        discovery_message:
+          type: string
+        credentials_checked:
+          type: boolean
+          description: Se client_id/client_secret foram informados e uma tentativa de token client_credentials foi feita.
+        credentials_ok:
+          type: boolean
+        credentials_message:
+          type: string
+      required: [status, discovery_ok, discovery_message, credentials_checked, credentials_ok, credentials_message]
 
     EventEnvelope:
       type: object

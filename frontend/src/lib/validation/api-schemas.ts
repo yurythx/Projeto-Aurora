@@ -33,6 +33,39 @@ export const featureFlagSchema = z
 
 export const featureFlagsListSchema = z.array(featureFlagSchema);
 
+export const keycloakSettingsStatusSchema = z
+  .object({
+    source: z.enum(["database", "environment", "unset"]),
+    issuer_url: z.string(),
+    realm: z.string(),
+    client_id: z.string(),
+    client_secret_set: z.boolean(),
+    audience: z.string(),
+    frontend_client_id: z.string(),
+    frontend_client_secret_set: z.boolean(),
+    updated_at: z.string().optional(),
+    updated_by: z.string().optional(),
+  })
+  .passthrough();
+
+export const keycloakTestResultSchema = z
+  .object({
+    status: z.enum(["ok", "warning", "failed"]),
+    discovery_ok: z.boolean(),
+    discovery_message: z.string(),
+    credentials_checked: z.boolean(),
+    credentials_ok: z.boolean(),
+    credentials_message: z.string(),
+  })
+  .passthrough();
+
+export const keycloakSaveResponseSchema = z
+  .object({
+    settings: keycloakSettingsStatusSchema,
+    test: keycloakTestResultSchema,
+  })
+  .passthrough();
+
 export const paginationMetaSchema = z
   .object({
     page: z.number(),

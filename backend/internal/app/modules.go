@@ -15,6 +15,7 @@ import (
 
 	"github.com/yurythx/projeto-aurora/internal/platform/audit"
 	"github.com/yurythx/projeto-aurora/internal/platform/configflags"
+	"github.com/yurythx/projeto-aurora/internal/platform/keycloakconfig"
 	"github.com/yurythx/projeto-aurora/internal/platform/localauth"
 )
 
@@ -31,6 +32,9 @@ type Modules struct {
 	}
 	ConfigFlags struct {
 		Handlers *configflags.Handlers
+	}
+	KeycloakConfig struct {
+		Handlers *keycloakconfig.Handlers
 	}
 	LocalAuth struct {
 		Handlers *localauth.Handlers
@@ -60,6 +64,9 @@ func buildModules(deps *Dependencies) *Modules {
 
 	// Feature Flags e Autenticação Local
 	m.ConfigFlags.Handlers = configflags.NewHandlers(deps.Flags, auditWriter, deps.Logger)
+
+	// Configuração dinâmica do Keycloak (menu Configurações > Keycloak)
+	m.KeycloakConfig.Handlers = keycloakconfig.NewHandlers(deps.KeycloakCfg, deps.Verifier, deps.Config.Keycloak, auditWriter, deps.Logger)
 
 	localAuthStore := localauth.NewPostgresStore(deps.DB)
 	m.LocalAuth.Handlers = localauth.NewHandlers(localAuthStore, deps.LocalSigner, auditWriter, deps.Logger)

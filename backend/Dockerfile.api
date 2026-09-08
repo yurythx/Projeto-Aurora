@@ -20,6 +20,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 USER nix
 WORKDIR /app
 COPY --from=builder --chown=nix:nix /out/api ./api
+# docs/openapi.json é servido em runtime por GET /openapi.json e /docs
+# (router.go, http.ServeFile com caminho relativo ao WORKDIR) — sem esta
+# linha, o binário sobe normalmente mas as duas rotas sempre devolviam 404
+# (o Swagger UI nunca funcionou dentro de um container, só rodando
+# `go run ./cmd/api` direto do host, onde o caminho relativo por acaso
+# resolve contra backend/docs/).
+COPY --from=builder --chown=nix:nix /src/docs ./docs
 
 EXPOSE 8000
 ENTRYPOINT ["./api"]
