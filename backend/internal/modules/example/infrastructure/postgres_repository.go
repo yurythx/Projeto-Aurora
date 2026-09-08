@@ -19,14 +19,18 @@ func NewPostgresRepository(db *pgxpool.Pool) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 
-func (r *PostgresRepository) Create(ctx context.Context, item *domain.Item) error {
+// CreateTx grava item em tx (a transação de negócio de quem chama, nunca
+// uma própria — ver domain.Repository.CreateTx) para que o INSERT seja
+// atômico com o outbox.Write do evento "example.item.created" que
+// application.Service.CreateItem grava na MESMA transação.
+func (r *PostgresRepository) CreateTx(ctx context.Context, tx pgx.Tx, item *domain.Item) error {
 	query := `
 		INSERT INTO example_items (id, title, description, status, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
 	`
-	_, err := r.db.Exec(ctx, query, item.ID, item.Title, item.Description, item.Status, item.CreatedAt, item.UpdatedAt)
+	_, err := tx.Exec(ctx, query, item.ID, item.Title, item.Description, item.Status, item.CreatedAt, item.UpdatedAt)
 	if err != nil {
-		return fmt.Errorf("postgres.Create: %w", err)
+		return fmt.Errorf("postgres.CreateTx: %w", err)
 	}
 	return nil
 }

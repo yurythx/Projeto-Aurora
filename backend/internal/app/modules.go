@@ -66,7 +66,7 @@ func buildModules(deps *Dependencies) *Modules {
 
 	// Módulo Exemplo (Template genérico para novos módulos)
 	exampleRepo := exampleInfra.NewPostgresRepository(deps.DB)
-	exampleSvc := exampleApp.NewService(exampleRepo, deps.Outbox, auditWriter, deps.Logger)
+	exampleSvc := exampleApp.NewService(deps.DB, exampleRepo, deps.Outbox, auditWriter, deps.Logger)
 	m.Example.Service = exampleSvc
 	m.Example.Handlers = exampleTransport.NewHandlers(exampleSvc, deps.Logger)
 
