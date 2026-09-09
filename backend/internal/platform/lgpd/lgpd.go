@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
@@ -21,11 +19,6 @@ import (
 )
 
 const CurrentTermVersion = "v1.0.0-2026"
-
-type execer interface {
-	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
-	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
-}
 
 type Service struct {
 	db             *pgxpool.Pool

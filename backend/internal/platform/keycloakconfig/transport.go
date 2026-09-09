@@ -178,10 +178,10 @@ func (h *Handlers) Save(w http.ResponseWriter, r *http.Request) {
 			clientSecret = h.envFallback.ClientSecret
 		}
 	}
-	frontendSecret := req.FrontendClientSecret
-	if frontendSecret == "" {
-		frontendSecret = current.FrontendClientSecret
-	}
+	// O "vazio = manter o atual" do frontend_client_secret é aplicado por
+	// Store.Set (mesma regra do client_secret, ver o comentário em
+	// `incoming` abaixo) — não há teste de discovery do lado frontend que
+	// precise resolvê-lo aqui.
 
 	test := TestConnection(r.Context(), req.IssuerURL, req.ClientID, clientSecret, req.Audience)
 	if !test.DiscoveryOK {

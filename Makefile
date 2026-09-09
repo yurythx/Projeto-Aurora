@@ -1,7 +1,7 @@
 .PHONY: dev up down logs build test lint format \
-	migrate-up migrate-down migrate-status seed-admin \
+	migrate-up migrate-down migrate-status migrate-redo seed-admin \
 	backend-shell frontend-shell rabbitmq-status clean \
-	backend-build backend-test backend-lint backend-format \
+	backend-build backend-test backend-lint backend-sec backend-format \
 	frontend-build frontend-test frontend-lint frontend-format
 
 ifneq (,$(wildcard .env))
@@ -62,6 +62,11 @@ lint: backend-lint frontend-lint ## Roda lint no backend e no frontend
 backend-lint:
 	cd backend && go vet ./...
 
+backend-sec: ## SAST do backend (govulncheck + staticcheck + gosec) — mesmo conjunto do CI
+	cd backend && govulncheck ./...
+	cd backend && staticcheck ./...
+	cd backend && gosec -quiet -exclude=G104 ./...
+
 frontend-lint:
 	cd frontend && npm run lint
 
@@ -83,6 +88,12 @@ migrate-down: ## Reverte a última migration
 
 migrate-status: ## Mostra o status das migrations
 	cd $(GOOSE_DIR) && goose postgres "$(DB_DSN)" status
+
+migrate-redo: ## Exercita a reversibilidade: up -> down-to 0 -> up (toda migration precisa de Down válido)
+	cd $(GOOSE_DIR) && goose postgres "$(DB_DSN)" up \
+		&& goose postgres "$(DB_DSN)" down-to 0 \
+		&& goose postgres "$(DB_DSN)" up \
+		&& goose postgres "$(DB_DSN)" status
 
 seed-admin: ## Cria/reseta o usuário admin local com senha ALEATÓRIA
 	cd backend && DB_HOST=localhost DB_PORT=$(HOST_DB_PORT) DB_NAME=$(DB_NAME) DB_USER=$(DB_USER) DB_PASSWORD=$(DB_PASSWORD) \

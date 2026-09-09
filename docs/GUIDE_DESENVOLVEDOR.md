@@ -83,6 +83,53 @@ Para auditorias e relatórios de controle interno (CGU/TCE):
 
 ---
 
+## 🧭 4.1. Convenções de conformidade (roadmap SGD/MGI)
+
+Ver `docs/ROADMAP_CONFORMIDADE.md` e `docs/adr/005`. Vale para todo PR:
+
+### Trilha de auditoria em toda mutação
+Todo handler de POST/PUT/PATCH/DELETE constrói a entrada a partir de
+`audit.FromRequest(r)` — nunca uma `audit.Entry{}` literal — para que
+`ip_address` e `correlation_id` sejam sempre preenchidos (§49):
+
+```go
+entry := audit.FromRequest(r)
+entry.Action = "modulo.recurso.acao"
+entry.ResourceType = "recurso"
+entry.ResourceID = id.String()
+entry.Metadata = map[string]any{...} // NUNCA segredo/senha/token aqui
+_ = h.audit.Record(r.Context(), entry)
+```
+
+Quando a mutação roda dentro de `database.WithTx`, use `audit.NewWriter(tx)`
+para que a linha de auditoria commite/reverta junto (ver o blueprint
+`internal/modules/example`).
+
+### RBAC — sempre testar o caminho negativo
+Toda rota nova sob `/api/v1` que não seja auto-serviço (`/me`) passa por
+`auth.RequirePermission(...)`. O teste tem que cobrir o **403 sem a
+permissão**, não só o 200 com ela.
+
+### Entrada
+`httputil.DecodeJSON` + `httputil.Validate` (struct-tags
+`validate:"required,max=..."`). `json.NewDecoder` cru é proibido — não
+aplica limite de corpo nem rejeita campo desconhecido.
+
+### Migrations
+Toda migration tem `-- +goose Down`. Exercite antes de abrir o PR:
+`make migrate-redo` (up → down-to 0 → up). O CI roda o mesmo.
+
+### SAST local
+`make backend-sec` roda `govulncheck` + `staticcheck` + `gosec` — o mesmo
+conjunto que bloqueia o CI.
+
+### Parâmetros de hardening
+`API_RATE_LIMIT_WINDOW_SECONDS`, `API_RATE_LIMIT_MAX`,
+`METRICS_SCRAPE_TOKEN`, `TRUSTED_PROXIES` — ver `.env.example` e a tabela
+em `docs/ROADMAP_CONFORMIDADE.md`.
+
+---
+
 ## 🛠️ 5. Comandos Úteis do Makefile
 
 | Comando | Descrição |
@@ -91,5 +138,7 @@ Para auditorias e relatórios de controle interno (CGU/TCE):
 | `make build` | Compila o backend Go e gera o bundle de produção do Next.js |
 | `make test` | Executa 100% das suítes de teste unitário do backend e frontend |
 | `make lint` | Executa auditoria estática de código e acessibilidade (`jsx-a11y`) |
+| `make backend-sec` | SAST do backend: `govulncheck` + `staticcheck` + `gosec` (mesmo do CI) |
 | `make migrate-up` | Executa as migrations de banco pendentes via Goose |
+| `make migrate-redo` | Testa a reversibilidade: up → down-to 0 → up |
 | `make seed-admin` | Cria ou reseta a conta do administrador local com senha segura |
