@@ -1,6 +1,6 @@
 # 006 — Respostas de erro no padrão RFC 7807 (Problem Details)
 
-- **Status:** Proposto (aguarda decisão de versionamento da API)
+- **Status:** Aceito — Opção B (negociação de conteúdo), implementada em 2026-09-09
 - **Data:** 2026-09-09
 - **Autores:** Engenharia Projeto Aurora
 
@@ -35,16 +35,33 @@ Duas opções, a decidir com os consumidores da API:
   mantido como membro de extensão (`"code": "VALIDATION_ERROR"`).
 - `openapi.yaml` documenta os dois.
 
-### Opção B — Content negotiation por `Accept`
+### Opção B — Content negotiation por `Accept` — **ADOTADA**
 
 - Um cliente que manda `Accept: application/problem+json` recebe o
   formato RFC 7807; o default continua o envelope atual.
 - Menos limpo (o mesmo endpoint com dois formatos de erro), mas sem nova
-  árvore de rotas.
+  árvore de rotas e **sem quebra de contrato** — nenhum consumidor atual
+  envia esse `Accept`.
+
+## Implementação (2026-09-09)
+
+- `httputil.WriteError` verifica `wantsProblemJSON(r)` — `Accept` contém
+  `application/problem+json` — e, se sim, chama `writeProblemDetails`:
+  - `type`: `urn:aurora:error:<code minúsculo>` (URN estável,
+    independente de domínio; ex.: `urn:aurora:error:validation_error`).
+  - `title`: `http.StatusText(status)`.
+  - `status`, `detail` (= `appErr.Message`), `instance` (= `r.URL.Path`).
+  - Extensões RFC 7807: `code` (o identificador legível por máquina que o
+    envelope já expunha) e `request_id` (de `logging.RequestID`).
+  - `Content-Type: application/problem+json; charset=utf-8`.
+- Respostas de sucesso **não** mudam — o RFC 7807 só trata de erro.
+- Testes em `pkg/httputil/response_test.go`
+  (`TestWriteError_ProblemJSON_WhenAccepted`,
+  `TestWriteError_KeepsEnvelope_WhenProblemJSONNotAccepted`).
 
 ## Consequências
 
-- Enquanto não houver decisão, `httputil.WriteError` permanece como está.
-- A implementação não bloqueia nenhum outro item do roadmap.
-- Quando decidido, este ADR passa a **Aceito** e ganha a seção de
-  implementação.
+- A opção de uma major `/api/v2` com `problem+json` como **default**
+  continua aberta para o futuro (bastaria inverter o default por prefixo
+  de rota), mas não é mais necessária para conformidade e-PING.
+- `openapi.yaml` deve documentar o `Accept` alternativo (pendente).

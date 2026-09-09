@@ -91,3 +91,53 @@ func TestWriteError_UnknownError_MapsTo500WithoutLeakingDetail(t *testing.T) {
 type errString string
 
 func (e errString) Error() string { return string(e) }
+
+func TestWriteError_ProblemJSON_WhenAccepted(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/api/v2/jobs/42", nil)
+	req.Header.Set("Accept", "application/problem+json")
+
+	WriteError(rec, req, testLogger(), apperrors.Validation("campo 'nome' é obrigatório"))
+
+	if rec.Code != 422 {
+		t.Fatalf("status = %d, want 422", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/problem+json; charset=utf-8" {
+		t.Errorf("Content-Type = %q", ct)
+	}
+	var p ProblemDetails
+	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if p.Type != "urn:aurora:error:validation_error" {
+		t.Errorf("type = %q", p.Type)
+	}
+	if p.Status != 422 || p.Code != "VALIDATION_ERROR" {
+		t.Errorf("status=%d code=%q", p.Status, p.Code)
+	}
+	if p.Detail != "campo 'nome' é obrigatório" {
+		t.Errorf("detail = %q", p.Detail)
+	}
+	if p.Instance != "/api/v2/jobs/42" {
+		t.Errorf("instance = %q", p.Instance)
+	}
+}
+
+func TestWriteError_KeepsEnvelope_WhenProblemJSONNotAccepted(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/api/v1/jobs/42", nil)
+	req.Header.Set("Accept", "application/json")
+
+	WriteError(rec, req, testLogger(), apperrors.NotFound("não encontrado"))
+
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
+		t.Errorf("Content-Type = %q, want o envelope histórico", ct)
+	}
+	var env Envelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if env.Error == nil || env.Error.Code != "NOT_FOUND" {
+		t.Errorf("Error = %+v", env.Error)
+	}
+}

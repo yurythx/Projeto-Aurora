@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
 	"github.com/yurythx/projeto-aurora/internal/platform/logging"
@@ -66,6 +67,13 @@ func WriteAccepted(w http.ResponseWriter, data any) {
 // qual; caso contrário, é tratado como um erro interno inesperado, logado
 // com todo o detalhe no lado do servidor, e reportado ao cliente como um
 // 500 genérico — o cliente nunca vê o erro bruto original nesse caso.
+//
+// Gap G-13 / RFC 7807 (ADR 006, opção B — negociação de conteúdo, sem
+// quebra): um cliente que envia "Accept: application/problem+json" recebe
+// o corpo no formato Problem Details (type/title/status/detail/instance +
+// a extensão "code" legível por máquina). Qualquer outro Accept mantém o
+// envelope {data,error} histórico. Sucesso não muda (o RFC 7807 só trata
+// de erro).
 func WriteError(w http.ResponseWriter, r *http.Request, logger *slog.Logger, err error) {
 	appErr, ok := apperrors.As(err)
 	if !ok {
@@ -79,6 +87,11 @@ func WriteError(w http.ResponseWriter, r *http.Request, logger *slog.Logger, err
 		log.Warn("request rejected", slog.String("code", string(appErr.Code)), slog.String("message", appErr.Message))
 	}
 
+	if wantsProblemJSON(r) {
+		writeProblemDetails(w, r, appErr)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(appErr.Status)
 	_ = json.NewEncoder(w).Encode(Envelope{
@@ -87,5 +100,41 @@ func WriteError(w http.ResponseWriter, r *http.Request, logger *slog.Logger, err
 			Code:    string(appErr.Code),
 			Message: appErr.Message,
 		},
+	})
+}
+
+// ProblemDetails é o corpo RFC 7807. "type" é uma URN estável por código
+// de erro (independente de domínio); "code" e "request_id" são membros de
+// extensão do RFC — "code" preserva o identificador legível por máquina
+// que o envelope histórico já expunha.
+type ProblemDetails struct {
+	Type      string `json:"type"`
+	Title     string `json:"title"`
+	Status    int    `json:"status"`
+	Detail    string `json:"detail"`
+	Instance  string `json:"instance,omitempty"`
+	Code      string `json:"code"`
+	RequestID string `json:"request_id,omitempty"`
+}
+
+func wantsProblemJSON(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Accept"), "application/problem+json")
+}
+
+func writeProblemDetails(w http.ResponseWriter, r *http.Request, appErr *apperrors.Error) {
+	title := http.StatusText(appErr.Status)
+	if title == "" {
+		title = "Error"
+	}
+	w.Header().Set("Content-Type", "application/problem+json; charset=utf-8")
+	w.WriteHeader(appErr.Status)
+	_ = json.NewEncoder(w).Encode(ProblemDetails{
+		Type:      "urn:aurora:error:" + strings.ToLower(string(appErr.Code)),
+		Title:     title,
+		Status:    appErr.Status,
+		Detail:    appErr.Message,
+		Instance:  r.URL.Path,
+		Code:      string(appErr.Code),
+		RequestID: logging.RequestID(r.Context()),
 	})
 }
