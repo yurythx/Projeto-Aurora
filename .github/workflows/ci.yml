@@ -109,7 +109,7 @@ jobs:
       - name: Install Frontend Dependencies
         run: cd frontend && npm ci
 
-      - name: ESLint & e-MAG Accessibility Check (jsx-a11y + security)
+      - name: ESLint & e-MAG Accessibility Check (jsx-a11y via eslint-config-next)
         run: cd frontend && npm run lint
 
       - name: TypeScript Type Check
