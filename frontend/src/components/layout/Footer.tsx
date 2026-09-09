@@ -59,6 +59,11 @@ export function Footer() {
                   Sobre a plataforma e a API →
                 </Link>
               </li>
+              <li>
+                <Link href="/padroes" className="hover:text-primary transition-colors">
+                  Padrões, ferramentas e parâmetros →
+                </Link>
+              </li>
             </ul>
           </div>
         </div>

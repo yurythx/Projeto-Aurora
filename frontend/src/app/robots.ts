@@ -13,7 +13,7 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: "*",
-      allow: ["/", "/sobre"],
+      allow: ["/", "/sobre", "/padroes", "/acessibilidade"],
       disallow: ["/dashboard", "/integracoes", "/configuracao", "/seguranca", "/login"],
     },
     sitemap: `${baseUrl}/sitemap.xml`,

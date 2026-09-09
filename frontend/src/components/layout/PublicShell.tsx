@@ -53,6 +53,12 @@ export function PublicShell({ children }: { children: ReactNode }) {
             <Link href="/sobre" className="text-muted hover:text-foreground transition-colors">
               Sobre
             </Link>
+            <Link
+              href="/padroes"
+              className="hidden text-muted hover:text-foreground transition-colors sm:inline"
+            >
+              Padrões
+            </Link>
             {authenticated ? (
               <>
                 <Link
