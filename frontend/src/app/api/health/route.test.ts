@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// server-only detecta ambiente client/server via um campo "browser" no
+// package.json que só o bundler do Next.js respeita — no runtime puro do
+// Vitest, o import cru sempre lança. lib/health/getSystemHealth.ts (que
+// esta rota agora reaproveita) usa "server-only" de propósito (é chamado
+// direto por um Server Component, e nunca deveria vazar pro bundle do
+// cliente) — mockado aqui como um módulo vazio, o jeito padrão de manter
+// a guarda real no build do Next sem quebrar o teste.
+vi.mock("server-only", () => ({}));
+
 import { GET } from "./route";
 
 // GET /api/health é a ponte server-to-server pro /ready do backend Go —

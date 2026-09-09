@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { BACKEND_INTERNAL_URL } from "@/lib/env";
+import { getSystemHealth } from "@/lib/health/getSystemHealth";
 
 // GET /api/health — ponte server-to-server pro /ready do backend Go.
 //
@@ -15,48 +15,19 @@ import { BACKEND_INTERNAL_URL } from "@/lib/env";
 // genérico só resultava em 404 (bug real: GET /api/backend/health, que o
 // proxy nunca conseguiria mapear pra nada que exista no backend).
 //
-// Reformata o {postgres, rabbitmq} bruto do /ready no formato que o
-// painel de Monitoramento (PlatformMonitoringDashboard) espera.
+// A lógica de fetch+reshape vive em lib/health/getSystemHealth.ts —
+// reaproveitada também pelo card "Estado do Core" do dashboard (Server
+// Component, chama a função direto, sem precisar bater nesta rota HTTP).
 export async function GET() {
-  let backendResponse: Response;
-  try {
-    backendResponse = await fetch(`${BACKEND_INTERNAL_URL}/ready`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(5000),
-    });
-  } catch {
-    return NextResponse.json(
-      {
-        data: { status: "unhealthy", timestamp: new Date().toISOString(), services: {} },
-        error: { code: "DEPENDENCY_UNAVAILABLE", message: "A API não respondeu ao /ready." },
-      },
-      { status: 503 },
-    );
-  }
-
-  let checks: Record<string, string> = {};
-  try {
-    const body: { data: Record<string, string> | null } = await backendResponse.json();
-    checks = body.data ?? {};
-  } catch {
-    // Resposta ilegível — segue com checks vazio; o status geral abaixo
-    // ainda reflete o backendResponse.ok/status recebido.
-  }
-
-  const services = Object.fromEntries(
-    Object.entries(checks).map(([name, status]) => [name, { status }]),
-  );
-  const allOk = Object.values(checks).every((status) => status === "ok");
-
+  const health = await getSystemHealth();
   return NextResponse.json(
     {
-      data: {
-        status: backendResponse.ok && allOk ? "ok" : "degraded",
-        timestamp: new Date().toISOString(),
-        services,
-      },
-      error: null,
+      data: { status: health.status, timestamp: health.timestamp, services: health.services },
+      error:
+        health.status === "unhealthy"
+          ? { code: "DEPENDENCY_UNAVAILABLE", message: "A API não respondeu ao /ready." }
+          : null,
     },
-    { status: backendResponse.status },
+    { status: health.httpStatus },
   );
 }

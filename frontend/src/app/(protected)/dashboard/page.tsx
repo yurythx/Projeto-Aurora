@@ -21,22 +21,36 @@ import { StatusIndicator } from "@/components/ui/StatusIndicator";
 import { authOptions } from "@/lib/auth/options";
 import { ApiError } from "@/lib/api/client";
 import { serverApiGet } from "@/lib/api/server";
+import { getSystemHealth } from "@/lib/health/getSystemHealth";
 import type { Integration } from "@/types/api";
+
+const statCellToneClass = {
+  primary: "bg-primary/10 text-primary",
+  success: "bg-success/10 text-success",
+  warning: "bg-warning/10 text-warning",
+  danger: "bg-danger/10 text-danger",
+} as const;
 
 function PlatformStatCell({
   label,
   value,
   hint,
   icon: Icon,
+  tone = "primary",
 }: {
   label: string;
   value: string | number;
   hint?: string;
   icon: typeof Shield;
+  /** "primary" pros indicadores puramente descritivos (arquitetura,
+   * autenticação, mensageria — sempre verdadeiros, não dependem de
+   * checagem nenhuma); success/warning/danger pra um indicador que
+   * carrega um status DE VERDADE (ex.: "Estado do Core", abaixo). */
+  tone?: keyof typeof statCellToneClass;
 }) {
   return (
     <div className="flex min-w-[10rem] flex-1 items-center gap-4 rounded-xl border border-surface-border bg-surface p-4 shadow-sm">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${statCellToneClass[tone]}`}>
         <Icon size={20} />
       </div>
       <div className="flex flex-col gap-0.5">
@@ -65,6 +79,14 @@ export default async function DashboardOverviewPage() {
   } catch (err) {
     errorMessage = err instanceof ApiError ? err.message : "Falha ao carregar integracoes";
   }
+
+  // "Estado do Core" abaixo era "Saudável" fixo no código-fonte, sempre —
+  // a mesma classe de achado já corrigida no painel de Monitoramento
+  // (PlatformMonitoringDashboard), só que esta tela tinha ficado de fora
+  // daquela correção. getSystemHealth() é a mesma checagem real
+  // (/ready do backend: postgres/rabbitmq/minio), chamada direto aqui
+  // (Server Component) em vez de via HTTP em GET /api/health.
+  const systemHealth = await getSystemHealth();
 
   const modules = [
     {
@@ -163,8 +185,30 @@ export default async function DashboardOverviewPage() {
           />
           <PlatformStatCell
             label="Estado do Core"
-            value="Saudável"
-            hint="Todos os microsserviços online"
+            value={
+              systemHealth.status === "ok"
+                ? "Saudável"
+                : systemHealth.status === "degraded"
+                  ? "Degradado"
+                  : "Indisponível"
+            }
+            hint={
+              systemHealth.status === "ok"
+                ? "Todos os serviços verificados online"
+                : systemHealth.status === "degraded"
+                  ? Object.entries(systemHealth.services)
+                      .filter(([, s]) => s.status !== "ok")
+                      .map(([name]) => name)
+                      .join(", ") || "Algum serviço indisponível"
+                  : "Backend não respondeu"
+            }
+            tone={
+              systemHealth.status === "ok"
+                ? "success"
+                : systemHealth.status === "degraded"
+                  ? "warning"
+                  : "danger"
+            }
             icon={Cpu}
           />
         </div>
