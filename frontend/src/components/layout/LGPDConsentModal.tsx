@@ -13,7 +13,16 @@ export function LGPDConsentModal() {
   useEffect(() => {
     const consent = localStorage.getItem("aurora_lgpd_consent");
     if (consent !== CURRENT_TERM_VERSION) {
-      const timer = setTimeout(() => setIsOpen(true), 0);
+      // 1.2s, não 0ms: achado de revisão — na 1ª visita (consentimento
+      // ainda não aceito), este backdrop cobre a tela inteira bem na hora
+      // em que um toast de login/logout (AuthFlashToast) pode estar
+      // tentando chamar atenção — abrir instantâneo arriscava a pessoa
+      // nunca notar o toast, só o modal tomando conta da tela. Um atraso
+      // pequeno dá tempo do toast já estar visível/registrado antes do
+      // modal disputar atenção; a rolagem/foco só passam a ficar presos
+      // no modal depois desse respiro, nunca de forma abrupta no 1º
+      // pintar da página.
+      const timer = setTimeout(() => setIsOpen(true), 1200);
       return () => clearTimeout(timer);
     }
   }, []);
