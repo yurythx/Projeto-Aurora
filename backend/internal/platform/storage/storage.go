@@ -6,6 +6,20 @@ import (
 	"time"
 )
 
+// WORMWriter é implementado por providers que suportam retenção imutável
+// por objeto (S3 Object Lock). Usado pela cópia WORM da trilha de
+// auditoria (F2.6) — se o provider não implementar, o exportador cai
+// para Put comum e registra o aviso.
+type WORMWriter interface {
+	// EnsureImmutableBucket garante que bucket existe COM object-lock
+	// habilitado e uma retenção padrão em modo Compliance de
+	// retentionDays dias. Retorna erro se o bucket já existe sem
+	// object-lock (não dá para retrofitar).
+	EnsureImmutableBucket(ctx context.Context, bucket string, retentionDays int) error
+	// PutImmutable grava object com retenção Compliance até now + retentionDays.
+	PutImmutable(ctx context.Context, bucket, object string, reader io.Reader, size int64, contentType string, retentionDays int) error
+}
+
 // Provider define a interface de armazenamento de blobs/objetos (ex: PDFs).
 type Provider interface {
 	// Ping verifica conectividade + credenciais válidas contra o storage —

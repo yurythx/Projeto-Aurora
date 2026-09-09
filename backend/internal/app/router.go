@@ -2,7 +2,6 @@ package app
 
 import (
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -61,15 +60,9 @@ func NewRouter(deps *Dependencies) chi.Router {
 	// Assets do Swagger UI vendorados (F2.1): swagger-ui-dist@5.17.14 +
 	// swagger-initializer.js próprio — sem CDN, então a CSP de /docs pode
 	// ficar em 'self' (só style-src precisa de 'unsafe-inline', porque o
-	// Swagger UI injeta <style> em runtime).
-	r.Get("/docs/assets/*", func(w http.ResponseWriter, r *http.Request) {
-		asset := chi.URLParam(r, "*")
-		if strings.Contains(asset, "..") { // defesa contra path traversal
-			http.NotFound(w, r)
-			return
-		}
-		http.ServeFile(w, r, "docs/swagger-ui/"+asset)
-	})
+	// Swagger UI injeta <style> em runtime). http.FileServer/http.Dir já
+	// bloqueia path traversal (rejeita e limpa "..").
+	r.Handle("/docs/assets/*", http.StripPrefix("/docs/assets/", http.FileServer(http.Dir("docs/swagger-ui"))))
 	r.Get("/docs", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Content-Security-Policy",

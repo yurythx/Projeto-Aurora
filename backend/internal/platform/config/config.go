@@ -138,6 +138,14 @@ type RateLimitConfig struct {
 	MaxRequests   int
 }
 
+// AuditWORMConfig parametriza a cópia WORM (Write Once Read Many) da
+// trilha de auditoria (F2.6). Bucket DEDICADO (não o de blobs da app):
+// object-lock só pode ser habilitado na criação do bucket.
+type AuditWORMConfig struct {
+	Bucket        string // AUDIT_WORM_BUCKET (default "aurora-audit-worm")
+	RetentionDays int    // AUDIT_WORM_RETENTION_DAYS (default 1825 = 5 anos)
+}
+
 // JobsConfig guarda as configurações de processamento assíncrono de jobs.
 type JobsConfig struct {
 	// StaleAfter: há quanto tempo sem atividade um job "processing" (ver
@@ -193,6 +201,8 @@ type Config struct {
 	LocalAuth LocalAuthConfig
 	Jobs      JobsConfig
 	Worker    WorkerConfig
+
+	AuditWORM AuditWORMConfig
 
 	// APIRateLimit é o teto por identidade autenticada (fallback: IP)
 	// aplicado a todo o grupo /api/v1 (gap G-01).
@@ -381,6 +391,10 @@ func Load() (*Config, error) {
 		APIRateLimit: RateLimitConfig{
 			WindowSeconds: l.intVal("API_RATE_LIMIT_WINDOW_SECONDS", false, 60),
 			MaxRequests:   l.intVal("API_RATE_LIMIT_MAX", false, 600),
+		},
+		AuditWORM: AuditWORMConfig{
+			Bucket:        l.str("AUDIT_WORM_BUCKET", false, "aurora-audit-worm"),
+			RetentionDays: l.intVal("AUDIT_WORM_RETENTION_DAYS", false, 1825),
 		},
 		Worker: WorkerConfig{
 			MetricsHost: l.str("WORKER_METRICS_HOST", false, "0.0.0.0"),

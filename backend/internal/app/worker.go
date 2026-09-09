@@ -44,8 +44,9 @@ func NewWorker(deps *Dependencies) (*Worker, error) {
 			// (anonimização) do titular (F3.2).
 			supervised("lgpd_erasure", deps.Logger, lgpd.ErasureProcessor(deps.DB, deps.Logger)),
 			// Cópia WORM diária da trilha de auditoria para o object
-			// storage, com cadeia de SHA-256 (F2.6).
-			supervised("audit_worm_export", deps.Logger, audit.WORMExporter(deps.DB, deps.Storage, deps.Config.MinIO.Bucket, deps.Logger)),
+			// storage — bucket DEDICADO com object-lock quando disponível,
+			// cadeia de SHA-256 sempre (F2.6).
+			supervised("audit_worm_export", deps.Logger, audit.WORMExporter(deps.DB, deps.Storage, deps.Config.AuditWORM.Bucket, deps.Config.AuditWORM.RetentionDays, deps.Logger)),
 		},
 	}, nil
 }

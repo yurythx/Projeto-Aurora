@@ -20,13 +20,32 @@ import (
 // para o worker ter ficado fora do ar por um tempo sem acumular atraso.
 const wormInterval = 6 * time.Hour
 
+type wormExporter struct {
+	pool          *pgxpool.Pool
+	store         storage.Provider
+	worm          storage.WORMWriter // != nil quando store suporta object-lock
+	bucket        string
+	retentionDays int
+	logger        *slog.Logger
+	bucketReady   bool
+}
+
 // WORMExporter é um processor do worker (mesmo formato de
 // ratelimit.Cleanup). Serializa cada dia COMPLETO de audit_logs ainda não
 // exportado, encadeia o SHA-256 ao do dia anterior (evidência de
 // adulteração) e sobe arquivo + digest para o object storage. F2.6.
-func WORMExporter(pool *pgxpool.Pool, store storage.Provider, bucket string, logger *slog.Logger) func(ctx context.Context) error {
+//
+// Se o provider implementa storage.WORMWriter, o bucket é criado com
+// object-lock e cada objeto recebe retenção Compliance de retentionDays;
+// caso contrário, cai para Put comum e registra o aviso (a cadeia de
+// hash ainda dá evidência de adulteração).
+func WORMExporter(pool *pgxpool.Pool, store storage.Provider, bucket string, retentionDays int, logger *slog.Logger) func(ctx context.Context) error {
+	e := &wormExporter{pool: pool, store: store, bucket: bucket, retentionDays: retentionDays, logger: logger}
+	if w, ok := store.(storage.WORMWriter); ok {
+		e.worm = w
+	}
 	return func(ctx context.Context) error {
-		exportPendingDays(ctx, pool, store, bucket, logger)
+		e.run(ctx)
 		ticker := time.NewTicker(wormInterval)
 		defer ticker.Stop()
 		for {
@@ -34,16 +53,45 @@ func WORMExporter(pool *pgxpool.Pool, store storage.Provider, bucket string, log
 			case <-ctx.Done():
 				return nil
 			case <-ticker.C:
-				exportPendingDays(ctx, pool, store, bucket, logger)
+				e.run(ctx)
 			}
 		}
 	}
 }
 
-func exportPendingDays(ctx context.Context, pool *pgxpool.Pool, store storage.Provider, bucket string, logger *slog.Logger) {
-	// Só dias COMPLETOS: de min(created_at) até ontem (UTC).
+func (e *wormExporter) ensureBucket(ctx context.Context) bool {
+	if e.bucketReady {
+		return true
+	}
+	if e.worm != nil {
+		if err := e.worm.EnsureImmutableBucket(ctx, e.bucket, e.retentionDays); err != nil {
+			e.logger.Error("audit worm: não foi possível preparar o bucket imutável — object-lock indisponível; a cadeia de hash segue como evidência",
+				slog.String("bucket", e.bucket), slog.Any("error", err))
+			e.worm = nil // cai para Put comum daqui pra frente
+		}
+	}
+	if e.worm == nil {
+		if be, ok := e.store.(interface {
+			EnsureBucket(context.Context, string) error
+		}); ok {
+			if err := be.EnsureBucket(ctx, e.bucket); err != nil {
+				e.logger.Error("audit worm: não foi possível garantir o bucket", slog.Any("error", err))
+				return false
+			}
+		}
+		e.logger.Warn("audit worm: bucket SEM object-lock — configure um bucket dedicado com lock na infraestrutura para a garantia WORM completa",
+			slog.String("bucket", e.bucket))
+	}
+	e.bucketReady = true
+	return true
+}
+
+func (e *wormExporter) run(ctx context.Context) {
+	if !e.ensureBucket(ctx) {
+		return
+	}
 	var earliest *time.Time
-	if err := pool.QueryRow(ctx, `SELECT min(created_at) FROM audit_logs`).Scan(&earliest); err != nil || earliest == nil {
+	if err := e.pool.QueryRow(ctx, `SELECT min(created_at) FROM audit_logs`).Scan(&earliest); err != nil || earliest == nil {
 		return
 	}
 	yesterday := time.Now().UTC().Truncate(24 * time.Hour).Add(-24 * time.Hour)
@@ -51,30 +99,37 @@ func exportPendingDays(ctx context.Context, pool *pgxpool.Pool, store storage.Pr
 
 	for !day.After(yesterday) {
 		var exists bool
-		if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM audit_worm_exports WHERE day = $1)`, day).Scan(&exists); err != nil {
-			logger.Error("audit worm: consulta de watermark falhou", slog.Any("error", err))
+		if err := e.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM audit_worm_exports WHERE day = $1)`, day).Scan(&exists); err != nil {
+			e.logger.Error("audit worm: consulta de watermark falhou", slog.Any("error", err))
 			return
 		}
 		if !exists {
-			if err := exportOneDay(ctx, pool, store, bucket, day); err != nil {
-				logger.Error("audit worm: falha ao exportar o dia",
+			if err := e.exportOneDay(ctx, day); err != nil {
+				e.logger.Error("audit worm: falha ao exportar o dia",
 					slog.String("day", day.Format("2006-01-02")), slog.Any("error", err))
 				return // tenta de novo no próximo tick; a cadeia precisa ser sequencial
 			}
-			logger.Info("audit worm: dia exportado", slog.String("day", day.Format("2006-01-02")))
+			e.logger.Info("audit worm: dia exportado", slog.String("day", day.Format("2006-01-02")))
 		}
 		day = day.Add(24 * time.Hour)
 	}
 }
 
-func exportOneDay(ctx context.Context, pool *pgxpool.Pool, store storage.Provider, bucket string, day time.Time) error {
+func (e *wormExporter) put(ctx context.Context, key string, body []byte, contentType string) error {
+	if e.worm != nil {
+		return e.worm.PutImmutable(ctx, e.bucket, key, bytes.NewReader(body), int64(len(body)), contentType, e.retentionDays)
+	}
+	return e.store.Put(ctx, e.bucket, key, bytes.NewReader(body), int64(len(body)), contentType)
+}
+
+func (e *wormExporter) exportOneDay(ctx context.Context, day time.Time) error {
 	next := day.Add(24 * time.Hour)
 
 	var prevSHA string
-	_ = pool.QueryRow(ctx,
+	_ = e.pool.QueryRow(ctx,
 		`SELECT sha256 FROM audit_worm_exports WHERE day < $1 ORDER BY day DESC LIMIT 1`, day).Scan(&prevSHA)
 
-	rows, err := pool.Query(ctx, `
+	rows, err := e.pool.Query(ctx, `
 		SELECT id, COALESCE(user_id::text,''), action, COALESCE(resource_type,''),
 		       COALESCE(resource_id,''), COALESCE(metadata::text,'{}'),
 		       COALESCE(correlation_id::text,''), COALESCE(ip_address::text,''), created_at
@@ -118,29 +173,30 @@ func exportOneDay(ctx context.Context, pool *pgxpool.Pool, store storage.Provide
 
 	sum := sha256.Sum256(buf.Bytes())
 	digest := hex.EncodeToString(sum[:])
-	objectKey := fmt.Sprintf("audit-worm/%s/%s.jsonl", day.Format("2006/01"), day.Format("2006-01-02"))
+	objectKey := fmt.Sprintf("%s/%s.jsonl", day.Format("2006/01"), day.Format("2006-01-02"))
 
-	content := buf.Bytes()
-	if err := store.Put(ctx, bucket, objectKey, bytes.NewReader(content), int64(len(content)), "application/x-ndjson"); err != nil {
+	if err := e.put(ctx, objectKey, buf.Bytes(), "application/x-ndjson"); err != nil {
 		return fmt.Errorf("put object: %w", err)
 	}
 	digestBody := []byte(digest + "  " + day.Format("2006-01-02") + ".jsonl\n")
-	if err := store.Put(ctx, bucket, objectKey+".sha256", bytes.NewReader(digestBody), int64(len(digestBody)), "text/plain"); err != nil {
+	if err := e.put(ctx, objectKey+".sha256", digestBody, "text/plain"); err != nil {
 		return fmt.Errorf("put digest: %w", err)
 	}
 
-	if _, err := pool.Exec(ctx, `
+	if _, err := e.pool.Exec(ctx, `
 		INSERT INTO audit_worm_exports (day, row_count, sha256, prev_sha256, object_key)
 		VALUES ($1, $2, $3, $4, $5)`, day, count, digest, prevSHA, objectKey); err != nil {
 		return fmt.Errorf("insert watermark: %w", err)
 	}
 
-	// A própria exportação vira um fato auditável.
-	_ = NewWriter(pool).Record(ctx, Entry{
+	_ = NewWriter(e.pool).Record(ctx, Entry{
 		Action:       "audit.worm.exported",
 		ResourceType: "audit_worm_exports",
 		ResourceID:   day.Format("2006-01-02"),
-		Metadata:     map[string]any{"rows": count, "sha256": digest, "object_key": objectKey},
+		Metadata: map[string]any{
+			"rows": count, "sha256": digest, "object_key": objectKey,
+			"bucket": e.bucket, "immutable": e.worm != nil,
+		},
 	})
 	return nil
 }

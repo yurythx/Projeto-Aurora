@@ -83,6 +83,50 @@ func (p *MinioProvider) EnsureBucket(ctx context.Context, bucketName string) err
 	return nil
 }
 
+var _ WORMWriter = (*MinioProvider)(nil)
+
+// EnsureImmutableBucket cria bucket COM object-lock (se ainda não existe) e
+// define uma retenção padrão em modo Compliance de retentionDays dias.
+// Object-lock só pode ser habilitado na criação do bucket — um bucket
+// pré-existente sem lock não pode ser convertido, então retornamos erro
+// nesse caso para o operador criar o bucket dedicado correto.
+func (p *MinioProvider) EnsureImmutableBucket(ctx context.Context, bucket string, retentionDays int) error {
+	exists, err := p.client.BucketExists(ctx, bucket)
+	if err != nil {
+		return fmt.Errorf("storage: check worm bucket: %w", err)
+	}
+	if !exists {
+		if err := p.client.MakeBucket(ctx, bucket, minio.MakeBucketOptions{ObjectLocking: true}); err != nil {
+			return fmt.Errorf("storage: create worm bucket: %w", err)
+		}
+	} else {
+		if _, _, _, _, lerr := p.client.GetObjectLockConfig(ctx, bucket); lerr != nil {
+			return fmt.Errorf("storage: bucket %q existe sem object-lock — crie um bucket dedicado com lock para a cópia WORM: %w", bucket, lerr)
+		}
+	}
+
+	mode := minio.Compliance
+	validity := uint(retentionDays)
+	unit := minio.Days
+	if err := p.client.SetObjectLockConfig(ctx, bucket, &mode, &validity, &unit); err != nil {
+		return fmt.Errorf("storage: set worm retention: %w", err)
+	}
+	return nil
+}
+
+// PutImmutable grava um objeto com retenção Compliance até now+retentionDays.
+func (p *MinioProvider) PutImmutable(ctx context.Context, bucket, object string, reader io.Reader, size int64, contentType string, retentionDays int) error {
+	_, err := p.client.PutObject(ctx, bucket, object, reader, size, minio.PutObjectOptions{
+		ContentType:     contentType,
+		Mode:            minio.Compliance,
+		RetainUntilDate: time.Now().UTC().AddDate(0, 0, retentionDays),
+	})
+	if err != nil {
+		return fmt.Errorf("storage: put immutable object: %w", err)
+	}
+	return nil
+}
+
 // Put salva um objeto (arquivo) no bucket.
 func (p *MinioProvider) Put(ctx context.Context, bucketName, objectName string, reader io.Reader, objectSize int64, contentType string) error {
 	_, err := p.client.PutObject(ctx, bucketName, objectName, reader, objectSize, minio.PutObjectOptions{
