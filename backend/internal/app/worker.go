@@ -12,6 +12,7 @@ import (
 	"github.com/yurythx/projeto-aurora/internal/platform/httpserver"
 	"github.com/yurythx/projeto-aurora/internal/platform/idempotency"
 	"github.com/yurythx/projeto-aurora/internal/platform/jobs"
+	"github.com/yurythx/projeto-aurora/internal/platform/lgpd"
 	"github.com/yurythx/projeto-aurora/internal/platform/outbox"
 	"github.com/yurythx/projeto-aurora/internal/platform/ratelimit"
 )
@@ -38,6 +39,9 @@ func NewWorker(deps *Dependencies) (*Worker, error) {
 			supervised("rate_limit_cleanup", deps.Logger, ratelimit.Cleanup(deps.DB)),
 			supervised("idempotency_cleanup", deps.Logger, idempotency.Cleanup(deps.DB)),
 			supervised("jobs_stale_sweeper", deps.Logger, jobs.SweepStale(deps.DB, staleHandlers, deps.Config.Jobs.StaleAfter, deps.Logger)),
+			// LGPD art. 18, VI — processa as solicitações de exclusão
+			// (anonimização) do titular (F3.2).
+			supervised("lgpd_erasure", deps.Logger, lgpd.ErasureProcessor(deps.DB, deps.Logger)),
 		},
 	}, nil
 }

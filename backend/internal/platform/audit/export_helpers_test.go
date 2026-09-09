@@ -54,7 +54,7 @@ func TestChooseFormat(t *testing.T) {
 		{"", "", "csv"},
 		{"", "application/json", "json"},
 		{"", "application/xml", "xml"},
-		{"format=json", "text/csv", "json"},  // query vence o Accept
+		{"format=json", "text/csv", "json"}, // query vence o Accept
 		{"format=xml", "application/json", "xml"},
 		{"format=csv", "application/json", "csv"},
 	}

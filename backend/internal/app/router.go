@@ -16,6 +16,7 @@ import (
 	"github.com/yurythx/projeto-aurora/internal/platform/httpserver"
 	"github.com/yurythx/projeto-aurora/internal/platform/idempotency"
 	"github.com/yurythx/projeto-aurora/internal/platform/keycloakconfig"
+	"github.com/yurythx/projeto-aurora/internal/platform/lgpd"
 	"github.com/yurythx/projeto-aurora/internal/platform/localauth"
 	"github.com/yurythx/projeto-aurora/internal/platform/outbox"
 	"github.com/yurythx/projeto-aurora/internal/platform/ws"
@@ -90,6 +91,10 @@ func NewRouter(deps *Dependencies) chi.Router {
 	// Rota de login local (pública)
 	localauth.RegisterRoutes(r, deps.Modules.LocalAuth.Handlers, deps.Logger, deps.RateLimiters.LocalLogin)
 
+	// Consentimento LGPD de visitante NÃO autenticado (gap G-11) — rota
+	// pública, rate-limited por IP.
+	lgpd.RegisterPublicRoutes(r, deps.LGPDSvc, deps.RateLimiters.AnonConsent)
+
 	// Rotas protegidas (/api/v1)
 	r.Route("/api/v1", func(api chi.Router) {
 		api.Use(auth.RequireAuthentication(deps.Verifier, deps.Logger))
@@ -113,6 +118,7 @@ func NewRouter(deps *Dependencies) chi.Router {
 		outbox.RegisterStatsRoutes(api, deps.Modules.OutboxStats.Handlers, deps.Logger)
 		exampleTransport.RegisterRoutes(api, deps.Modules.Example.Handlers)
 		deps.LGPDSvc.RegisterRoutes(api)
+		deps.LGPDSvc.RegisterDSRRoutes(api) // direitos do titular — LGPD art. 18 (F3.2)
 		deps.AuditExp.RegisterRoutes(api)
 	})
 

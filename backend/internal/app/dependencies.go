@@ -49,6 +49,9 @@ type RateLimiters struct {
 	// tinham limite e qualquer token válido marretava as demais rotas
 	// sem teto (gap G-01 da auditoria de conformidade).
 	APIGlobal httpserver.Limiter
+	// AnonConsent limita POST /api/v1/lgpd/accept-anon por IP — rota
+	// pública de consentimento de visitante não autenticado (gap G-11).
+	AnonConsent httpserver.Limiter
 }
 
 // OutboxSource identifica este backend como o Source carimbado em todo
@@ -241,6 +244,9 @@ func NewDependencies(ctx context.Context, component string) (*Dependencies, erro
 			// normal do painel, só barra abuso grosseiro. Parametrizável
 			// por API_RATE_LIMIT_WINDOW_SECONDS / API_RATE_LIMIT_MAX.
 			APIGlobal: ratelimit.NewPostgresLimiter(pool, cfg.APIRateLimit.WindowSeconds, cfg.APIRateLimit.MaxRequests, "api_global"),
+			// Consentimento anônimo: até 10 por IP a cada 60s — um
+			// visitante legítimo aceita uma vez.
+			AnonConsent: ratelimit.NewPostgresLimiter(pool, 60, 10, "anon_consent"),
 		},
 		Idempotency: idempotency.NewPostgresStore(pool),
 		Flags:       configflags.NewPostgresStore(pool),

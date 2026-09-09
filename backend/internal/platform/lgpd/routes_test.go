@@ -54,3 +54,38 @@ func TestRegisterRoutes_MountsRelativeToAPIV1Group(t *testing.T) {
 		}
 	}
 }
+
+// TestRegisterDSRRoutes_MountsRelativeToAPIV1Group — mesmo cuidado para os
+// endpoints de direitos do titular (LGPD art. 18 / F3.2).
+func TestRegisterDSRRoutes_MountsRelativeToAPIV1Group(t *testing.T) {
+	svc := &Service{}
+	root := chi.NewRouter()
+	root.Route("/api/v1", func(api chi.Router) { svc.RegisterDSRRoutes(api) })
+
+	var patterns []string
+	if err := chi.Walk(root, func(_, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		patterns = append(patterns, route)
+		return nil
+	}); err != nil {
+		t.Fatalf("chi.Walk: %v", err)
+	}
+
+	want := map[string]bool{
+		"/api/v1/lgpd/meus-dados":          false,
+		"/api/v1/lgpd/solicitar-exclusao":  false,
+		"/api/v1/lgpd/minhas-solicitacoes": false,
+	}
+	for _, p := range patterns {
+		if strings.Count(p, "/api/v1") > 1 {
+			t.Errorf("rota %q duplica o prefixo /api/v1", p)
+		}
+		if _, ok := want[p]; ok {
+			want[p] = true
+		}
+	}
+	for route, found := range want {
+		if !found {
+			t.Errorf("rota esperada %q não registrada (registradas: %v)", route, patterns)
+		}
+	}
+}
