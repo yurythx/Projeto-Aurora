@@ -96,13 +96,20 @@ func processOneErasure(ctx context.Context, pool *pgxpool.Pool, reqID, userID uu
 
 		// Anonimização — NUNCA DELETE. Mantém id (FK de audit_logs e
 		// user_consents) e desativa a conta.
+		//
+		// password_hash recebe o tombstone 'ANONYMIZED' (não NULL): a
+		// constraint users_has_auth_method exige keycloak_subject OU
+		// password_hash preenchidos, e keycloak_subject (o "sub" do
+		// Gov.br) É dado pessoal e precisa sair. 'ANONYMIZED' não é um
+		// hash bcrypt válido, então bcrypt.CompareHashAndPassword sempre
+		// falha; além disso active=false barra o login antes disso.
 		short := userID.String()[:8]
 		if _, err := tx.Exec(ctx, `
 			UPDATE users SET
 				username         = 'anon_' || $2,
 				email            = 'anon_' || $2 || '@anonimizado.invalid',
 				display_name     = '',
-				password_hash    = NULL,
+				password_hash    = 'ANONYMIZED',
 				keycloak_subject = NULL,
 				roles            = '{}',
 				active           = false,
