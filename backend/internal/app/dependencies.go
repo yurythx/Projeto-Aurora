@@ -32,6 +32,7 @@ import (
 	"github.com/yurythx/projeto-aurora/internal/platform/secretcrypto"
 	"github.com/yurythx/projeto-aurora/internal/platform/storage"
 	"github.com/yurythx/projeto-aurora/internal/platform/telemetry"
+	"github.com/yurythx/projeto-aurora/internal/platform/transparency"
 	"github.com/yurythx/projeto-aurora/internal/platform/ws"
 )
 
@@ -52,6 +53,9 @@ type RateLimiters struct {
 	// AnonConsent limita POST /api/v1/lgpd/accept-anon por IP — rota
 	// pública de consentimento de visitante não autenticado (gap G-11).
 	AnonConsent httpserver.Limiter
+	// PublicRead limita as rotas públicas de transparência ativa por IP
+	// (F3.5).
+	PublicRead httpserver.Limiter
 }
 
 // OutboxSource identifica este backend como o Source carimbado em todo
@@ -81,6 +85,7 @@ type Dependencies struct {
 	Flags        configflags.Store
 	KeycloakCfg  keycloakconfig.Store
 	LGPDSvc      *lgpd.Service
+	Transparency *transparency.Service
 	AuditExp     *audit.Exporter
 
 	telemetryShutdown telemetry.Shutdown
@@ -247,12 +252,15 @@ func NewDependencies(ctx context.Context, component string) (*Dependencies, erro
 			// Consentimento anônimo: até 10 por IP a cada 60s — um
 			// visitante legítimo aceita uma vez.
 			AnonConsent: ratelimit.NewPostgresLimiter(pool, 60, 10, "anon_consent"),
+			// Transparência ativa (leitura pública): 60 por IP a cada 60s.
+			PublicRead: ratelimit.NewPostgresLimiter(pool, 60, 60, "public_read"),
 		},
-		Idempotency: idempotency.NewPostgresStore(pool),
-		Flags:       configflags.NewPostgresStore(pool),
-		KeycloakCfg: keycloakCfgStore,
-		LGPDSvc:     lgpd.NewService(pool, logger, trustedProxies),
-		AuditExp:    audit.NewExporter(pool, logger),
+		Idempotency:  idempotency.NewPostgresStore(pool),
+		Flags:        configflags.NewPostgresStore(pool),
+		KeycloakCfg:  keycloakCfgStore,
+		LGPDSvc:      lgpd.NewService(pool, logger, trustedProxies),
+		Transparency: transparency.NewService(pool, logger),
+		AuditExp:     audit.NewExporter(pool, logger),
 
 		telemetryShutdown: telemetryShutdown,
 	}

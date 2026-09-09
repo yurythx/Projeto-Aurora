@@ -19,6 +19,7 @@ import (
 	"github.com/yurythx/projeto-aurora/internal/platform/lgpd"
 	"github.com/yurythx/projeto-aurora/internal/platform/localauth"
 	"github.com/yurythx/projeto-aurora/internal/platform/outbox"
+	"github.com/yurythx/projeto-aurora/internal/platform/transparency"
 	"github.com/yurythx/projeto-aurora/internal/platform/ws"
 )
 
@@ -94,6 +95,10 @@ func NewRouter(deps *Dependencies) chi.Router {
 	// Consentimento LGPD de visitante NÃO autenticado (gap G-11) — rota
 	// pública, rate-limited por IP.
 	lgpd.RegisterPublicRoutes(r, deps.LGPDSvc, deps.RateLimiters.AnonConsent)
+
+	// Transparência ativa / dados abertos (LAI art. 8º, LC 131 — F3.5) —
+	// rotas públicas em /api/v1/transparencia/*, rate-limited por IP.
+	transparency.RegisterRoutes(r, deps.Transparency, deps.RateLimiters.PublicRead)
 
 	// Rotas protegidas (/api/v1)
 	r.Route("/api/v1", func(api chi.Router) {

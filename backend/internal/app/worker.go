@@ -9,6 +9,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/yurythx/projeto-aurora/internal/platform/audit"
 	"github.com/yurythx/projeto-aurora/internal/platform/httpserver"
 	"github.com/yurythx/projeto-aurora/internal/platform/idempotency"
 	"github.com/yurythx/projeto-aurora/internal/platform/jobs"
@@ -42,6 +43,9 @@ func NewWorker(deps *Dependencies) (*Worker, error) {
 			// LGPD art. 18, VI — processa as solicitações de exclusão
 			// (anonimização) do titular (F3.2).
 			supervised("lgpd_erasure", deps.Logger, lgpd.ErasureProcessor(deps.DB, deps.Logger)),
+			// Cópia WORM diária da trilha de auditoria para o object
+			// storage, com cadeia de SHA-256 (F2.6).
+			supervised("audit_worm_export", deps.Logger, audit.WORMExporter(deps.DB, deps.Storage, deps.Config.MinIO.Bucket, deps.Logger)),
 		},
 	}, nil
 }
