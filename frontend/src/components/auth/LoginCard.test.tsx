@@ -69,7 +69,12 @@ describe("LoginCard", () => {
     const user = userEvent.setup();
     render(<LoginCard />);
     await user.click(screen.getByRole("button", { name: "Entrar com SSO corporativo" }));
-    expect(signIn).toHaveBeenCalledWith("keycloak", expect.objectContaining({ callbackUrl: "/dashboard" }));
+    // ?welcome=1: mesmo AuthFlashToast do login local — sem isto só quem
+    // loga localmente veria o toast de boas-vindas.
+    expect(signIn).toHaveBeenCalledWith(
+      "keycloak",
+      expect.objectContaining({ callbackUrl: "/dashboard?welcome=1" }),
+    );
   });
 
   it("erro de OAuth vindo pela URL mostra o alerta", () => {

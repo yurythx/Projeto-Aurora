@@ -212,13 +212,7 @@ func (h *Handlers) Save(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reloadErr := h.verifier.Reload(r.Context(), config.KeycloakConfig{
-		IssuerURL:    saved.IssuerURL,
-		Realm:        saved.Realm,
-		ClientID:     saved.ClientID,
-		ClientSecret: saved.ClientSecret,
-		Audience:     saved.Audience,
-	})
+	reloadErr := h.verifier.Reload(r.Context(), saved.ToKeycloakConfig())
 	if reloadErr != nil {
 		// Já persistiu (o admin vê a configuração salva corretamente),
 		// mas o processo atual não conseguiu recarregar o verifier — o

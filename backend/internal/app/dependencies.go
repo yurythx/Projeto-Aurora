@@ -145,13 +145,7 @@ func NewDependencies(ctx context.Context, component string) (*Dependencies, erro
 			slog.String("erro", err.Error()))
 	} else if savedKeycloak.Configured {
 		reloadCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-		reloadErr := verifier.Reload(reloadCtx, config.KeycloakConfig{
-			IssuerURL:    savedKeycloak.IssuerURL,
-			Realm:        savedKeycloak.Realm,
-			ClientID:     savedKeycloak.ClientID,
-			ClientSecret: savedKeycloak.ClientSecret,
-			Audience:     savedKeycloak.Audience,
-		})
+		reloadErr := verifier.Reload(reloadCtx, savedKeycloak.ToKeycloakConfig())
 		cancel()
 		if reloadErr != nil {
 			logger.Error("app: configuração do Keycloak persistida no Postgres não passou no discovery no boot — seguindo com variáveis de ambiente",

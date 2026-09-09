@@ -150,6 +150,6 @@ describe("PlatformMonitoringDashboard", () => {
 
     await screen.findByText("PostgreSQL 16 Engine");
     expect(screen.getByText("Reconectando…")).toBeInTheDocument();
-    expect(screen.queryByText("Ativa")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ao vivo")).not.toBeInTheDocument();
   });
 });

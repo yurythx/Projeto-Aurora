@@ -21,20 +21,9 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { StatusIndicator } from "@/components/ui/StatusIndicator";
 import { useConnectionState } from "@/components/layout/ConnectionStateContext";
+import { CONNECTION_LABEL, CONNECTION_TONE } from "@/lib/websocket/connectionCopy";
 import { apiClient } from "@/lib/api/client";
 import type { IntegrationStatus } from "@/types/api";
-import type { ConnectionState } from "@/lib/websocket/client";
-
-// Mesmos rótulos de Topbar.tsx (a outra tela que mostra este estado) —
-// não reexportado de lá pra não acoplar os dois componentes por um
-// detalhe puramente de cópia/cor.
-const connectionCopy: Record<ConnectionState, { label: string; tone: string }> = {
-  idle: { label: "Conectando…", tone: "text-muted" },
-  connecting: { label: "Conectando…", tone: "text-muted" },
-  open: { label: "Ativa", tone: "text-success" },
-  closed: { label: "Reconectando…", tone: "text-warning" },
-  unauthorized: { label: "Sessão expirada", tone: "text-danger" },
-};
 
 // GET /api/v1/monitoring/outbox-stats (ver docs/openapi.yaml) — essa,
 // diferente de /api/health, É uma chamada de negócio normal através do
@@ -282,8 +271,8 @@ export function PlatformMonitoringDashboard() {
           <CardContent className="pt-4 flex items-center justify-between">
             <div className="flex flex-col gap-1">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted">Conexão WebSocket</span>
-              <span className={`text-xl font-bold ${connectionCopy[connectionState].tone}`}>
-                {connectionCopy[connectionState].label}
+              <span className={`text-xl font-bold ${CONNECTION_TONE[connectionState].textClass}`}>
+                {CONNECTION_LABEL[connectionState]}
               </span>
               <span className="text-[11px] text-muted">Notificações em tempo real</span>
             </div>
@@ -355,8 +344,21 @@ export function PlatformMonitoringDashboard() {
                   </CardDescription>
                 </div>
               </div>
-              <span className="rounded-full bg-success/10 px-3 py-1 text-xs font-semibold text-success">
-                Outbox Worker Ativo
+              {/* Badge derivado de outboxStats de verdade — achado de
+                  revisão: dizia "Outbox Worker Ativo" fixo no código-fonte,
+                  a mesma classe de problema já corrigida nos KPIs acima
+                  (nenhuma leitura real de que o worker está processando,
+                  só uma contagem de linhas com falha registrada). */}
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                  !outboxStats
+                    ? "bg-black/5 text-muted dark:bg-white/10"
+                    : outboxStats.failed > 0
+                      ? "bg-danger/10 text-danger"
+                      : "bg-success/10 text-success"
+                }`}
+              >
+                {!outboxStats ? "Sem dados" : outboxStats.failed > 0 ? "Falhas na fila" : "Outbox Ativo"}
               </span>
             </div>
           </CardHeader>

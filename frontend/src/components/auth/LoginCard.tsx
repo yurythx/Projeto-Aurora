@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/Input";
 // anterior): o painel direito de app/login/page.tsx já é o "container"
 // visual (§ Redesenho do login, inspirado em papermoon.cloud) — outra
 // caixa por dentro dele ficaria redundante.
+
 // Mesma janela do rate limiter local do backend (ratelimit.NewPostgresLimiter
 // no bucket "local_login" — ver internal/app/dependencies.go): até 5
 // tentativas a cada 60s por IP. Este aviso aparece ANTES disso (na 3ª
@@ -35,6 +36,16 @@ import { Input } from "@/components/ui/Input";
 // cliente por esta via), só uma estimativa honesta pra não pegar o
 // usuário de surpresa quando o bloqueio de fato acontecer.
 const ATTEMPTS_BEFORE_RATE_LIMIT_WARNING = 3;
+
+// AuthFlashToast (montado em DashboardShell) lê ?welcome=1 no destino
+// final e mostra o toast de boas-vindas — usado tanto pelo login local
+// (navegação via router.push, abaixo) quanto pelo SSO Keycloak
+// (callbackUrl aqui é pra ONDE o NextAuth redireciona o navegador depois
+// da troca OAuth completar; sem o parâmetro, só quem loga localmente
+// veria a mensagem).
+function withWelcomeFlag(url: string): string {
+  return `${url}${url.includes("?") ? "&" : "?"}welcome=1`;
+}
 
 export function LoginCard() {
   const router = useRouter();
@@ -67,8 +78,7 @@ export function LoginCard() {
         return;
       }
       setFailedAttempts(0);
-      const separator = callbackUrl.includes("?") ? "&" : "?";
-      router.push(`${callbackUrl}${separator}welcome=1`);
+      router.push(withWelcomeFlag(callbackUrl));
     } finally {
       setSubmitting(false);
     }
@@ -152,7 +162,11 @@ export function LoginCard() {
         <div className="h-px flex-1 bg-surface-border" />
       </div>
 
-      <Button variant="secondary" className="w-full" onClick={() => signIn("keycloak", { callbackUrl })}>
+      <Button
+        variant="secondary"
+        className="w-full"
+        onClick={() => signIn("keycloak", { callbackUrl: withWelcomeFlag(callbackUrl) })}
+      >
         Entrar com SSO corporativo
       </Button>
     </div>

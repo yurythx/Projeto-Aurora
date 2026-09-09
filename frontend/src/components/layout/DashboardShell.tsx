@@ -7,6 +7,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { Footer } from "@/components/layout/Footer";
 import { ConnectionStateProvider } from "@/components/layout/ConnectionStateContext";
 import { AuthFlashToast } from "@/components/layout/AuthFlashToast";
+import { LGPDConsentModal } from "@/components/layout/LGPDConsentModal";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import { NotificationHistoryProvider } from "@/components/notifications/NotificationHistoryProvider";
 import { ToastProvider } from "@/components/notifications/ToastProvider";
@@ -34,7 +35,6 @@ const MD_BREAKPOINT_QUERY = "(min-width: 768px)";
 //
 // Âncoras dos atalhos e-MAG (ver EMagAccessibilityBar): #conteudo (Alt+1),
 // #menu (Alt+2), #rodape (Alt+4).
-import { LGPDConsentModal } from "@/components/layout/LGPDConsentModal";
 
 export function DashboardShell({
   userLabel,

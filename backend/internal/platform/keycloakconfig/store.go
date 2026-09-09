@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/yurythx/projeto-aurora/internal/platform/config"
 	"github.com/yurythx/projeto-aurora/internal/platform/secretcrypto"
 )
 
@@ -43,6 +44,21 @@ type Settings struct {
 	UpdatedAt            time.Time
 	UpdatedBy            string
 	Configured           bool
+}
+
+// ToKeycloakConfig converte pro formato que auth.Verifier.Reload/NewVerifier
+// espera — usado tanto no boot (dependencies.go, reaplicando uma
+// configuração já salva antes de aceitar tráfego) quanto depois de um
+// PUT bem-sucedido (transport.go), que antes duplicavam este mesmo
+// literal em dois lugares.
+func (s Settings) ToKeycloakConfig() config.KeycloakConfig {
+	return config.KeycloakConfig{
+		IssuerURL:    s.IssuerURL,
+		Realm:        s.Realm,
+		ClientID:     s.ClientID,
+		ClientSecret: s.ClientSecret,
+		Audience:     s.Audience,
+	}
 }
 
 // Store persiste e consulta a configuração do Keycloak. Handlers depende

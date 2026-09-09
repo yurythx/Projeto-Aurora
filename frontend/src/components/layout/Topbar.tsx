@@ -11,15 +11,8 @@ import { EMagAccessibilityBar } from "@/components/layout/EMagAccessibilityBar";
 import { Logo } from "@/components/ui/Logo";
 import { useBranding } from "@/components/branding/BrandingContext";
 import { safeResourceUrl } from "@/lib/security/safe-url";
+import { CONNECTION_LABEL, CONNECTION_TONE } from "@/lib/websocket/connectionCopy";
 import type { ConnectionState } from "@/lib/websocket/client";
-
-const connectionCopy: Record<ConnectionState, { label: string; dotClass: string }> = {
-  idle: { label: "Conectando…", dotClass: "bg-status-unknown" },
-  connecting: { label: "Conectando…", dotClass: "bg-status-unknown" },
-  open: { label: "Ao vivo", dotClass: "bg-status-online" },
-  closed: { label: "Reconectando…", dotClass: "bg-status-degraded" },
-  unauthorized: { label: "Sessão expirada", dotClass: "bg-status-offline" },
-};
 
 export function Topbar({
   userLabel,
@@ -36,7 +29,6 @@ export function Topbar({
   onOpenGlobalSearch?: () => void;
   initialTheme?: "light" | "dark";
 }) {
-  const status = connectionCopy[connectionState];
   const { branding } = useBranding();
   const [logoError, setLogoError] = useState(false);
   // S-03: só usa a URL da logo se for https:// bem-formada.
@@ -108,11 +100,11 @@ export function Topbar({
             aria-live="polite"
           >
             <span
-              className={`h-2 w-2 shrink-0 rounded-full transition-colors ${status.dotClass}`}
+              className={`h-2 w-2 shrink-0 rounded-full transition-colors ${CONNECTION_TONE[connectionState].dotClass}`}
               aria-hidden="true"
             />
-            <span className="hidden md:inline">{status.label}</span>
-            <span className="sr-only md:hidden">Conexão: {status.label}</span>
+            <span className="hidden md:inline">{CONNECTION_LABEL[connectionState]}</span>
+            <span className="sr-only md:hidden">Conexão: {CONNECTION_LABEL[connectionState]}</span>
           </div>
 
           {/* Mesmo link "Sobre" das páginas públicas (PublicShell) — a
