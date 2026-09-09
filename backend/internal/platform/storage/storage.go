@@ -8,6 +8,10 @@ import (
 
 // Provider define a interface de armazenamento de blobs/objetos (ex: PDFs).
 type Provider interface {
+	// Ping verifica conectividade + credenciais válidas contra o storage —
+	// usado pelo /ready (§ Monitoramento).
+	Ping(ctx context.Context) error
+
 	// Put salva um objeto (arquivo) no storage.
 	Put(ctx context.Context, bucketName, objectName string, reader io.Reader, objectSize int64, contentType string) error
 

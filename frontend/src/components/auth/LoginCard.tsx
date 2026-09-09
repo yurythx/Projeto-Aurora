@@ -27,16 +27,32 @@ import { Input } from "@/components/ui/Input";
 // anterior): o painel direito de app/login/page.tsx já é o "container"
 // visual (§ Redesenho do login, inspirado em papermoon.cloud) — outra
 // caixa por dentro dele ficaria redundante.
+// Mesma janela do rate limiter local do backend (ratelimit.NewPostgresLimiter
+// no bucket "local_login" — ver internal/app/dependencies.go): até 5
+// tentativas a cada 60s por IP. Este aviso aparece ANTES disso (na 3ª
+// tentativa malsucedida), como um sinal preventivo — não é uma cópia
+// exata do estado do limiter (o backend nunca expõe essa contagem pro
+// cliente por esta via), só uma estimativa honesta pra não pegar o
+// usuário de surpresa quando o bloqueio de fato acontecer.
+const ATTEMPTS_BEFORE_RATE_LIMIT_WARNING = 3;
+
 export function LoginCard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/dashboard";
   const oauthError = searchParams.get("error");
+  // reason=session_expired: carimbado por proxy.ts (rota protegida com um
+  // token que existia mas não é mais utilizável) e por lib/api/client.ts
+  // (um 401 do backend numa chamada já autenticada) — achado de
+  // auditoria: antes disso o usuário simplesmente "reaparecia" no login
+  // sem nenhuma explicação de por quê.
+  const sessionExpired = searchParams.get("reason") === "session_expired";
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [failedAttempts, setFailedAttempts] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleLogin(e: FormEvent) {
@@ -46,10 +62,13 @@ export function LoginCard() {
     try {
       const result = await signIn("local", { username, password, redirect: false });
       if (!result || result.error) {
+        setFailedAttempts((n) => n + 1);
         setLocalError("Usuário ou senha inválidos.");
         return;
       }
-      router.push(callbackUrl);
+      setFailedAttempts(0);
+      const separator = callbackUrl.includes("?") ? "&" : "?";
+      router.push(`${callbackUrl}${separator}welcome=1`);
     } finally {
       setSubmitting(false);
     }
@@ -67,6 +86,17 @@ export function LoginCard() {
       {oauthError && (
         <p role="alert" className="text-sm text-danger">
           Falha ao entrar. Tente novamente.
+        </p>
+      )}
+      {sessionExpired && (
+        <p role="alert" className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground">
+          Sua sessão expirou por inatividade. Faça login novamente para continuar.
+        </p>
+      )}
+      {failedAttempts >= ATTEMPTS_BEFORE_RATE_LIMIT_WARNING && (
+        <p role="alert" className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-foreground">
+          Muitas tentativas sem sucesso. Após algumas tentativas incorretas, o
+          acesso é bloqueado temporariamente por alguns minutos.
         </p>
       )}
       {/* O erro de submit (localError) aparece no campo de senha via

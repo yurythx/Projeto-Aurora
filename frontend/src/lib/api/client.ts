@@ -65,6 +65,10 @@ async function request<T>(
   if (res.status === 401 && typeof window !== "undefined" && window.location.pathname !== "/login") {
     const target = new URL("/login", window.location.origin);
     target.searchParams.set("callbackUrl", window.location.pathname + window.location.search);
+    // Este 401 só acontece pra quem já tinha uma sessão (o proxy BFF exige
+    // token pra sequer tentar a chamada) — sempre "sessão expirou", nunca
+    // "nunca logou" (ver o mesmo aviso em LoginCard.tsx).
+    target.searchParams.set("reason", "session_expired");
     window.location.replace(target.toString());
   }
 

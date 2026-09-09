@@ -113,7 +113,7 @@ paths:
       tags: [system]
       summary: Readiness probe
       operationId: getReady
-      description: Verifica a conectividade com PostgreSQL e RabbitMQ.
+      description: Verifica a conectividade com PostgreSQL, RabbitMQ e MinIO.
       security: []
       responses:
         "200":
@@ -121,14 +121,14 @@ paths:
           content:
             application/json:
               example:
-                data: { postgres: "ok", rabbitmq: "ok" }
+                data: { postgres: "ok", rabbitmq: "ok", minio: "ok" }
                 error: null
         "503":
           description: Pelo menos uma dependência está indisponível.
           content:
             application/json:
               example:
-                data: { postgres: "ok", rabbitmq: "unavailable" }
+                data: { postgres: "ok", rabbitmq: "unavailable", minio: "ok" }
                 error: null
 
   /metrics:

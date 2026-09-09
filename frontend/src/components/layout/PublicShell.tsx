@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import Link from "next/link";
 import { LogOut } from "lucide-react";
 import { useSession } from "next-auth/react";
@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/Button";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { useBranding } from "@/components/branding/BrandingContext";
 import { fullSignOut } from "@/lib/auth/logout";
+import { ToastProvider } from "@/components/notifications/ToastProvider";
+import { AuthFlashToast } from "@/components/layout/AuthFlashToast";
 
 // Shell das páginas PÚBLICAS (fora da área autenticada) — mesma barra e-MAG
 // fixa da área interna, header institucional enxuto e o rodapé compartilhado.
@@ -24,7 +26,15 @@ export function PublicShell({ children }: { children: ReactNode }) {
   const authenticated = status === "authenticated";
 
   return (
+    <ToastProvider>
     <div className="flex min-h-screen flex-col pt-[var(--topbar-h)]">
+      {/* Sem Suspense, useSearchParams() dentro de AuthFlashToast faria o
+          Next.js reclamar em build/desligar a otimização estática desta
+          página inteira — o fallback null é invisível de qualquer jeito
+          (o componente não renderiza nada). */}
+      <Suspense fallback={null}>
+        <AuthFlashToast />
+      </Suspense>
       <header
         id="menu"
         className="fixed inset-x-0 top-0 z-50 flex h-[var(--topbar-h)] flex-col border-b border-surface-border bg-surface shadow-xs"
@@ -81,5 +91,6 @@ export function PublicShell({ children }: { children: ReactNode }) {
       </div>
       <LGPDConsentModal />
     </div>
+    </ToastProvider>
   );
 }

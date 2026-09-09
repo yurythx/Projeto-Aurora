@@ -99,6 +99,16 @@ export async function proxy(request: NextRequest) {
     if (!accessTokenUsable(token)) {
       const loginUrl = new URL("/login", request.url);
       loginUrl.searchParams.set("callbackUrl", request.nextUrl.pathname);
+      // token não-nulo aqui significa que EXISTIA uma sessão (o cookie
+      // decriptografou), só não é mais utilizável — diferente de nunca
+      // ter feito login. Só neste caso faz sentido dizer "sua sessão
+      // expirou": um visitante que nunca logou não teve sessão nenhuma
+      // pra expirar (achado de auditoria: LoginCard mostra esse aviso a
+      // qualquer um que caísse aqui, incluindo quem só digitou a URL
+      // direto sem nunca ter entrado).
+      if (token) {
+        loginUrl.searchParams.set("reason", "session_expired");
+      }
       return NextResponse.redirect(loginUrl);
     }
   }

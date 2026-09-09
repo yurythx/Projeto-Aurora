@@ -16,7 +16,7 @@ function mockBackend({
   healthStatus = 200,
   outbox,
 }: {
-  health?: { postgres?: string; rabbitmq?: string };
+  health?: { postgres?: string; rabbitmq?: string; minio?: string };
   healthStatus?: number;
   outbox?: { pending: number; published: number; failed: number };
 }) {
@@ -90,13 +90,26 @@ describe("PlatformMonitoringDashboard", () => {
     expect(postgresCard.closest(".relative")!.textContent).toContain("Online");
   });
 
-  it("MinIO nunca é reportado como 'Online' sem uma checagem real — aparece como Desconhecido", async () => {
-    mockBackend({ health: { postgres: "ok", rabbitmq: "ok" } });
+  // Achado de auditoria (2ª rodada): o MinIO nunca tinha uma checagem real
+  // — /ready só verificava postgres/rabbitmq — então o card ficava preso
+  // em "Desconhecido" pra sempre. Corrigido com storage.Provider.Ping
+  // (backend) — agora reflete o /ready de verdade, igual aos outros três.
+  it("reflete o status real do MinIO quando o backend passa a checá-lo", async () => {
+    mockBackend({ health: { postgres: "ok", rabbitmq: "ok", minio: "ok" } });
     renderDashboard();
 
     await screen.findByText("PostgreSQL 16 Engine");
     const minioCard = await screen.findByText("MinIO Object Storage (S3)");
-    expect(minioCard.closest(".relative")!.textContent).toContain("Desconhecido");
+    expect(minioCard.closest(".relative")!.textContent).toContain("Online");
+  });
+
+  it("MinIO indisponível aparece como Offline, não mais preso em 'Desconhecido'", async () => {
+    mockBackend({ health: { postgres: "ok", rabbitmq: "ok", minio: "unavailable" }, healthStatus: 503 });
+    renderDashboard();
+
+    await screen.findByText("PostgreSQL 16 Engine");
+    const minioCard = await screen.findByText("MinIO Object Storage (S3)");
+    expect(minioCard.closest(".relative")!.textContent).toContain("Offline");
   });
 
   it("não existe mais um botão \"Testar\" chamando um endpoint de integração inexistente", async () => {

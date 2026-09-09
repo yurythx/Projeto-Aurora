@@ -161,10 +161,10 @@ export function PlatformMonitoringDashboard() {
     {
       id: "minio-storage",
       name: "MinIO Object Storage (S3)",
-      description: "Armazenamento de arquivos e anexos compatível com Amazon S3 API — sem checagem de saúde própria em /ready ainda.",
+      description: "Armazenamento de arquivos e anexos compatível com Amazon S3 API.",
       port: "9002 / 9003",
       icon: HardDrive,
-      status: "unknown",
+      status: backendCheckStatus("minio"),
       type: "S3 Storage",
     },
   ];

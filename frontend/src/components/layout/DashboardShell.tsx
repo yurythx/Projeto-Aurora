@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { Suspense, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { Footer } from "@/components/layout/Footer";
 import { ConnectionStateProvider } from "@/components/layout/ConnectionStateContext";
+import { AuthFlashToast } from "@/components/layout/AuthFlashToast";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import { NotificationHistoryProvider } from "@/components/notifications/NotificationHistoryProvider";
 import { ToastProvider } from "@/components/notifications/ToastProvider";
@@ -68,6 +69,9 @@ export function DashboardShell({
   return (
     <ToastProvider>
       <NotificationHistoryProvider>
+        <Suspense fallback={null}>
+          <AuthFlashToast />
+        </Suspense>
         <a
           href="#conteudo"
           className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"

@@ -52,6 +52,22 @@ func NewMinioProviderWithPresign(endpoint, publicEndpoint, accessKey, secretKey 
 	return &MinioProvider{client: client, presignClient: presignClient}, nil
 }
 
+// Ping verifica se o MinIO está alcançável e as credenciais configuradas
+// são válidas — usado pelo /ready (ver internal/app/router.go) e, por
+// tabela, pelo painel de Monitoramento do frontend (GET /api/health), que
+// antes não tinha NENHUMA forma de checar este serviço (achado de
+// auditoria: o card do MinIO sempre mostrava "Desconhecido", já que nada
+// nunca perguntava ao MinIO se ele estava de pé). ListBuckets é a
+// operação mais barata que exige tanto conectividade quanto uma
+// autenticação bem-sucedida — não depende de conhecer o nome de nenhum
+// bucket específico, ao contrário de BucketExists.
+func (p *MinioProvider) Ping(ctx context.Context) error {
+	if _, err := p.client.ListBuckets(ctx); err != nil {
+		return fmt.Errorf("storage: ping minio: %w", err)
+	}
+	return nil
+}
+
 // EnsureBucket verifica se um bucket existe e cria caso não exista.
 func (p *MinioProvider) EnsureBucket(ctx context.Context, bucketName string) error {
 	exists, err := p.client.BucketExists(ctx, bucketName)

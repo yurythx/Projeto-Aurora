@@ -81,6 +81,28 @@ describe("apiClient", () => {
     expect(init.body).toBe(form);
   });
 
+  // Achado de auditoria: o usuário era redirecionado de volta ao login
+  // sem nenhuma explicação de por quê — reason=session_expired é o que
+  // permite ao LoginCard mostrar um aviso amigável em vez de deixar
+  // parecer um bug aleatório.
+  it("um 401 do proxy BFF redireciona a /login com reason=session_expired", async () => {
+    mockFetchOnce(401, { data: null, error: { code: "UNAUTHORIZED", message: "sessão expirada" } });
+
+    // @ts-expect-error jsdom não implementa navegação real — mesmo padrão
+    // de UserMenu.test.tsx.
+    delete window.location;
+    // @ts-expect-error idem — objeto simples o bastante pra
+    // location.replace(...) não lançar.
+    window.location = { pathname: "/dashboard", search: "", origin: "http://localhost:3000", replace: vi.fn() };
+
+    await expect(apiClient.get("v1/integrations")).rejects.toBeInstanceOf(ApiError);
+
+    const replaced = (window.location.replace as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
+    expect(replaced).toContain("/login");
+    expect(replaced).toContain("reason=session_expired");
+    expect(replaced).toContain("callbackUrl=%2Fdashboard");
+  });
+
   it("post() (JSON body) keeps setting Content-Type: application/json, unaffected by postForm's exception", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

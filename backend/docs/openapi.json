@@ -103,7 +103,7 @@
         ],
         "summary": "Readiness probe",
         "operationId": "getReady",
-        "description": "Verifica a conectividade com PostgreSQL e RabbitMQ.",
+        "description": "Verifica a conectividade com PostgreSQL, RabbitMQ e MinIO.",
         "security": [],
         "responses": {
           "200": {
@@ -113,7 +113,8 @@
                 "example": {
                   "data": {
                     "postgres": "ok",
-                    "rabbitmq": "ok"
+                    "rabbitmq": "ok",
+                    "minio": "ok"
                   },
                   "error": null
                 }
@@ -127,7 +128,8 @@
                 "example": {
                   "data": {
                     "postgres": "ok",
-                    "rabbitmq": "unavailable"
+                    "rabbitmq": "unavailable",
+                    "minio": "ok"
                   },
                   "error": null
                 }

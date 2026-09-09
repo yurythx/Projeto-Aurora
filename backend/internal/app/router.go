@@ -34,6 +34,14 @@ func NewRouter(deps *Dependencies) chi.Router {
 	checks := []httpserver.Check{
 		{Name: "postgres", Fn: database.Ping(deps.DB)},
 		{Name: "rabbitmq", Fn: deps.Messaging.Ping},
+		// MinIO — achado de auditoria: o card correspondente no painel de
+		// Monitoramento sempre mostrava "Desconhecido", porque nada nunca
+		// perguntava ao MinIO se ele estava de pé (só postgres/rabbitmq
+		// eram checados aqui). deps.Storage.Ping reusa o client MinIO já
+		// autenticado — sem ele, esta checagem só existiria se o MinIO
+		// estivesse fora do ar E algo tentasse fazer upload/download na
+		// hora, tarde demais para um painel de monitoramento.
+		{Name: "minio", Fn: deps.Storage.Ping},
 	}
 	r.Get("/ready", httpserver.ReadyHandler(checks, 3*time.Second))
 

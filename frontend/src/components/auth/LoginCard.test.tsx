@@ -58,7 +58,7 @@ describe("LoginCard", () => {
     await user.type(screen.getByLabelText("Senha"), "Admin123!");
     await user.click(screen.getByRole("button", { name: "Entrar" }));
 
-    await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard"));
+    await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard?welcome=1"));
     expect(signIn).toHaveBeenCalledWith(
       "local",
       expect.objectContaining({ username: "admin", password: "Admin123!", redirect: false }),
@@ -76,5 +76,31 @@ describe("LoginCard", () => {
     searchParams = new URLSearchParams("error=OAuthCallback");
     render(<LoginCard />);
     expect(screen.getByRole("alert")).toHaveTextContent("Falha ao entrar");
+  });
+
+  // Achado de auditoria: o usuário era redirecionado de volta pro login
+  // (token expirado por inatividade, ver proxy.ts/lib/api/client.ts) sem
+  // nenhuma explicação — parecia um bug, não uma medida de segurança.
+  it("reason=session_expired na URL mostra o aviso de sessão expirada", () => {
+    searchParams = new URLSearchParams("reason=session_expired");
+    render(<LoginCard />);
+    expect(screen.getByText(/sua sessão expirou por inatividade/i)).toBeInTheDocument();
+  });
+
+  it("depois de várias tentativas malsucedidas, avisa sobre bloqueio temporário", async () => {
+    signIn.mockResolvedValue({ error: "CredentialsSignin" });
+    const user = userEvent.setup();
+    render(<LoginCard />);
+
+    for (let i = 0; i < 3; i++) {
+      await user.clear(screen.getByLabelText("Usuário"));
+      await user.type(screen.getByLabelText("Usuário"), "admin");
+      await user.clear(screen.getByLabelText("Senha"));
+      await user.type(screen.getByLabelText("Senha"), "errada");
+      await user.click(screen.getByRole("button", { name: "Entrar" }));
+      await screen.findByText("Usuário ou senha inválidos.");
+    }
+
+    expect(screen.getByText(/muitas tentativas sem sucesso/i)).toBeInTheDocument();
   });
 });
