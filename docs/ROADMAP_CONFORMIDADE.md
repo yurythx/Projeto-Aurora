@@ -32,12 +32,12 @@ Legenda: ✅ feito · 🟡 parcial / scaffold · ⬜ pendente · 🔒 depende de
 
 | # | Gap | Item | Estado |
 |---|---|---|---|
-| F2.1 | G-03 | CSP + HSTS incondicionais no backend | ✅ `SecurityHeaders`; ⬜ servir Swagger UI localmente (hoje `/docs` libera o CDN) |
+| F2.1 | G-03 | CSP + HSTS incondicionais no backend + Swagger UI local | ✅ `SecurityHeaders`; ✅ `/docs` serve `swagger-ui-dist@5.17.14` vendorado (sem CDN, CSP `script-src 'self'`) |
 | F2.2 | G-04 | Cadeia `X-Forwarded-For` confiável (`TRUSTED_PROXIES`) | ✅ `httpserver.ClientIP` |
 | F2.3 | G-09 | Auto-auditoria do acesso à exportação LAI | ✅ `audit.exported` gravado a cada exportação |
 | F2.4 | G-05 | Permissão `integrations:read` nas rotas de integrations | ✅ |
 | F2.5 | G-06 | Padronizar o blueprint `example` | ✅ decode + validate + auditoria na tx |
-| F2.6 | — | Export WORM da auditoria | ✅ `audit.WORMExporter` (worker, cadeia de SHA-256) + migration 000007; ⬜ object-lock no bucket (infra) |
+| F2.6 | — | Export WORM da auditoria | ✅ `audit.WORMExporter` — bucket dedicado com **S3 Object Lock** (Compliance, `AUDIT_WORM_RETENTION_DAYS`) + cadeia de SHA-256 + migration 000007. Verificado: versão travada não pode ser sobrescrita/apagada |
 
 ## Fase 3 — Direitos do titular e transparência ativa
 
@@ -53,11 +53,11 @@ Legenda: ✅ feito · 🟡 parcial / scaffold · ⬜ pendente · 🔒 depende de
 
 | # | Gap | Item | Estado |
 |---|---|---|---|
-| F4.1 | G-13 | Respostas RFC 7807 (`application/problem+json`) | ✅ negociação por `Accept` (ADR 006, opção B); ⬜ documentar no `openapi.yaml` |
+| F4.1 | G-13 | Respostas RFC 7807 (`application/problem+json`) | ✅ negociação por `Accept` (ADR 006, opção B); ✅ documentado no `openapi.yaml` 1.2.0 |
 | F4.2 | G-14 | Aliases `/livez` `/healthz` `/readyz` | ✅ |
 | F4.3 | G-15 | Skip links / landmarks / teclas de acesso | ✅ verificado — `#conteudo/#menu/#rodape` presentes e focáveis nos dois shells; `accessKey` 1–4 segue a convenção e-MAG (documentado na Declaração de Acessibilidade) |
 | F4.4 | G-16 | Exceção de CSP `style-src 'unsafe-inline'` registrada | ✅ ADR 007 |
-| F4.5 | — | Declaração formal de Acessibilidade + VPAT | ✅ seção "Declaração de Acessibilidade" em `/acessibilidade`; ⬜ VPAT (depende de F5.2) |
+| F4.5 | — | Declaração formal de Acessibilidade + VPAT | ✅ seção "Declaração de Acessibilidade" em `/acessibilidade`; 🟡 `docs/VPAT.md` (autoavaliação WCAG 2.1 A/AA) — homologação depende de F5.2 |
 
 ## Fase 5 — Verificação externa e evidências
 
@@ -78,6 +78,8 @@ Legenda: ✅ feito · 🟡 parcial / scaffold · ⬜ pendente · 🔒 depende de
 | `API_RATE_LIMIT_MAX` | `600` | Requisições por identidade por janela; excedente → `429 RATE_LIMITED` |
 | `METRICS_SCRAPE_TOKEN` | *(vazio)* | Vazio: `/metrics` aberto. Definido: exige `Authorization: Bearer <token>` |
 | `TRUSTED_PROXIES` | *(vazio)* | CIDRs cujo `X-Forwarded-For` é confiável; fora deles, só `RemoteAddr` |
+| `AUDIT_WORM_BUCKET` | `aurora-audit-worm` | Bucket dedicado (com Object Lock) da cópia WORM da auditoria |
+| `AUDIT_WORM_RETENTION_DAYS` | `1825` | Retenção Compliance por objeto WORM (5 anos) |
 
 Todos aceitam o padrão `<VAR>_FILE` (Docker/K8s secrets). Limiters
 `anon_consent` (10/60s por IP) e `public_read` (60/60s por IP) são fixos.
