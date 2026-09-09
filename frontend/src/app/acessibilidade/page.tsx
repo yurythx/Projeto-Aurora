@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
-import { connection } from "next/server";
 import { Accessibility, Eye, Type, ExternalLink, Keyboard, FileText } from "lucide-react";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { connection } from "next/server";
 
 import { PublicShell } from "@/components/layout/PublicShell";
 
@@ -190,6 +191,58 @@ export default async function AccessibilityPage() {
             </ul>
           </section>
         </div>
+
+        {/* Declaração formal de acessibilidade (F4.5 / Decreto 9.094) */}
+        <section className="flex flex-col gap-4 rounded-xl border border-surface-border bg-surface p-6 shadow-sm">
+          <div className="flex items-center gap-2 border-b border-surface-border pb-3 text-lg font-semibold text-primary">
+            <FileText size={20} />
+            <h2>Declaração de Acessibilidade</h2>
+          </div>
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-xs sm:grid-cols-[10rem_1fr]">
+            <dt className="font-semibold text-foreground">Conformidade declarada</dt>
+            <dd className="text-muted leading-relaxed">
+              e-MAG 2.0 / WCAG 2.1 nível AA — <strong>parcialmente conforme</strong>. Os fluxos
+              principais (login, painel, configuração, páginas públicas) foram construídos e
+              revisados segundo o padrão; a avaliação externa completa (item abaixo) ainda não foi
+              concluída.
+            </dd>
+
+            <dt className="font-semibold text-foreground">Data da avaliação</dt>
+            <dd className="text-muted leading-relaxed">
+              Revisão interna contínua; última varredura de referência em 09/09/2026.
+            </dd>
+
+            <dt className="font-semibold text-foreground">Responsável</dt>
+            <dd className="text-muted leading-relaxed">
+              Equipe de Engenharia do Projeto Aurora, sob coordenação da Secretaria responsável pela
+              plataforma na Prefeitura Municipal de Rondonópolis.
+            </dd>
+
+            <dt className="font-semibold text-foreground">Método</dt>
+            <dd className="text-muted leading-relaxed">
+              (1) Análise automatizada a cada alteração de código no CI (<code>eslint-plugin-jsx-a11y</code>,
+              regras e-MAG obrigatórias); (2) revisão manual de contraste, foco visível e semântica
+              HTML; (3) navegação apenas por teclado nos fluxos principais; (4) atalhos e-MAG
+              (Alt+1..4) com âncoras verificadas em <code>&lt;main&gt;</code>, <code>&lt;nav&gt;</code>{" "}
+              e <code>&lt;footer&gt;</code> reais.
+            </dd>
+
+            <dt className="font-semibold text-foreground">Pendências conhecidas</dt>
+            <dd className="text-muted leading-relaxed">
+              Avaliação por especialista humano com tecnologia assistiva (leitores de tela NVDA/VoiceOver,
+              leitor móvel) ainda não realizada; correções pontuais de componentes complexos podem
+              surgir dessa avaliação. Um VPAT (Voluntary Product Accessibility Template) será anexado
+              ao dossiê de conformidade após ela.
+            </dd>
+
+            <dt className="font-semibold text-foreground">Contato</dt>
+            <dd className="text-muted leading-relaxed">
+              Barreiras de acessibilidade podem ser relatadas pelos canais de atendimento da
+              Prefeitura (ver rodapé). Detalhes técnicos dos parâmetros aplicados em{" "}
+              <Link href="/padroes" className="text-primary hover:underline">Padrões &amp; Parâmetros</Link>.
+            </dd>
+          </dl>
+        </section>
       </div>
     </PublicShell>
   );

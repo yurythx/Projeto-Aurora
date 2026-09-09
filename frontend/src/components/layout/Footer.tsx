@@ -51,8 +51,17 @@ export function Footer() {
           <div className="flex flex-col gap-2.5">
             <h4 className="font-bold text-foreground text-xs uppercase tracking-wider">Conformidade</h4>
             <ul className="flex flex-col gap-1.5">
+              <li>
+                <Link href="/privacidade" className="hover:text-primary transition-colors">
+                  Política de Privacidade (LGPD 13.709/2018) →
+                </Link>
+              </li>
+              <li>
+                <Link href="/acessibilidade" className="hover:text-primary transition-colors">
+                  Acessibilidade (e-MAG / WCAG 2.1 AA) →
+                </Link>
+              </li>
               <li>Lei de Acesso à Informação (LAI 12.527/2011)</li>
-              <li>Lei Geral de Proteção de Dados (LGPD 13.709/2018)</li>
               <li>Instrução Normativa SCL nº 01/2019</li>
               <li>
                 <Link href="/sobre" className="hover:text-primary transition-colors">
