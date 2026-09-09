@@ -17,20 +17,18 @@ import (
 
 // Service gerencia as regras de negócio para o módulo de exemplo.
 type Service struct {
-	pool        *pgxpool.Pool
-	repo        domain.Repository
-	outbox      *outbox.Writer
-	auditWriter *audit.Writer
-	logger      *slog.Logger
+	pool   *pgxpool.Pool
+	repo   domain.Repository
+	outbox *outbox.Writer
+	logger *slog.Logger
 }
 
-func NewService(pool *pgxpool.Pool, repo domain.Repository, outbox *outbox.Writer, auditWriter *audit.Writer, logger *slog.Logger) *Service {
+func NewService(pool *pgxpool.Pool, repo domain.Repository, outbox *outbox.Writer, logger *slog.Logger) *Service {
 	return &Service{
-		pool:        pool,
-		repo:        repo,
-		outbox:      outbox,
-		auditWriter: auditWriter,
-		logger:      logger,
+		pool:   pool,
+		repo:   repo,
+		outbox: outbox,
+		logger: logger,
 	}
 }
 
@@ -60,7 +58,21 @@ func (s *Service) CreateItem(ctx context.Context, title, description string) (*d
 		}
 		// uuid.Nil: sem correlation id de negócio próprio aqui — events.New
 		// gera um novo quando recebe Nil (ver internal/domain/events).
-		return s.outbox.Write(ctx, tx, "example.item.created", "example_item", item.ID.String(), uuid.Nil, payload)
+		if err := s.outbox.Write(ctx, tx, "example.item.created", "example_item", item.ID.String(), uuid.Nil, payload); err != nil {
+			return err
+		}
+		// Trilha de auditoria na MESMA transação do INSERT + outbox (gap
+		// G-06): audit.NewWriter(tx) — não o Writer preso ao pool — para
+		// que item, evento e linha de auditoria commitem ou revertam
+		// juntos. Um módulo real também passaria aqui o ator/IP que o
+		// handler extrai da requisição (ver audit.FromRequest); o
+		// blueprint registra ao menos a ação e o recurso.
+		return audit.NewWriter(tx).Record(ctx, audit.Entry{
+			Action:       "example.item.created",
+			ResourceType: "example_item",
+			ResourceID:   item.ID.String(),
+			Metadata:     map[string]any{"title": item.Title},
+		})
 	})
 	if err != nil {
 		return nil, fmt.Errorf("example.CreateItem: %w", err)

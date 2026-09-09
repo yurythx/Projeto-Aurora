@@ -11,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yurythx/projeto-aurora/internal/modules/example/infrastructure"
-	"github.com/yurythx/projeto-aurora/internal/platform/audit"
 	"github.com/yurythx/projeto-aurora/internal/platform/outbox"
 )
 
@@ -45,7 +44,7 @@ func TestCreateItem_PersistsItemAndWritesOutboxEventInSameTransaction(t *testing
 	ctx := context.Background()
 	repo := infrastructure.NewPostgresRepository(pool)
 	writer := outbox.NewWriter("aurora.example")
-	svc := NewService(pool, repo, writer, audit.NewWriter(pool), testLogger())
+	svc := NewService(pool, repo, writer, testLogger())
 
 	item, err := svc.CreateItem(ctx, "Item de teste", "descrição de teste")
 	if err != nil {
@@ -54,6 +53,8 @@ func TestCreateItem_PersistsItemAndWritesOutboxEventInSameTransaction(t *testing
 	t.Cleanup(func() {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM example_items WHERE id = $1`, item.ID)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM outbox_events WHERE aggregate_id = $1`, item.ID.String())
+		// audit_logs é append-only (trigger da migration 000001) — não dá
+		// para limpar a linha de auditoria; ela fica no banco de teste.
 	})
 
 	// O item precisa estar de fato gravado em example_items (não só em
@@ -103,13 +104,32 @@ func TestCreateItem_PersistsItemAndWritesOutboxEventInSameTransaction(t *testing
 	if envelope.Payload.ID != item.ID.String() || envelope.Payload.Title != "Item de teste" {
 		t.Errorf("payload = %+v, want id=%s title=Item de teste", envelope.Payload, item.ID)
 	}
+
+	// E uma linha de auditoria "example.item.created" precisa ter sido
+	// gravada NA MESMA transação (gap G-06): o blueprint que os novos
+	// módulos copiam tem de mostrar mutação-com-trilha, não só
+	// mutação-com-outbox.
+	var auditAction, auditResource string
+	err = pool.QueryRow(ctx,
+		`SELECT action, resource_type FROM audit_logs WHERE resource_id = $1 AND action = 'example.item.created'`,
+		item.ID.String(),
+	).Scan(&auditAction, &auditResource)
+	if err != nil {
+		t.Fatalf("query audit_logs: %v (CreateItem deveria ter gravado a trilha na mesma tx)", err)
+	}
+	if auditResource != "example_item" {
+		t.Errorf("audit resource_type = %q, want example_item", auditResource)
+	}
+	if auditAction != "example.item.created" {
+		t.Errorf("audit action = %q, want example.item.created", auditAction)
+	}
 }
 
 func TestCreateItem_RejectsEmptyTitleWithoutTouchingTheDatabase(t *testing.T) {
 	pool := testPool(t)
 	repo := infrastructure.NewPostgresRepository(pool)
 	writer := outbox.NewWriter("aurora.example")
-	svc := NewService(pool, repo, writer, audit.NewWriter(pool), testLogger())
+	svc := NewService(pool, repo, writer, testLogger())
 
 	if _, err := svc.CreateItem(context.Background(), "", "sem título"); err == nil {
 		t.Fatal("expected an error for an empty title")

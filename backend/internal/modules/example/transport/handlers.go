@@ -1,7 +1,6 @@
 package transport
 
 import (
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -30,8 +29,15 @@ func NewHandlers(service *application.Service, logger *slog.Logger) *Handlers {
 
 func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 	var req CreateItemRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteError(w, r, h.logger, apperrors.BadRequest("Corpo da requisição inválido"))
+	// Blueprint (gap G-06): DecodeJSON aplica MaxBytesReader (1 MiB) +
+	// DisallowUnknownFields; Validate confere as struct-tags. Nenhum
+	// módulo deve usar json.NewDecoder cru como este handler fazia.
+	if err := httputil.DecodeJSON(w, r, &req); err != nil {
+		httputil.WriteError(w, r, h.logger, err)
+		return
+	}
+	if err := httputil.Validate(req); err != nil {
+		httputil.WriteError(w, r, h.logger, err)
 		return
 	}
 
