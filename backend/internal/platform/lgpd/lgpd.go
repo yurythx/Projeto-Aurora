@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 
 	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
 	"github.com/yurythx/projeto-aurora/internal/platform/auth"
+	"github.com/yurythx/projeto-aurora/internal/platform/httpserver"
 	"github.com/yurythx/projeto-aurora/pkg/httputil"
 )
 
@@ -26,12 +28,13 @@ type execer interface {
 }
 
 type Service struct {
-	db     *pgxpool.Pool
-	logger *slog.Logger
+	db             *pgxpool.Pool
+	logger         *slog.Logger
+	trustedProxies []*net.IPNet
 }
 
-func NewService(db *pgxpool.Pool, logger *slog.Logger) *Service {
-	return &Service{db: db, logger: logger}
+func NewService(db *pgxpool.Pool, logger *slog.Logger, trustedProxies []*net.IPNet) *Service {
+	return &Service{db: db, logger: logger, trustedProxies: trustedProxies}
 }
 
 // HasAcceptedCurrentTerm reporta se o usuário já aceitou a versão mais recente dos termos.
@@ -124,10 +127,11 @@ func (s *Service) handleAccept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ip := r.Header.Get("X-Forwarded-For")
-	if ip == "" {
-		ip = r.RemoteAddr
-	}
+	// Gap G-04: antes lia o X-Forwarded-For cru — spoofável, e o IP entra
+	// na prova de consentimento (art. 8º §1º). httpserver.ClientIP só
+	// honra o XFF quando a conexão vem de um proxy reverso confiável
+	// (TRUSTED_PROXIES); caso contrário devolve o RemoteAddr direto.
+	ip := httpserver.ClientIP(r, s.trustedProxies)
 
 	err = s.RecordConsent(r.Context(), userID, req.TermVersion, ip, r.UserAgent())
 	if err != nil {

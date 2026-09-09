@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 
@@ -156,14 +157,13 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 
 	if h.audit != nil {
 		uid := account.ID
-		_ = h.audit.Record(r.Context(), audit.Entry{
-			UserID:       &uid,
-			Action:       audit.ActionLogin,
-			ResourceType: "user",
-			ResourceID:   account.ID.String(),
-			Metadata:     map[string]any{"method": "local"},
-			IPAddress:    httpserver.ClientIPKey(r),
-		})
+		entry := audit.FromRequest(r)
+		entry.UserID = &uid
+		entry.Action = audit.ActionLogin
+		entry.ResourceType = "user"
+		entry.ResourceID = account.ID.String()
+		entry.Metadata = map[string]any{"method": "local"}
+		_ = h.audit.Record(r.Context(), entry)
 	}
 
 	// O corpo carrega um bearer token — nunca deve ficar em cache de
@@ -185,13 +185,46 @@ func (h *Handlers) recordFailure(r *http.Request, username, reason string) {
 	if h.audit == nil {
 		return
 	}
-	_ = h.audit.Record(r.Context(), audit.Entry{
-		Action:       ActionLoginFailed,
-		ResourceType: "user",
-		ResourceID:   username,
-		Metadata:     map[string]any{"method": "local", "reason": reason},
-		IPAddress:    httpserver.ClientIPKey(r),
-	})
+	entry := audit.FromRequest(r)
+	entry.Action = ActionLoginFailed
+	entry.ResourceType = "user"
+	entry.ResourceID = username
+	entry.Metadata = map[string]any{"method": "local", "reason": reason}
+	_ = h.audit.Record(r.Context(), entry)
+}
+
+// Logout trata POST /api/v1/auth/logout. Não invalida o token — ele é
+// stateless e continua válido até expirar; o frontend descarta o cookie
+// de sessão do seu lado. O papel deste endpoint é deixar em audit_logs o
+// encerramento de sessão exigido pelo §49 (gap G-08 da auditoria de
+// conformidade: audit.ActionLogout existia mas nada o gravava, porque o
+// signOut do NextAuth nunca chamava o backend). Idempotente.
+func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
+	identity, ok := auth.IdentityFromContext(r.Context())
+	if !ok {
+		httputil.WriteError(w, r, h.logger, apperrors.Unauthorized("authentication required"))
+		return
+	}
+
+	if h.audit != nil {
+		entry := audit.FromRequest(r)
+		entry.Action = audit.ActionLogout
+		entry.ResourceType = "user"
+		entry.ResourceID = identity.Subject
+		// Subject de um token local já É o id interno em "users"; de um
+		// token do Keycloak é o "sub" externo, que não é o id da linha —
+		// só preenche UserID quando dá pra confiar que é o id interno.
+		if identity.Source == auth.SourceLocal {
+			if uid, err := uuid.Parse(identity.Subject); err == nil {
+				entry.UserID = &uid
+			}
+		}
+		entry.Metadata = map[string]any{"method": string(identity.Source)}
+		_ = h.audit.Record(r.Context(), entry)
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	httputil.WriteOK(w, map[string]string{"status": "ok"})
 }
 
 func (h *Handlers) rejectInvalidCredentials(w http.ResponseWriter, r *http.Request) {
@@ -216,4 +249,12 @@ func RateLimitKey(r *http.Request) string {
 func RegisterRoutes(r chi.Router, h *Handlers, logger *slog.Logger, limiter httpserver.Limiter) {
 	r.With(httpserver.RateLimit(logger, limiter, RateLimitKey)).
 		Post("/api/v1/auth/login", h.Login)
+}
+
+// RegisterAuthedRoutes monta as rotas de login local que EXIGEM uma
+// identidade autenticada — hoje só POST /auth/logout. Recebe um router já
+// escopado em /api/v1 e já atrás de auth.RequireAuthentication (ver
+// internal/app/router.go), então o caminho aqui é relativo a isso.
+func RegisterAuthedRoutes(api chi.Router, h *Handlers) {
+	api.Post("/auth/logout", h.Logout)
 }

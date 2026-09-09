@@ -44,6 +44,11 @@ import (
 type RateLimiters struct {
 	WSTicket   httpserver.Limiter // POST /api/v1/ws/ticket
 	LocalLogin httpserver.Limiter // POST /api/v1/auth/login — chave por IP, não por usuário (§ Sistema de Login Local), já que quem chama ainda não está autenticado
+	// APIGlobal é aplicado a TODO o grupo /api/v1, com chave = subject do
+	// usuário autenticado (fallback: IP). Antes só login e /ws/ticket
+	// tinham limite e qualquer token válido marretava as demais rotas
+	// sem teto (gap G-01 da auditoria de conformidade).
+	APIGlobal httpserver.Limiter
 }
 
 // OutboxSource identifica este backend como o Source carimbado em todo
@@ -193,6 +198,17 @@ func NewDependencies(ctx context.Context, component string) (*Dependencies, erro
 		logger.Warn("não foi possível garantir a existência do bucket do minio na inicialização", slog.String("erro", err.Error()))
 	}
 
+	// Proxies reversos confiáveis (gap G-04): valida os CIDRs no boot —
+	// uma faixa mal digitada é falha de configuração de segurança, o
+	// processo deve recusar subir em vez de confiar num XFF que não
+	// deveria.
+	trustedProxies, err := httpserver.ParseTrustedProxies(cfg.Security.TrustedProxies)
+	if err != nil {
+		pool.Close()
+		_ = mqConn.Close()
+		return nil, fmt.Errorf("app: parse TRUSTED_PROXIES: %w", err)
+	}
+
 	deps := &Dependencies{
 		Config:      cfg,
 		Logger:      logger,
@@ -221,11 +237,15 @@ func NewDependencies(ctx context.Context, component string) (*Dependencies, erro
 			// travar um usuário legítimo que só errou a senha uma ou
 			// duas vezes.
 			LocalLogin: ratelimit.NewPostgresLimiter(pool, 60, 5, "local_login"),
+			// Teto largo por identidade autenticada — não estorva o uso
+			// normal do painel, só barra abuso grosseiro. Parametrizável
+			// por API_RATE_LIMIT_WINDOW_SECONDS / API_RATE_LIMIT_MAX.
+			APIGlobal: ratelimit.NewPostgresLimiter(pool, cfg.APIRateLimit.WindowSeconds, cfg.APIRateLimit.MaxRequests, "api_global"),
 		},
 		Idempotency: idempotency.NewPostgresStore(pool),
 		Flags:       configflags.NewPostgresStore(pool),
 		KeycloakCfg: keycloakCfgStore,
-		LGPDSvc:     lgpd.NewService(pool, logger),
+		LGPDSvc:     lgpd.NewService(pool, logger, trustedProxies),
 		AuditExp:    audit.NewExporter(pool, logger),
 
 		telemetryShutdown: telemetryShutdown,

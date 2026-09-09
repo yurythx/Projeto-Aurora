@@ -3,6 +3,7 @@ package httpserver
 import (
 	"bufio"
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"log/slog"
 	"net"
@@ -156,6 +157,15 @@ func Recoverer(logger *slog.Logger) func(http.Handler) http.Handler {
 // O CSP com nonce (política mais forte, por requisição) é gerado à parte
 // no proxy.ts do frontend — estes aqui são os headers estáticos que fazem
 // sentido em qualquer resposta da API, independente de rota.
+//
+// Gap G-03 da auditoria de conformidade: antes desta revisão não havia
+// Content-Security-Policy nenhuma nas respostas do backend, e o
+// Strict-Transport-Security só era emitido quando r.TLS != nil — atrás de
+// um proxy TLS terminador (cenário padrão em produção Gov) r.TLS é nil e
+// o header nunca saía. Agora os dois são incondicionais: um handler que
+// serve HTML (ex.: /docs com Swagger UI) sobrescreve a CSP no próprio
+// handler; para toda resposta de API (JSON, CSV) a política mais
+// restritiva possível é a correta, já que nada ali é documento executável.
 func SecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
@@ -163,11 +173,32 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Cross-Origin-Opener-Policy", "same-origin")
-		if r.TLS != nil {
-			h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
-		}
+		h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
+		// Incondicional: o navegador ignora HSTS quando a resposta chega
+		// por HTTP puro (dev local), então mandar sempre é inofensivo e
+		// não depende de detectar TLS terminado upstream.
+		h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
 		next.ServeHTTP(w, r)
 	})
+}
+
+// requireMetricsToken protege /metrics exigindo "Authorization: Bearer
+// <token>" (gap G-02). Comparação em tempo constante para o endpoint não
+// virar um oráculo de temporização sobre o token. Só é montado quando um
+// token está configurado (SecurityConfig.MetricsToken) — sem token, o
+// endpoint segue aberto (comportamento histórico, para dev/rede interna).
+func requireMetricsToken(token string) func(http.Handler) http.Handler {
+	want := []byte("Bearer " + token)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got := []byte(r.Header.Get("Authorization"))
+			if subtle.ConstantTimeCompare(got, want) != 1 {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // Limiter decide se uma requisição identificada por key é permitida agora.
@@ -288,6 +319,79 @@ func ClientIPKey(r *http.Request) string {
 	// RemoteAddr sem porta (raro, mas possível em testes/execução fora de
 	// um servidor HTTP real) — usa como está.
 	return r.RemoteAddr
+}
+
+// ParseTrustedProxies converte uma lista de CIDRs (ex.:
+// "10.0.0.0/8", "172.18.0.0/16") em *net.IPNet. Um item inválido faz a
+// função retornar erro — a configuração de proxies confiáveis é de
+// segurança, então é melhor o processo recusar subir do que confiar numa
+// faixa errada. Aceita também um IP puro ("203.0.113.9"), tratado como
+// /32 ou /128.
+func ParseTrustedProxies(cidrs []string) ([]*net.IPNet, error) {
+	out := make([]*net.IPNet, 0, len(cidrs))
+	for _, raw := range cidrs {
+		if _, ipNet, err := net.ParseCIDR(raw); err == nil {
+			out = append(out, ipNet)
+			continue
+		}
+		if ip := net.ParseIP(raw); ip != nil {
+			bits := 32
+			if ip.To4() == nil {
+				bits = 128
+			}
+			out = append(out, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+			continue
+		}
+		return nil, fmt.Errorf("httpserver: %q não é um CIDR nem um IP válido", raw)
+	}
+	return out, nil
+}
+
+// ClientIP devolve o IP real do cliente. Só lê o X-Forwarded-For quando a
+// conexão TCP (r.RemoteAddr) vem de um proxy confiável (trusted) — nesse
+// caso usa a entrada mais à direita do XFF que NÃO seja ela mesma um
+// proxy confiável (a primeira, da direita pra esquerda, que um proxy
+// confiável não poderia ter forjado). Sem proxy confiável configurado, ou
+// com a conexão vindo de fora da lista, devolve só o host de RemoteAddr —
+// o mesmo comportamento seguro de ClientIPKey (gap G-04: sem isto, um
+// cliente forja o XFF para escapar do rate limiter e para poluir o
+// ip_address da prova de consentimento LGPD).
+func ClientIP(r *http.Request, trusted []*net.IPNet) string {
+	host := r.RemoteAddr
+	if h, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		host = h
+	}
+	if len(trusted) == 0 || !ipInAny(host, trusted) {
+		return host
+	}
+	xff := r.Header.Get("X-Forwarded-For")
+	if xff == "" {
+		return host
+	}
+	parts := strings.Split(xff, ",")
+	for i := len(parts) - 1; i >= 0; i-- {
+		candidate := strings.TrimSpace(parts[i])
+		if candidate == "" {
+			continue
+		}
+		if !ipInAny(candidate, trusted) {
+			return candidate
+		}
+	}
+	return host
+}
+
+func ipInAny(ipStr string, nets []*net.IPNet) bool {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+	for _, n := range nets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // contextTimeout é um pequeno helper usado pelas verificações de readiness.

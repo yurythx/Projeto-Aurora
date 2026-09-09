@@ -47,10 +47,16 @@ const (
 // (verificado à parte em HasPermission) e dá aos demais roles o conjunto
 // mínimo implicado pelo próprio nome — ex.: um "aurora-auditor" só pode ler
 // (audit, users, integrations), nunca escrever.
+//
+// Gap G-10 da auditoria de conformidade: RoleUser tinha PermUsersRead, o
+// que — combinado com GET /api/v1/users devolvendo o e-mail de cada
+// usuário — deixava QUALQUER servidor autenticado ler o diretório inteiro
+// com PII (LGPD art. 6º III, minimização). RoleUser agora não tem
+// nenhuma permissão de diretório: um usuário comum enxerga só a si mesmo
+// via GET /api/v1/me (que exige apenas autenticação, não permissão).
+// Listar/consultar terceiros passa a exigir aurora-auditor ou
+// aurora-admin.
 var rolePermissions = map[RoleName][]Permission{
-	RoleUser: {
-		PermUsersRead,
-	},
 	RoleIntegrationManager: {
 		PermIntegrationsRead,
 		PermIntegrationsTest,

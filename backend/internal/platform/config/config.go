@@ -88,6 +88,22 @@ type SecurityConfig struct {
 	// 32`). Suporta o padrão "<KEY>_FILE" via loader.secret, como
 	// qualquer outro segredo desta plataforma.
 	ConfigEncryptionKey string
+
+	// MetricsToken protege o endpoint /metrics do Prometheus (gap G-02 da
+	// auditoria de conformidade). Vazio = endpoint aberto (comportamento
+	// histórico, aceitável só em dev ou com a porta em rede interna
+	// isolada); definido = exige "Authorization: Bearer <token>" no
+	// scrape. Suporta o padrão "<KEY>_FILE" via loader.secret.
+	MetricsToken string
+
+	// TrustedProxies é a lista de CIDRs de proxies reversos confiáveis
+	// (gap G-04). Só quando o RemoteAddr da conexão TCP cai numa dessas
+	// faixas é que o cabeçalho X-Forwarded-For é lido para descobrir o IP
+	// real do cliente — sem isso, qualquer cliente forja o XFF para
+	// escapar do rate limiter e para poluir o ip_address gravado na
+	// prova de consentimento LGPD. Vazio = nunca confiar em XFF (só o
+	// RemoteAddr direto vale).
+	TrustedProxies []string
 }
 
 // LocalAuthConfig guarda as configurações do login local por
@@ -111,6 +127,14 @@ type LocalAuthConfig struct {
 	// de ambiente comum.
 	PrivateKeyPEM string
 	TokenTTL      time.Duration
+}
+
+// RateLimitConfig parametriza um limitador de janela fixa (ver
+// internal/platform/ratelimit.PostgresLimiter): até MaxRequests
+// requisições por chave a cada WindowSeconds segundos.
+type RateLimitConfig struct {
+	WindowSeconds int
+	MaxRequests   int
 }
 
 // JobsConfig guarda as configurações de processamento assíncrono de jobs.
@@ -168,6 +192,10 @@ type Config struct {
 	LocalAuth LocalAuthConfig
 	Jobs      JobsConfig
 	Worker    WorkerConfig
+
+	// APIRateLimit é o teto por identidade autenticada (fallback: IP)
+	// aplicado a todo o grupo /api/v1 (gap G-01).
+	APIRateLimit RateLimitConfig
 
 	MinIO MinIOConfig
 
@@ -314,6 +342,8 @@ func Load() (*Config, error) {
 		},
 		Security: SecurityConfig{
 			ConfigEncryptionKey: l.secret("CONFIG_ENCRYPTION_KEY", false, insecureConfigEncryptionKey),
+			MetricsToken:        l.secret("METRICS_SCRAPE_TOKEN", false, ""),
+			TrustedProxies:      splitCSV(l.str("TRUSTED_PROXIES", false, "")),
 		},
 		LocalAuth: LocalAuthConfig{
 			Enabled:       l.boolVal("LOCAL_AUTH_ENABLED", false),
@@ -322,6 +352,10 @@ func Load() (*Config, error) {
 		},
 		Jobs: JobsConfig{
 			StaleAfter: l.durationVal("JOB_STALE_AFTER", false, 45*time.Minute),
+		},
+		APIRateLimit: RateLimitConfig{
+			WindowSeconds: l.intVal("API_RATE_LIMIT_WINDOW_SECONDS", false, 60),
+			MaxRequests:   l.intVal("API_RATE_LIMIT_MAX", false, 600),
 		},
 		Worker: WorkerConfig{
 			MetricsHost: l.str("WORKER_METRICS_HOST", false, "0.0.0.0"),
@@ -418,6 +452,22 @@ const (
 	// `openssl rand -base64 32`.
 	insecureConfigEncryptionKey = "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA="
 )
+
+// splitCSV divide uma lista separada por vírgulas, descartando espaços em
+// branco e itens vazios. Usado para TRUSTED_PROXIES.
+func splitCSV(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
 
 // minioConfig monta MinIOConfig, derivando o endpoint público (para URLs
 // pré-assinadas — alcançável pelo navegador) de MINIO_PUBLIC_URL. Sem essa

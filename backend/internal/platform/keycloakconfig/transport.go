@@ -226,21 +226,25 @@ func (h *Handlers) Save(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.audit != nil {
-		_ = h.audit.Record(r.Context(), audit.Entry{
-			Action:       ActionKeycloakConfigChanged,
-			ResourceType: "keycloak_config",
-			ResourceID:   "default",
-			Metadata: map[string]any{
-				// NUNCA client_secret/frontend_client_secret aqui.
-				"issuer_url":         saved.IssuerURL,
-				"realm":              saved.Realm,
-				"client_id":          saved.ClientID,
-				"audience":           saved.Audience,
-				"frontend_client_id": saved.FrontendClientID,
-				"updated_by":         updatedBy,
-				"verifier_reloaded":  reloadErr == nil,
-			},
-		})
+		// audit.FromRequest preenche ip_address e correlation_id (gap G-07
+		// da auditoria de conformidade — trocar o issuer OIDC afeta a
+		// autenticação de TODA a plataforma; §49 exige o IP de origem em
+		// toda operação de escrita).
+		entry := audit.FromRequest(r)
+		entry.Action = ActionKeycloakConfigChanged
+		entry.ResourceType = "keycloak_config"
+		entry.ResourceID = "default"
+		entry.Metadata = map[string]any{
+			// NUNCA client_secret/frontend_client_secret aqui.
+			"issuer_url":         saved.IssuerURL,
+			"realm":              saved.Realm,
+			"client_id":          saved.ClientID,
+			"audience":           saved.Audience,
+			"frontend_client_id": saved.FrontendClientID,
+			"updated_by":         updatedBy,
+			"verifier_reloaded":  reloadErr == nil,
+		}
+		_ = h.audit.Record(r.Context(), entry)
 	}
 
 	httputil.WriteOK(w, map[string]any{

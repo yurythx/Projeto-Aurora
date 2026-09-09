@@ -105,15 +105,20 @@ func (h *Handlers) Set(w http.ResponseWriter, r *http.Request) {
 		// usuário), enquanto updatedBy aqui é o subject do Keycloak (nem
 		// sempre um UUID) — guardamos em Metadata em vez de forçar a
 		// conversão, para não perder a informação de quem alterou.
-		_ = h.audit.Record(r.Context(), audit.Entry{
-			Action:       ActionFeatureFlagChanged,
-			ResourceType: "feature_flag",
-			ResourceID:   key,
-			Metadata: map[string]any{
-				"enabled":    flag.Enabled,
-				"updated_by": updatedBy,
-			},
-		})
+		//
+		// audit.FromRequest preenche ip_address e correlation_id (gap G-07
+		// da auditoria de conformidade — desligar uma flag em produção
+		// afeta todo mundo na hora e §49 exige o IP de origem em toda
+		// mutação).
+		entry := audit.FromRequest(r)
+		entry.Action = ActionFeatureFlagChanged
+		entry.ResourceType = "feature_flag"
+		entry.ResourceID = key
+		entry.Metadata = map[string]any{
+			"enabled":    flag.Enabled,
+			"updated_by": updatedBy,
+		}
+		_ = h.audit.Record(r.Context(), entry)
 	}
 
 	httputil.WriteOK(w, toFlagResponse(flag))

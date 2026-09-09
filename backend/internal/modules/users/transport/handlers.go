@@ -88,7 +88,9 @@ func (h *Handlers) ListUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.WriteOKWithMeta(w, toUserResponses(users), meta)
+	// toUserListItems, não toUserResponses: a lista não carrega e-mail
+	// nem last_seen_at (gap G-10 — minimização de PII).
+	httputil.WriteOKWithMeta(w, toUserListItems(users), meta)
 }
 
 // GetUser trata GET /api/v1/users/{id}.

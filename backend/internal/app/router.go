@@ -29,6 +29,7 @@ func NewRouter(deps *Dependencies) chi.Router {
 		Logger:         deps.Logger,
 		AllowedOrigins: []string{deps.Config.FrontendURL},
 		RequestTimeout: 30 * time.Second,
+		MetricsToken:   deps.Config.Security.MetricsToken,
 	})
 
 	checks := []httpserver.Check{
@@ -43,7 +44,9 @@ func NewRouter(deps *Dependencies) chi.Router {
 		// hora, tarde demais para um painel de monitoramento.
 		{Name: "minio", Fn: deps.Storage.Ping},
 	}
-	r.Get("/ready", httpserver.ReadyHandler(checks, 3*time.Second))
+	readiness := httpserver.ReadyHandler(checks, 3*time.Second)
+	r.Get("/ready", readiness)
+	r.Get("/readyz", readiness) // alias canônico k8s (gap G-14)
 
 	// WebSocket autenticado por ticket
 	r.Get("/ws", ws.UpgradeHandler(deps.Hub, deps.Tickets, deps.Config.FrontendURL, deps.Logger))
@@ -54,6 +57,14 @@ func NewRouter(deps *Dependencies) chi.Router {
 	})
 	r.Get("/docs", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		// Sobrescreve a CSP restritiva de SecurityHeaders (gap G-03) só
+		// nesta página HTML — o Swagger UI é carregado do CDN oficial e
+		// usa um <script> inline de bootstrap. TODO (F2.1): servir o
+		// Swagger UI localmente e voltar à CSP padrão.
+		w.Header().Set("Content-Security-Policy",
+			"default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "+
+				"style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:; "+
+				"connect-src 'self'; frame-ancestors 'none'; base-uri 'self'")
 		w.Write([]byte(`<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -82,13 +93,21 @@ func NewRouter(deps *Dependencies) chi.Router {
 	// Rotas protegidas (/api/v1)
 	r.Route("/api/v1", func(api chi.Router) {
 		api.Use(auth.RequireAuthentication(deps.Verifier, deps.Logger))
+		// Rate limit por identidade autenticada (fallback: IP) em TODO o
+		// grupo /api/v1 — gap G-01: antes só login e /ws/ticket tinham
+		// teto, qualquer token válido podia marretar as demais rotas.
+		api.Use(httpserver.RateLimit(deps.Logger, deps.RateLimiters.APIGlobal, apiRateLimitKey))
 		api.Use(idempotency.Middleware(deps.Idempotency, deps.Logger))
 
 		api.With(httpserver.RateLimit(deps.Logger, deps.RateLimiters.WSTicket, wsTicketRateLimitKey)).
 			Post("/ws/ticket", ws.TicketHandler(deps.Tickets, deps.Logger))
 
+		// POST /api/v1/auth/logout — precisa de identidade, então mora
+		// aqui dentro (o login fica fora, em localauth.RegisterRoutes).
+		localauth.RegisterAuthedRoutes(api, deps.Modules.LocalAuth.Handlers)
+
 		usersTransport.RegisterRoutes(api, deps.Modules.Users.Handlers, deps.Logger)
-		integrationsTransport.RegisterRoutes(api, deps.Modules.Integrations.Handlers)
+		integrationsTransport.RegisterRoutes(api, deps.Modules.Integrations.Handlers, deps.Logger)
 		configflags.RegisterRoutes(api, deps.Modules.ConfigFlags.Handlers, deps.Logger)
 		keycloakconfig.RegisterRoutes(api, deps.Modules.KeycloakConfig.Handlers, deps.Logger)
 		outbox.RegisterStatsRoutes(api, deps.Modules.OutboxStats.Handlers, deps.Logger)
@@ -101,6 +120,18 @@ func NewRouter(deps *Dependencies) chi.Router {
 }
 
 func wsTicketRateLimitKey(r *http.Request) string {
+	if identity, ok := auth.IdentityFromContext(r.Context()); ok && identity.Subject != "" {
+		return identity.Subject
+	}
+	return httpserver.ClientIPKey(r)
+}
+
+// apiRateLimitKey identifica o chamador do rate limiter global de
+// /api/v1: o subject do token autenticado quando disponível (o normal,
+// já que o grupo está atrás de RequireAuthentication), caindo para o IP
+// só em caminhos de borda. Mesma forma de wsTicketRateLimitKey — nome
+// próprio só para documentar a intenção no ponto de uso.
+func apiRateLimitKey(r *http.Request) string {
 	if identity, ok := auth.IdentityFromContext(r.Context()); ok && identity.Subject != "" {
 		return identity.Subject
 	}

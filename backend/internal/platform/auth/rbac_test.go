@@ -47,3 +47,33 @@ func TestHasPermission_NoRolesDeniesEverything(t *testing.T) {
 		t.Error("expected an identity with no roles to have no permissions")
 	}
 }
+
+// TestHasPermission_UserRoleIsSelfServiceOnly trava o gap G-10: o papel
+// base aurora-user não pode ter NENHUMA permissão de diretório — ele
+// enxerga só a si mesmo via GET /api/v1/me (que exige apenas
+// autenticação). Listar/consultar terceiros expõe PII (e-mail) e passou a
+// exigir aurora-auditor ou aurora-admin.
+func TestHasPermission_UserRoleIsSelfServiceOnly(t *testing.T) {
+	user := Identity{Roles: []string{RoleUser}}
+	for _, p := range []Permission{
+		PermUsersRead, PermUsersManage, PermIntegrationsRead, PermIntegrationsManage,
+		PermIntegrationsTest, PermAuditRead, PermFeatureFlagsManage, PermKeycloakManage,
+	} {
+		if HasPermission(user, p) {
+			t.Errorf("aurora-user não deveria ter %q", p)
+		}
+	}
+}
+
+// TestHasPermission_AuditorCanReadUsers garante que a leitura do
+// diretório de usuários continua disponível para quem tem função de
+// controle (aurora-auditor) depois do estreitamento do gap G-10.
+func TestHasPermission_AuditorCanReadUsers(t *testing.T) {
+	auditor := Identity{Roles: []string{RoleAuditor}}
+	if !HasPermission(auditor, PermUsersRead) {
+		t.Error("aurora-auditor deveria manter users:read")
+	}
+	if HasPermission(auditor, PermUsersManage) {
+		t.Error("aurora-auditor não deveria ter users:manage (só leitura)")
+	}
+}

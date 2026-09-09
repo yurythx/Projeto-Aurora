@@ -110,6 +110,93 @@ func TestSecurityHeaders_SetsBaselineHeaders(t *testing.T) {
 	if rec.Header().Get("X-Frame-Options") != "DENY" {
 		t.Error("missing X-Frame-Options: DENY")
 	}
+	// Gap G-03: CSP e HSTS agora incondicionais (antes CSP não existia e
+	// HSTS só saía com r.TLS != nil — nil atrás de um proxy TLS).
+	if got := rec.Header().Get("Content-Security-Policy"); got != "default-src 'none'; frame-ancestors 'none'; base-uri 'none'" {
+		t.Errorf("Content-Security-Policy = %q, want a política restritiva de API", got)
+	}
+	if got := rec.Header().Get("Strict-Transport-Security"); got != "max-age=63072000; includeSubDomains" {
+		t.Errorf("Strict-Transport-Security = %q, want emitido incondicionalmente", got)
+	}
+}
+
+func TestRequireMetricsToken(t *testing.T) {
+	guarded := requireMetricsToken("s3cr3t")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("metrics"))
+	}))
+
+	t.Run("sem token → 401", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		guarded.ServeHTTP(rec, httptest.NewRequest("GET", "/metrics", nil))
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want 401", rec.Code)
+		}
+	})
+
+	t.Run("token errado → 401", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/metrics", nil)
+		req.Header.Set("Authorization", "Bearer wrong")
+		rec := httptest.NewRecorder()
+		guarded.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want 401", rec.Code)
+		}
+	})
+
+	t.Run("token certo → 200", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/metrics", nil)
+		req.Header.Set("Authorization", "Bearer s3cr3t")
+		rec := httptest.NewRecorder()
+		guarded.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+	})
+}
+
+func TestParseTrustedProxies(t *testing.T) {
+	nets, err := ParseTrustedProxies([]string{"10.0.0.0/8", "203.0.113.9"})
+	if err != nil {
+		t.Fatalf("ParseTrustedProxies: %v", err)
+	}
+	if len(nets) != 2 {
+		t.Fatalf("len = %d, want 2", len(nets))
+	}
+	if _, err := ParseTrustedProxies([]string{"não-é-cidr"}); err == nil {
+		t.Error("esperava erro para um CIDR inválido — configuração de segurança deve falhar rápido")
+	}
+}
+
+func TestClientIP_OnlyTrustsXFFFromTrustedProxy(t *testing.T) {
+	trusted, _ := ParseTrustedProxies([]string{"172.18.0.0/16"})
+
+	t.Run("conexão de proxy confiável: usa o XFF", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/", nil)
+		req.RemoteAddr = "172.18.0.5:40000"
+		req.Header.Set("X-Forwarded-For", "198.51.100.23, 172.18.0.5")
+		if got := ClientIP(req, trusted); got != "198.51.100.23" {
+			t.Errorf("ClientIP = %q, want 198.51.100.23", got)
+		}
+	})
+
+	t.Run("conexão direta (não confiável): ignora o XFF forjado", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/", nil)
+		req.RemoteAddr = "203.0.113.77:51000"
+		req.Header.Set("X-Forwarded-For", "10.0.0.1")
+		if got := ClientIP(req, trusted); got != "203.0.113.77" {
+			t.Errorf("ClientIP = %q, want 203.0.113.77 (RemoteAddr, XFF ignorado)", got)
+		}
+	})
+
+	t.Run("sem proxies confiáveis: sempre RemoteAddr", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/", nil)
+		req.RemoteAddr = "192.0.2.10:1234"
+		req.Header.Set("X-Forwarded-For", "1.2.3.4")
+		if got := ClientIP(req, nil); got != "192.0.2.10" {
+			t.Errorf("ClientIP = %q, want 192.0.2.10", got)
+		}
+	})
 }
 
 func TestRateLimit_AllowsWithinBurstThenRejects(t *testing.T) {

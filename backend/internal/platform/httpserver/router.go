@@ -21,6 +21,9 @@ type Options struct {
 	Logger         *slog.Logger
 	AllowedOrigins []string
 	RequestTimeout time.Duration
+	// MetricsToken, quando não vazio, exige "Authorization: Bearer
+	// <token>" no /metrics (gap G-02). Vazio = endpoint aberto.
+	MetricsToken string
 }
 
 // New constrói um chi.Router com a pilha padrão de middlewares da
@@ -62,9 +65,25 @@ func New(opts Options) chi.Router {
 	// Dockerfile.api/docker-compose.yml) manda HEAD — chi não promove
 	// GET pra HEAD automaticamente, então sem o registro explícito o
 	// container nunca fica "healthy" (405 Method Not Allowed).
-	r.Get("/health", HealthHandler())
-	r.Head("/health", HealthHandler())
-	r.Handle("/metrics", promhttp.Handler())
+	//
+	// /livez e /healthz são aliases dos nomes canônicos de sonda
+	// (Kubernetes) — gap G-14: facilita padronizar manifests entre órgãos
+	// sem mudar o comportamento das rotas existentes.
+	liveness := HealthHandler()
+	r.Get("/health", liveness)
+	r.Head("/health", liveness)
+	r.Get("/livez", liveness)
+	r.Head("/livez", liveness)
+	r.Get("/healthz", liveness)
+	r.Head("/healthz", liveness)
+
+	// /metrics: protegido por bearer de scrape quando MetricsToken está
+	// configurado (gap G-02); aberto caso contrário.
+	if opts.MetricsToken == "" {
+		r.Handle("/metrics", promhttp.Handler())
+	} else {
+		r.With(requireMetricsToken(opts.MetricsToken)).Handle("/metrics", promhttp.Handler())
+	}
 
 	return r
 }
