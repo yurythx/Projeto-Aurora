@@ -12,6 +12,16 @@ import { signOut } from "next-auth/react";
 //
 // Compartilhado por UserMenu (dashboard) e PublicShell (páginas públicas).
 export async function fullSignOut() {
+  // Deixa o rastro de encerramento de sessão em audit_logs (§49 / gap
+  // G-08) ANTES de destruir o cookie — depois do signOut o proxy BFF não
+  // teria mais o bearer para anexar. Best-effort: uma falha aqui nunca
+  // pode travar o logout.
+  try {
+    await fetch("/api/backend/api/v1/auth/logout", { method: "POST" });
+  } catch {
+    // ignora — o logout continua abaixo
+  }
+
   let logoutUrl = "/";
   try {
     const res = await fetch("/api/auth/keycloak-logout-url");

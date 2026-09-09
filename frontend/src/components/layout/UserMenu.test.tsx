@@ -89,6 +89,9 @@ describe("UserMenu", () => {
     await user.click(screen.getByRole("button", { name: /Menu do usuário/ }));
     await user.click(screen.getByRole("menuitem", { name: "Sair" }));
 
+    // Gap G-08: registra o encerramento de sessão no backend ANTES do
+    // signOut (depois, o proxy BFF não teria mais o bearer pra anexar).
+    expect(fetch).toHaveBeenCalledWith("/api/backend/api/v1/auth/logout", { method: "POST" });
     expect(fetch).toHaveBeenCalledWith("/api/auth/keycloak-logout-url");
     expect(signOut).toHaveBeenCalledWith({ redirect: false });
     expect(window.location.href).toBe(
