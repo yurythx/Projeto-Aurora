@@ -72,15 +72,27 @@ arquitetura** que a execução exige.
   `lgpd.handleAccept` deixa de ler o header cru.
 - Aliases `/livez`, `/healthz`, `/readyz` (nomes canônicos k8s).
 
-### 5.6. Itens que dependem de decisão externa
+### 5.6. Fases 3–5 — implementado neste ciclo
 
-- **RFC 7807 (G-13):** mudança de contrato → nova major `/api/v2` ou
-  *content negotiation*. Ver ADR 006.
-- **Exceção CSP `style-src 'unsafe-inline'` (G-16):** ver ADR 007.
-- **Direitos do titular (LGPD art. 18) e transparência ativa (LAI):**
-  migration `000005_data_subject_requests.sql` cria a tabela de
-  solicitações; os endpoints e a página de Política de Privacidade
-  dependem de insumo do DPO / jurídico (Fase 3).
+- **RFC 7807 (G-13):** resolvido pela Opção B do ADR 006 (negociação de
+  conteúdo por `Accept`, sem quebra) — `httputil.WriteError`.
+- **Exceção CSP `style-src 'unsafe-inline'` (G-16):** ADR 007.
+- **Direitos do titular (LGPD art. 18):** migrations `000005`/`000006`,
+  endpoints em `internal/platform/lgpd` (`/meus-dados`,
+  `/solicitar-exclusao`, `/minhas-solicitacoes`, `/accept-anon` público)
+  e worker `lgpd.ErasureProcessor` (anonimização — nunca DELETE).
+- **Transparência ativa (LAI art. 8º, LC 131):**
+  `internal/platform/transparency` — rotas públicas JSON/CSV/XML com
+  datasets agregados (scaffold; o órgão define os datasets reais).
+- **Export WORM da auditoria (F2.6):** `audit.WORMExporter` +
+  `000007_audit_worm_exports`; o object-lock do bucket fica na infra.
+- **Página de Privacidade (F3.1) e Declaração de Acessibilidade (F4.5):**
+  `/privacidade` e `/acessibilidade` — publicadas como minutas técnicas,
+  aguardando homologação do DPO / avaliação e-MAG externa.
+- **RIPD (F5.3) e Dossiê (F5.4):** `docs/RIPD_MODELO.md`,
+  `docs/DOSSIE_CONFORMIDADE.md` — insumo técnico; o RIPD oficial é do DPO.
+- **Ainda dependem de terceiro:** pentest externo (F5.1) e avaliação
+  e-MAG por avaliador humano com tecnologia assistiva (F5.2).
 
 ## Consequências
 

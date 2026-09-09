@@ -78,8 +78,10 @@ Todo código desenvolvido na plataforma deve obedecer estritamente aos 5 pilares
 ## 📑 4. Transparência e Lei de Acesso à Informação (LAI)
 
 Para auditorias e relatórios de controle interno (CGU/TCE):
-- Toda mutação no banco dispara entradas na tabela imutável `audit_logs`.
-- Administradores podem exportar o relatório de auditoria higienizado em formato CSV através da rota `/api/v1/audit/export` ou pelo botão **"Exportar LAI (CSV)"** na tela de Monitoramento da Plataforma.
+- Toda mutação no banco dispara entradas na tabela imutável `audit_logs`, com **ator, IP de origem e `correlation_id`** (`audit.FromRequest`). Há ainda uma **cópia WORM diária** para o object storage, encadeada por SHA-256 (`audit.WORMExporter`).
+- Exportação da trilha (permissão `audit:read`): `GET /api/v1/audit/export?from=&to=&action=&format=&cursor=` — `format` ∈ `csv|json|xml` (ou header `Accept`), `from/to` em `AAAA-MM-DD` ou RFC3339 (default: últimos 30 dias, teto 366), paginação keyset via `cursor` (`X-Next-Cursor`). Cada exportação é ela mesma auditada (`audit.exported`).
+- **Transparência ativa** (LAI art. 8º), rotas **públicas** em `/api/v1/transparencia/*` (JSON/CSV/XML): `datasets` (dicionário), `plataforma`, `integracoes`, `auditoria/acoes`. Datasets agregados, sem PII — o órgão define os datasets reais (`internal/platform/transparency`).
+- **Direitos do titular (LGPD art. 18)**: `GET /api/v1/lgpd/meus-dados` (acesso + portabilidade), `POST /api/v1/lgpd/solicitar-exclusao` (anonimização pelo worker), `GET /api/v1/lgpd/minhas-solicitacoes`.
 
 ---
 
