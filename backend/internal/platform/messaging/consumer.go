@@ -228,6 +228,8 @@ func (c *Consumer) republish(ctx context.Context, d amqp.Delivery, event events.
 	for k, v := range d.Headers {
 		headers[k] = v
 	}
+	// #nosec G115 -- attempt é o contador de tentativas de retry, limitado
+	// por MaxRetries (unidades); nunca se aproxima de math.MaxInt32.
 	headers[RetryHeader] = int32(attempt)
 
 	confirmation, err := ch.PublishWithDeferredConfirmWithContext(ctx, ExchangeEvents, d.RoutingKey, false, false, amqp.Publishing{

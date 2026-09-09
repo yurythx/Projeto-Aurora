@@ -116,6 +116,10 @@ func handleExisting(w http.ResponseWriter, r *http.Request, logger *slog.Logger,
 		}
 		w.Header().Set("Idempotent-Replay", "true")
 		w.WriteHeader(existing.ResponseStatus)
+		// #nosec G705 -- ResponseBody é a resposta que ESTE backend
+		// produziu na primeira execução da requisição e o próprio
+		// middleware persistiu; não é conteúdo de terceiro sendo
+		// refletido. O Content-Type original também é restaurado acima.
 		_, _ = w.Write(existing.ResponseBody)
 		return
 	}

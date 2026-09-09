@@ -8,6 +8,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"strconv"
@@ -243,6 +244,9 @@ func (l *loader) str(key string, required bool, def string) string {
 func (l *loader) secret(key string, required bool, def string) string {
 	filePath, hasFileVar := os.LookupEnv(key + "_FILE")
 	if hasFileVar && filePath != "" {
+		// #nosec G304 -- filePath vem de "<KEY>_FILE", uma variável de
+		// ambiente definida pelo operador do deploy (padrão Docker/K8s/
+		// Vault secrets), nunca de entrada de requisição.
 		content, err := os.ReadFile(filePath)
 		if err != nil {
 			l.errs = append(l.errs, fmt.Sprintf("%s_FILE (failed to read %q: %v)", key, filePath, err))
@@ -267,6 +271,27 @@ func (l *loader) intVal(key string, required bool, def int) int {
 		return def
 	}
 	return n
+}
+
+// int32Val lê um inteiro que precisa caber em int32 (ex.: tamanhos de
+// pool do pgxpool). Um valor fora da faixa é erro de configuração — o
+// processo não sobe — em vez de estourar silenciosamente na conversão.
+func (l *loader) int32Val(key string, def int32) int32 {
+	v, ok := os.LookupEnv(key)
+	if !ok || v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		l.errs = append(l.errs, fmt.Sprintf("%s (invalid integer %q)", key, v))
+		return def
+	}
+	if n < 0 || n > math.MaxInt32 {
+		l.errs = append(l.errs, fmt.Sprintf("%s (%d fora da faixa [0, %d])", key, n, math.MaxInt32))
+		return def
+	}
+	// #nosec G109 -- n é validado contra [0, math.MaxInt32] na linha acima.
+	return int32(n)
 }
 
 func (l *loader) durationVal(key string, required bool, def time.Duration) time.Duration {
@@ -322,8 +347,8 @@ func Load() (*Config, error) {
 			User:            l.str("DB_USER", true, ""),
 			Password:        l.secret("DB_PASSWORD", true, ""),
 			SSLMode:         l.str("DB_SSLMODE", false, "disable"),
-			MaxConns:        int32(l.intVal("DB_MAX_CONNS", false, 20)),
-			MinConns:        int32(l.intVal("DB_MIN_CONNS", false, 2)),
+			MaxConns:        l.int32Val("DB_MAX_CONNS", 20),
+			MinConns:        l.int32Val("DB_MIN_CONNS", 2),
 			MaxConnLifetime: l.durationVal("DB_MAX_CONN_LIFETIME", false, time.Hour),
 			MaxConnIdleTime: l.durationVal("DB_MAX_CONN_IDLE_TIME", false, 15*time.Minute),
 			ConnectTimeout:  l.durationVal("DB_CONNECT_TIMEOUT", false, 5*time.Second),
@@ -509,8 +534,8 @@ func LoadDatabase() (DatabaseConfig, error) {
 		User:            l.str("DB_USER", true, ""),
 		Password:        l.secret("DB_PASSWORD", true, ""),
 		SSLMode:         l.str("DB_SSLMODE", false, "disable"),
-		MaxConns:        int32(l.intVal("DB_MAX_CONNS", false, 20)),
-		MinConns:        int32(l.intVal("DB_MIN_CONNS", false, 2)),
+		MaxConns:        l.int32Val("DB_MAX_CONNS", 20),
+		MinConns:        l.int32Val("DB_MIN_CONNS", 2),
 		MaxConnLifetime: l.durationVal("DB_MAX_CONN_LIFETIME", false, time.Hour),
 		MaxConnIdleTime: l.durationVal("DB_MAX_CONN_IDLE_TIME", false, 15*time.Minute),
 		ConnectTimeout:  l.durationVal("DB_CONNECT_TIMEOUT", false, 5*time.Second),

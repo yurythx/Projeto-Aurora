@@ -32,14 +32,12 @@ jobs:
       - name: Static analysis (staticcheck) — bloqueante
         run: cd backend && staticcheck ./...
 
-      - name: Security lint (gosec) — report-only até o baseline zerar
+      - name: Security lint (gosec) — bloqueante
         # G104 (erros não checados) é ruído nos helpers de resposta HTTP,
         # onde a escrita no ResponseWriter é deliberadamente best-effort.
-        # O acervo atual tem ~7 achados pré-existentes (config int32,
-        # replay do corpo no idempotency middleware, os.ReadFile de path
-        # configurado) — triá-los é item de Fase 0; enquanto isso o passo
-        # é informativo (continue-on-error), NÃO bloqueia o merge.
-        continue-on-error: true
+        # Baseline zerado: os poucos falsos-positivos restantes têm
+        # #nosec com justificativa no código (config int32Val validado,
+        # os.ReadFile de <KEY>_FILE, replay do corpo no idempotency mw).
         run: cd backend && gosec -quiet -exclude=G104 ./...
 
       - name: go vet
