@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { connection } from "next/server";
 import { Accessibility, Eye, Type, ExternalLink, Keyboard, FileText } from "lucide-react";
 
 import { PublicShell } from "@/components/layout/PublicShell";
@@ -10,37 +10,33 @@ export const metadata: Metadata = {
     "Declaração e instruções de acessibilidade e-MAG do portal oficial e sistemas da Prefeitura Municipal de Rondonópolis.",
 };
 
-export default function AccessibilityPage() {
+// § Padronização de páginas públicas: esta página tinha seu próprio
+// layout (breadcrumb manual que nenhuma outra página pública usa,
+// cabeçalho em caixa com ícone, largura/espaçamento diferentes) — achado
+// de revisão. Agora segue exatamente o mesmo molde de app/page.tsx e
+// app/sobre/page.tsx: async + `await connection()` (obrigatório pra
+// renderização dinâmica, sem isso o nonce de CSP gerado em proxy.ts nunca
+// bate com o embutido no HTML estático — ver a mesma nota nessas duas
+// páginas), o wrapper `mx-auto flex w-full max-w-5xl flex-1 flex-col gap-*
+// px-6 py-12`, e a mesma seção de abertura (selo/eyebrow + h1 + parágrafo
+// de introdução, sem ícone em caixa nem breadcrumb).
+export default async function AccessibilityPage() {
+  await connection();
+
   return (
     <PublicShell>
-      <div className="mx-auto max-w-5xl px-4 py-8 flex flex-col gap-8">
-        {/* Breadcrumb */}
-        <nav
-          aria-label="Navegação estrutural (Breadcrumb)"
-          className="text-xs text-muted flex items-center gap-2"
-        >
-          <Link href="/" className="hover:text-primary transition-colors">
-            Início
-          </Link>
-          <span>/</span>
-          <span className="font-semibold text-foreground">Acessibilidade</span>
-        </nav>
-
-        {/* Cabeçalho Principal */}
-        <div className="flex flex-col gap-3 border-b border-surface-border pb-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white shadow-sm">
-              <Accessibility size={24} />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">Acessibilidade</h1>
-              <p className="text-sm text-muted">
-                Portal Oficial da Prefeitura Municipal de Rondonópolis — Conformidade com as normas
-                e-MAG (Modelo de Acessibilidade do Governo Federal).
-              </p>
-            </div>
+      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-10 px-6 py-12">
+        <section className="flex flex-col gap-4">
+          <div className="flex items-center gap-2 text-xs font-bold font-mono text-primary uppercase tracking-wider">
+            <Accessibility size={16} className="text-success" />
+            e-MAG 2.0 / WCAG 2.1 AA
           </div>
-        </div>
+          <h1 className="text-3xl font-bold text-foreground">Acessibilidade</h1>
+          <p className="text-muted leading-relaxed">
+            Portal Oficial da Prefeitura Municipal de Rondonópolis — em conformidade com as normas{" "}
+            <strong>e-MAG (Modelo de Acessibilidade do Governo Federal)</strong>.
+          </p>
+        </section>
 
         {/* Conteúdo Principal de Acessibilidade */}
         <div className="grid gap-6 md:grid-cols-2">

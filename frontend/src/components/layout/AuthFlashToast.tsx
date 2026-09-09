@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 import { useToast } from "@/components/notifications/ToastProvider";
 
@@ -9,15 +9,26 @@ import { useToast } from "@/components/notifications/ToastProvider";
 // login terminavam em silêncio total — nenhuma confirmação visual de que
 // a ação funcionou). Cada fluxo carimba um parâmetro de busca no
 // redirecionamento final; este componente só existe pra ler esse
-// parâmetro, mostrar o toast certo, e então LIMPAR a URL (router.replace
-// sem o parâmetro) — sem isso, um F5 ou "voltar" do navegador repetiria o
-// mesmo toast indefinidamente.
+// parâmetro, mostrar o toast certo, e então LIMPAR a URL — sem isso, um
+// F5 ou "voltar" do navegador repetiria o mesmo toast indefinidamente.
+//
+// A limpeza usa window.history.replaceState DIRETO, NUNCA router.replace()
+// do next/navigation — achado da 2ª rodada (o toast simplesmente não
+// aparecia, apesar do componente/efeito estarem corretos isoladamente,
+// como os testes unitários já confirmavam): páginas como app/page.tsx são
+// Server Components renderizados dinamicamente (await connection()), e
+// router.replace() no App Router refaz o fetch RSC do segmento mesmo só
+// trocando a query string — o que reconcilia toda a subárvore que inclui
+// o próprio ToastProvider, descartando o toast que acabou de ser
+// adicionado ao estado dele antes de a pessoa sequer conseguir vê-lo.
+// history.replaceState só troca a URL na barra de endereço, sem passar
+// pelo router do Next e sem re-render nenhum — a forma correta de "limpar
+// um parâmetro de flash" nesta arquitetura.
 //
 // Montado uma vez em cada shell que pode ser o destino de um desses
 // redirecionamentos: PublicShell (?logout=success, na home) e
 // DashboardShell (?welcome=1, depois do login). Não renderiza nada.
 export function AuthFlashToast() {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { showToast } = useToast();
@@ -51,8 +62,9 @@ export function AuthFlashToast() {
     params.delete("logout");
     params.delete("welcome");
     const rest = params.toString();
-    router.replace(rest ? `${pathname}?${rest}` : pathname, { scroll: false });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- só reage à query; router/pathname/showToast são estáveis o bastante aqui
+    const newUrl = rest ? `${pathname}?${rest}` : pathname;
+    window.history.replaceState(null, "", newUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só reage à query; pathname/showToast são estáveis o bastante aqui
   }, [query]);
 
   return null;
