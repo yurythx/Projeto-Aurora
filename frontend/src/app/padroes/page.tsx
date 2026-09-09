@@ -933,7 +933,7 @@ export default async function PadroesPage() {
             {camadas.map((step, i) => (
               <li
                 key={i}
-                className="grid grid-cols-[1.6rem_1fr] items-baseline gap-3 rounded-lg border border-surface-border bg-background/40 px-3 py-2.5 text-xs text-muted leading-relaxed"
+                className="grid grid-cols-[1.6rem_1fr] items-baseline gap-3 rounded-lg border border-surface-border bg-black/5 px-3 py-2.5 text-xs text-muted leading-relaxed dark:bg-white/5"
               >
                 <span className="font-mono text-xs font-semibold text-primary">{i + 1}</span>
                 <span>{step}</span>
