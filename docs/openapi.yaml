@@ -889,39 +889,6 @@ components:
       example: "3f2b9e0a-6d34-4e77-9c3e-2b6f8e6b6a3d"
 
   responses:
-    TestJobAccepted:
-      description: >
-        O teste foi enfileirado. Se a requisição carregou um
-        `Idempotency-Key` já usado com sucesso antes (mesmo corpo), esta é
-        uma resposta reproduzida (replay) da chamada original — o header
-        `Idempotent-Replay: true` distingue esse caso, e nenhum job novo
-        foi criado.
-      headers:
-        Idempotent-Replay:
-          description: Presente e "true" somente quando esta resposta é um replay de uma chamada anterior com a mesma Idempotency-Key.
-          schema:
-            type: string
-            enum: ["true"]
-      content:
-        application/json:
-          schema:
-            allOf:
-              - $ref: "#/components/schemas/Envelope"
-              - type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      job_id:
-                        type: string
-                        format: uuid
-                      status:
-                        type: string
-                        enum: [queued]
-          example:
-            data: { job_id: "3c1f1e2a-...", status: "queued" }
-            error: null
-
     IdempotencyConflict:
       description: >
         Conflito relacionado à Idempotency-Key: `IDEMPOTENCY_KEY_IN_PROGRESS`

@@ -42,7 +42,6 @@ import (
 // uma manter sua própria contagem independente em memória (e portanto
 // N×-generosa demais).
 type RateLimiters struct {
-	TestJob    httpserver.Limiter // POST .../integrations/{key}/test
 	WSTicket   httpserver.Limiter // POST /api/v1/ws/ticket
 	LocalLogin httpserver.Limiter // POST /api/v1/auth/login — chave por IP, não por usuário (§ Sistema de Login Local), já que quem chama ainda não está autenticado
 }
@@ -215,9 +214,6 @@ func NewDependencies(ctx context.Context, component string) (*Dependencies, erro
 			// autenticado, comum entre rotas de módulos diferentes)
 			// escreviam na mesma linha e se anulavam.
 			//
-			// Equivalente aproximado aos parâmetros anteriores em memória
-			// (0.5 req/s, burst 3): até 3 requisições a cada 10s.
-			TestJob: ratelimit.NewPostgresLimiter(pool, 10, 3, "test_job"),
 			// Equivalente a 1 req/s, burst 5: até 5 requisições a cada 5s.
 			WSTicket: ratelimit.NewPostgresLimiter(pool, 5, 5, "ws_ticket"),
 			// Mais apertado de propósito — até 5 tentativas de login a

@@ -32,7 +32,7 @@ import (
 // bucket namespaceia as linhas desta instância dentro da tabela
 // COMPARTILHADA por toda instância de PostgresLimiter da aplicação —
 // achado real de auditoria: antes de existir, dois limiters diferentes
-// (ex.: ScanJob, janela de 60s, e TestJob, janela de 10s) escreviam na
+// (ex.: WSTicket, janela de 5s, e LocalLogin, janela de 60s) escreviam na
 // MESMA linha sempre que o "key" calculado por quem chama (tipicamente o
 // subject do usuário autenticado) coincidia entre rotas — o que é o caso
 // comum, já que dois RateLimitKey de módulos diferentes tipicamente
@@ -41,7 +41,7 @@ import (
 // batendo com o que a última chamada (de um limiter DIFERENTE) tinha
 // gravado — o contador resetava a cada troca de rota, e nenhum dos dois
 // limites era de fato aplicado (um anulava o outro). bucket precisa ser
-// um valor ESTÁTICO e ÚNICO por instância (ex.: "scan_job", "test_job")
+// um valor ESTÁTICO e ÚNICO por instância (ex.: "ws_ticket", "local_login")
 // — nunca derivado de dado de requisição, que é o papel de key.
 type PostgresLimiter struct {
 	pool          *pgxpool.Pool
