@@ -2,6 +2,7 @@ package app
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -57,34 +58,35 @@ func NewRouter(deps *Dependencies) chi.Router {
 	r.Get("/openapi.json", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "docs/openapi.json")
 	})
+	// Assets do Swagger UI vendorados (F2.1): swagger-ui-dist@5.17.14 +
+	// swagger-initializer.js próprio — sem CDN, então a CSP de /docs pode
+	// ficar em 'self' (só style-src precisa de 'unsafe-inline', porque o
+	// Swagger UI injeta <style> em runtime).
+	r.Get("/docs/assets/*", func(w http.ResponseWriter, r *http.Request) {
+		asset := chi.URLParam(r, "*")
+		if strings.Contains(asset, "..") { // defesa contra path traversal
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFile(w, r, "docs/swagger-ui/"+asset)
+	})
 	r.Get("/docs", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		// Sobrescreve a CSP restritiva de SecurityHeaders (gap G-03) só
-		// nesta página HTML — o Swagger UI é carregado do CDN oficial e
-		// usa um <script> inline de bootstrap. TODO (F2.1): servir o
-		// Swagger UI localmente e voltar à CSP padrão.
 		w.Header().Set("Content-Security-Policy",
-			"default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "+
-				"style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:; "+
-				"connect-src 'self'; frame-ancestors 'none'; base-uri 'self'")
+			"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "+
+				"img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'")
 		w.Write([]byte(`<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Documentação da API — Projeto Aurora (OpenAPI 3.0)</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css" />
+  <link rel="stylesheet" href="/docs/assets/swagger-ui.css" />
 </head>
 <body>
   <div id="swagger-ui"></div>
-  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-  <script>
-    window.onload = () => {
-      SwaggerUIBundle({
-        url: '/openapi.json',
-        dom_id: '#swagger-ui',
-      });
-    };
-  </script>
+  <script src="/docs/assets/swagger-ui-bundle.js"></script>
+  <script src="/docs/assets/swagger-initializer.js"></script>
 </body>
 </html>`))
 	})

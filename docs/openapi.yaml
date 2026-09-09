@@ -16,6 +16,14 @@ info:
     `{"data": <payload|null>, "error": {"code","message"}|null, "meta": {...}|omitido}`.
     Erros nunca incluem stack trace ou outro detalhe interno.
 
+    **RFC 7807 (Problem Details)**: um cliente que envia
+    `Accept: application/problem+json` recebe as respostas de ERRO no
+    formato RFC 7807 (`type` = `urn:aurora:error:<code>`, `title`,
+    `status`, `detail`, `instance`, mais as extensões `code` e
+    `request_id`). Qualquer outro `Accept` mantém o envelope acima.
+    Respostas de sucesso não mudam. Ver ADR
+    006-rfc7807-problem-details.md.
+
     **Idempotência**: qualquer endpoint de escrita (POST/PUT/PATCH) aceita
     opcionalmente o header `Idempotency-Key` (ver
     `#/components/parameters/IdempotencyKey`). Reenviar a mesma requisição
@@ -36,7 +44,7 @@ info:
     sozinhas depois de um curto intervalo) ou `FEATURE_DISABLED` (um
     administrador desligou a integração via feature flag — ver
     `/api/v1/admin/feature-flags`, não se resolve sozinho).
-  version: "1.1.0"
+  version: "1.2.0"
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
@@ -66,13 +74,20 @@ tags:
     description: "Operações administrativas restritas ao papel aurora-admin, ex.: feature flags."
   - name: lgpd
     description: >
-      Consentimento formal aos Termos de Uso/Privacidade (Lei 13.709/2018).
-      Cada usuário só consulta e aceita o PRÓPRIO consentimento — não há
-      leitura de terceiros aqui.
+      Consentimento (Lei 13.709/2018) e direitos do titular (art. 18):
+      cada usuário só consulta, aceita, exporta ou solicita a exclusão do
+      PRÓPRIO dado — não há leitura de terceiros. Inclui a rota pública de
+      consentimento anônimo para visitantes não autenticados.
   - name: audit
     description: >
-      Exportação da trilha de auditoria imutável (audit_logs) em CSV, para
-      fins de transparência/LAI. Restrito a `audit:read`.
+      Exportação da trilha de auditoria imutável (audit_logs) em CSV/JSON/
+      XML, com janela e paginação, para transparência/LAI. Restrito a
+      `audit:read`; cada exportação é ela mesma auditada.
+  - name: transparencia
+    description: >
+      Transparência ativa (LAI art. 8º, LC 131/2009) — dados de interesse
+      público agregados, sem dado pessoal, servidos SEM autenticação em
+      JSON/CSV/XML. Rate-limited por IP.
   - name: monitoring
     description: >
       Métricas operacionais consumidas pelo painel de Monitoramento do
@@ -698,28 +713,241 @@ paths:
   /api/v1/audit/export:
     get:
       tags: [audit]
-      summary: Exporta as últimas 1000 linhas da trilha de auditoria em CSV
+      summary: Exporta a trilha de auditoria (LAI) em CSV, JSON ou XML
       operationId: exportAuditLog
       description: >
-        Gera `relatorio_auditoria_lai_<timestamp>.csv` com id, usuário,
-        ação, tipo/id de recurso, IP e data/hora — mais recente primeiro.
-        Restrito a `audit:read`: o achado de auditoria que motivou essa
-        checagem é que o handler antes só exigia autenticação, permitindo
-        que qualquer usuário autenticado baixasse a trilha inteira da
-        plataforma.
+        Gera `relatorio_auditoria_lai_<timestamp>.<ext>` com id, usuário,
+        ação, tipo/id de recurso, correlation_id, IP, metadata e data/hora
+        (UTC) — mais recente primeiro. Restrito a `audit:read`.
+
+        Janela `from`/`to` (default: últimos 30 dias, teto de 366);
+        filtro opcional por `action`; paginação keyset por `cursor` (o
+        `X-Next-Cursor` da resposta anterior). Formato por `format=` ou
+        pelo header `Accept`; o default é CSV. Cada exportação bem-sucedida
+        é ela mesma registrada na trilha (`audit.exported`). Metadados do
+        dataset vão em cabeçalhos `X-Dataset-*` / `X-Generated-At`.
       security:
         - bearerAuth: [audit:read]
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: Início da janela — `AAAA-MM-DD` ou RFC3339 (UTC).
+          schema: { type: string, example: "2026-01-01" }
+        - name: to
+          in: query
+          required: false
+          description: Fim da janela — `AAAA-MM-DD` ou RFC3339 (UTC).
+          schema: { type: string, example: "2026-02-01" }
+        - name: action
+          in: query
+          required: false
+          description: "Filtra por um valor exato de `action` (ex.: `login`)."
+          schema: { type: string }
+        - name: format
+          in: query
+          required: false
+          description: Formato de saída (tem prioridade sobre o header `Accept`).
+          schema: { type: string, enum: [csv, json, xml], default: csv }
+        - name: cursor
+          in: query
+          required: false
+          description: Cursor keyset devolvido em `X-Next-Cursor` para a próxima página.
+          schema: { type: string }
       responses:
         "200":
-          description: Arquivo CSV.
+          description: >
+            Arquivo no formato pedido. Cabeçalhos `X-Dataset-Name`,
+            `X-Dataset-Window-From`, `X-Dataset-Window-To`,
+            `X-Dataset-Rows`, `X-Generated-At` e, quando há mais páginas,
+            `X-Next-Cursor`.
           content:
-            text/csv:
-              schema:
-                type: string
+            text/csv: { schema: { type: string } }
+            application/json: { schema: { type: object } }
+            application/xml: { schema: { type: string } }
+        "400":
+          description: Janela inválida (invertida, maior que 366 dias) ou cursor malformado.
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+
+  /api/v1/auth/logout:
+    post:
+      tags: [auth]
+      summary: Encerra a sessão (registra na trilha de auditoria)
+      operationId: authLogout
+      description: >
+        Não invalida o token (stateless — o JWT vale até expirar); o
+        frontend descarta o cookie de sessão do seu lado. O papel deste
+        endpoint é deixar em `audit_logs` o evento de logout (§49).
+        Idempotente.
+      security:
+        - bearerAuth: []
+      responses:
+        "200": { description: "`{data:{status:\"ok\"}}`" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/lgpd/meus-dados:
+    get:
+      tags: [lgpd]
+      summary: Baixa todos os dados pessoais do titular (LGPD art. 18, II e V)
+      operationId: lgpdExportMyData
+      description: >
+        Pacote JSON com a conta, os registros de consentimento, a trilha
+        de auditoria e as solicitações do próprio titular — acesso e
+        portabilidade. Síncrono. Auditado como `lgpd.data_export.self`.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: >
+            `meus-dados-aurora-<timestamp>.json` (`Content-Disposition:
+            attachment`).
+          content:
+            application/json: { schema: { type: object } }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Nenhuma conta local associada a esta identidade ainda.
+
+  /api/v1/lgpd/solicitar-exclusao:
+    post:
+      tags: [lgpd]
+      summary: Solicita a eliminação/anonimização dos dados (LGPD art. 18, VI)
+      operationId: lgpdRequestErasure
+      description: >
+        Cria uma solicitação; o worker anonimiza automaticamente
+        (username, e-mail, nome, hash de senha, vínculo Keycloak e
+        papéis). NUNCA um `DELETE` — a linha e a trilha de auditoria são
+        mantidas como registro legal (art. 16). Idempotente: se já há uma
+        solicitação em aberto, devolve ela com 200.
+      security:
+        - bearerAuth: []
+      responses:
+        "202":
+          description: "`{data:{request_id, status:\"pending\"}}`"
+        "200":
+          description: Já havia uma solicitação `pending`/`processing`.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/lgpd/minhas-solicitacoes:
+    get:
+      tags: [lgpd]
+      summary: Lista as solicitações de direitos do próprio titular (art. 19)
+      operationId: lgpdListMyRequests
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: "`{data:[{id, kind, status, detail, created_at, completed_at}]}`"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/lgpd/accept-anon:
+    post:
+      tags: [lgpd]
+      summary: Registra o consentimento de um visitante NÃO autenticado
+      operationId: lgpdAcceptAnon
+      description: >
+        Rota pública, rate-limited por IP. `device_hash` é um
+        identificador opaco gerado no cliente (sem dado pessoal). Grava em
+        `anonymous_consents`; um trigger espelha na trilha imutável
+        (`lgpd_consent_given_anon`, `user_id` nulo).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_hash]
+              properties:
+                device_hash: { type: string, minLength: 8, maxLength: 128 }
+                term_version: { type: string, example: "v1.0.0-2026" }
+      responses:
+        "200":
+          description: "`{data:{status:\"ok\", term_version, accepted_at}}`"
+        "422":
+          description: "`device_hash` ausente ou fora de 8–128 caracteres."
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/v1/transparencia/datasets:
+    get:
+      tags: [transparencia]
+      summary: Catálogo e dicionário de dados da transparência ativa (LAI art. 8º)
+      operationId: transparencyCatalog
+      description: >
+        Rota pública, rate-limited por IP. Lista os datasets disponíveis e
+        seus campos. Todos os datasets aceitam `?format=json|csv|xml` (ou
+        o header `Accept`).
+      responses:
+        "200":
+          content:
+            application/json: { schema: { type: object } }
+            text/csv: { schema: { type: string } }
+            application/xml: { schema: { type: string } }
+
+  /api/v1/transparencia/plataforma:
+    get:
+      tags: [transparencia]
+      summary: Métricas agregadas da plataforma (sem dado pessoal)
+      operationId: transparencyPlatform
+      responses:
+        "200":
+          content:
+            application/json: { schema: { type: object } }
+            text/csv: { schema: { type: string } }
+            application/xml: { schema: { type: string } }
+
+  /api/v1/transparencia/integracoes:
+    get:
+      tags: [transparencia]
+      summary: Serviços externos e disponibilidade
+      operationId: transparencyIntegrations
+      responses:
+        "200":
+          content:
+            application/json: { schema: { type: object } }
+            text/csv: { schema: { type: string } }
+            application/xml: { schema: { type: string } }
+
+  /api/v1/transparencia/auditoria/acoes:
+    get:
+      tags: [transparencia]
+      summary: Ações registradas na trilha de auditoria, agregadas por período
+      operationId: transparencyAuditActions
+      parameters:
+        - name: dias
+          in: query
+          required: false
+          description: Janela em dias (default 30, máx 365).
+          schema: { type: integer, default: 30, minimum: 1, maximum: 365 }
+      responses:
+        "200":
+          content:
+            application/json: { schema: { type: object } }
+            text/csv: { schema: { type: string } }
+            application/xml: { schema: { type: string } }
+
+  /livez:
+    get:
+      tags: [system]
+      summary: Alias de /health (liveness — nome canônico k8s)
+      operationId: livez
+      responses:
+        "200": { description: Processo de pé. }
+
+  /readyz:
+    get:
+      tags: [system]
+      summary: Alias de /ready (readiness — nome canônico k8s)
+      operationId: readyz
+      responses:
+        "200": { description: Todas as dependências OK. }
+        "503": { description: Ao menos uma dependência indisponível. }
 
   /api/v1/monitoring/outbox-stats:
     get:
